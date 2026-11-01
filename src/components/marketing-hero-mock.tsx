@@ -39,7 +39,7 @@ export function MarketingHeroMock() {
                 </ul>
             </div>
             <div className="hidden justify-center md:flex">
-                <div className="aspect-[210/297] w-full max-w-xs space-y-4 rounded-sm border border-border bg-white p-6 shadow-sm">
+                <div className="aspect-[210/297] w-full max-w-xs space-y-4 rounded-sm border border-border bg-paper p-6 shadow-sm">
                     <div className="space-y-1.5"><Line w="55%" strong /><Line w="80%" /></div>
                     {[0, 1, 2].map(i => (
                         <div key={i} className="space-y-1.5">

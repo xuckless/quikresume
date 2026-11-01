@@ -23,23 +23,17 @@ export default function OpengraphImage() {
                 }}
             >
                 <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-                    <div
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            width: 64,
-                            height: 64,
-                            borderRadius: 16,
-                            backgroundColor: "#171717",
-                            color: "#ffffff",
-                            fontSize: 40,
-                            fontWeight: 600,
-                        }}
-                    >
-                        q
+                    {/* Brand monogram: the q-bolt on the #003200 rounded square (same paths as components/brand.tsx). */}
+                    <svg width="64" height="64" viewBox="0 0 32 32">
+                        <rect width="32" height="32" rx="7" fill="#003200" />
+                        <g transform="translate(5.38 3.94) scale(0.72)">
+                            <circle cx="12.5" cy="12.5" r="7.25" fill="none" stroke="#ffffff" strokeWidth="3.5" />
+                            <path fill="#ffffff" d="M18.5 4.5h3.75V18H26l-7.5 12 1.4-8h-3.3l1.9-4z" />
+                        </g>
+                    </svg>
+                    <div style={{ display: "flex", fontSize: 36, fontWeight: 600, letterSpacing: -0.5 }}>
+                        <span>quik</span><span style={{ color: "#003200" }}>R</span><span>esume</span>
                     </div>
-                    <div style={{ display: "flex", fontSize: 36, fontWeight: 600, letterSpacing: -0.5 }}>{SITE_NAME}</div>
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -47,12 +41,12 @@ export default function OpengraphImage() {
                         {`${SITE_TAGLINE}.`}
                     </div>
                     <div style={{ display: "flex", fontSize: 30, color: "#525252", maxWidth: 860, lineHeight: 1.35 }}>
-                        Toggle items on and off per job, match a job description, download a real PDF.
+                        Keep your whole career in one library. Match any job, tailor in a click, apply with autofill.
                     </div>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 24, color: "#a3a3a3" }}>
-                    <div style={{ display: "flex", width: 120, height: 2, backgroundColor: "#e5e5e5" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 24, color: "#6e6e6e" }}>
+                    <div style={{ display: "flex", width: 120, height: 3, backgroundColor: "#1a6e38" }} />
                     <div style={{ display: "flex" }}>Typeset with Typst, compiled in your browser</div>
                 </div>
             </div>

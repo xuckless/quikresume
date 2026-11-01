@@ -13,6 +13,8 @@ import type { PersonalInfo, ResumeData, ResumeListKey } from "@/types/schema";
 import { orderedItems } from "@/lib/layout/order";
 import { defaultLayout, itemLayout, sectionSpacing } from "@/lib/layout/presets";
 import type { ResumeLayout, SectionId } from "@/lib/layout/types";
+import { ACCENTS, FONT_PAIRS, type PaperId } from "@/lib/layout/theme";
+import type { TemplateId } from "@/lib/typst/templates";
 
 /** Per-entry layout, present on every list entry (pt / booleans). */
 export interface TypstItemLayout {
@@ -33,6 +35,8 @@ export interface TypstLayout {
     order: TypstSectionKey[];
     page: { margin: number; size: number; leading: number };
     sections: Record<TypstSectionKey, TypstSectionLayout>;
+    /** Template id plus the overrides templates read (`""` = the template's own choice). */
+    theme: { template: TemplateId; accent: string; heading_font: string; body_font: string; paper: PaperId };
 }
 
 export type TypstSectionKey =
@@ -152,6 +156,13 @@ function typstLayout(layout: ResumeLayout): TypstLayout {
         order: layout.sectionOrder.map(id => TYPST_SECTION_KEY[id]),
         page: { margin: layout.page.marginMm, size: layout.page.fontPt, leading: layout.page.leadingEm },
         sections,
+        theme: {
+            template: layout.theme.templateId,
+            accent: ACCENTS[layout.theme.accent].hex,
+            heading_font: FONT_PAIRS[layout.theme.font].heading,
+            body_font: FONT_PAIRS[layout.theme.font].body,
+            paper: layout.theme.paper,
+        },
     };
 }
 

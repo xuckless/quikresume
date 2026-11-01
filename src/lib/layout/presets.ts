@@ -5,6 +5,7 @@
 // No value imports from @/types/schema: schema.ts imports defaultLayout from here.
 import type { ResumeListKey } from "@/types/schema";
 import type { ItemLayout, PageSettings, Preset, ResumeLayout, SectionId, SectionSpacing } from "./types";
+import { DEFAULT_THEME, normalizeTheme } from "./theme";
 
 /** The ledger template's original order. */
 export const DEFAULT_SECTION_ORDER: SectionId[] = [
@@ -55,7 +56,7 @@ export const DEFAULT_PAGE: PageSettings = { preset: "normal", ...PAGE_PRESETS.no
 export const DEFAULT_SECTION_SPACING: SectionSpacing = { preset: "normal", ...SECTION_PRESETS.normal };
 
 export function defaultLayout(): ResumeLayout {
-    return { sectionOrder: [...DEFAULT_SECTION_ORDER], itemOrder: {}, page: { ...DEFAULT_PAGE }, sections: {}, items: {} };
+    return { sectionOrder: [...DEFAULT_SECTION_ORDER], itemOrder: {}, page: { ...DEFAULT_PAGE }, sections: {}, items: {}, theme: { ...DEFAULT_THEME } };
 }
 
 export const sectionSpacing = (layout: ResumeLayout, id: SectionId): SectionSpacing => layout.sections[id] ?? DEFAULT_SECTION_SPACING;
@@ -121,7 +122,7 @@ export function normalizeLayout(raw: unknown): ResumeLayout {
         }
     }
 
-    return { sectionOrder: order, itemOrder, page, sections, items };
+    return { sectionOrder: order, itemOrder, page, sections, items, theme: normalizeTheme(r.theme) };
 }
 
 /** Drops item ids that no longer exist and renames temp ids to their saved ids. */

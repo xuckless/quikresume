@@ -88,3 +88,6 @@ public/typst/wasm/
 .typst-out/
 # pdf.js worker copied from node_modules by scripts/copy-pdfjs-worker.mjs
 public/pdfjs/
+
+# calibration feature cache (scripts/calibration/fit.mjs)
+scripts/calibration/.features.json

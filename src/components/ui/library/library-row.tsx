@@ -171,9 +171,13 @@ export function LibraryRow({ id, title, subtitle, meta, isSelected, active, tags
                     />
                 )}
                 {tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                        {tags.map(t => <TagChip key={t.name} tag={t} />)}
-                    </div>
+                    // Tags drive Job Match; they stay out of the way unless asked for.
+                    <details className="group/skills text-xs">
+                        <summary className="cursor-pointer select-none text-fg-subtle hover:text-fg-muted">Skills detected ({tags.length})</summary>
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                            {tags.map(t => <TagChip key={t.name} tag={t} />)}
+                        </div>
+                    </details>
                 )}
                 {usedBy.length > 0 && <p className="text-xs text-fg-subtle">Used in {usedBy.join(", ")}</p>}
                 <div className="flex flex-wrap items-center gap-2 pt-1">

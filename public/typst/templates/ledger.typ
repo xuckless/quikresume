@@ -13,6 +13,8 @@
 // Exported entry point: `render(data)`.
 // Fonts: Inter (vendored in public/typst/fonts). Falls back to Helvetica/Arial.
 
+#import "/lib/theme.typ": resolve
+
 // ---------- Tokens ----------
 #let ink = rgb("#292b31")
 #let muted = rgb("#595d6c")
@@ -55,10 +57,10 @@
 
 // Section heading + body. Returns nothing when the body is empty.
 // `sp`: (above, below, gap, indent) in pt.
-#let section(title, body, sp: default-sp) = {
+#let section(title, body, sp: default-sp, accent-deep: accent-deep) = {
   if body == none { return }
   v(sp.above * 1pt)
-  block(breakable: false, below: 6pt, grid(
+  block(breakable: false, sticky: true, below: 6pt, grid(
     columns: (auto, 1fr), column-gutter: 8pt, align: horizon,
     text(size: 8.5pt, weight: 500, tracking: 0.14em, fill: accent-deep, upper(title)),
     fade-rule(),
@@ -99,7 +101,7 @@
 
 // ---------- Section macros (one per section) ----------
 
-#let header(h) = {
+#let header(h, accent: accent) = {
   let line1 = join-present((h.location, h.phone), " · ")
   let line2 = if opt(h.email) { mailto-or-text(h.email) } else { none }
   let links = ()
@@ -199,10 +201,14 @@
   let spacing = layout.at("sections", default: (:))
   let sp(key) = default-sp + spacing.at(key, default: (:))
 
-  set page(paper: "a4", margin: pg.margin * 1mm)
-  set text(font: ("Inter", "Helvetica", "Arial"), size: pg.size * 1pt, fill: ink)
+  let th = resolve(data, accent: accent-deep)
+  // A custom accent replaces both shades: the deep one for text, a lighter mix for the header rule.
+  let deep = th.accent
+  let light = if deep == accent-deep { accent } else { deep.lighten(35%) }
+  set page(paper: th.paper, margin: pg.margin * 1mm)
+  set text(font: th.body-font, size: pg.size * 1pt, fill: ink)
   set par(leading: pg.leading * 1em, justify: false)
-  show link: set text(fill: accent-deep)
+  show link: set text(fill: deep)
   set list(indent: 4pt, body-indent: 6pt, marker: text(fill: muted)[•])
 
   // key -> (heading, body renderer)
@@ -219,11 +225,14 @@
     languages: ("Languages", s => languages(data.at("languages", default: ()), s)),
   )
 
-  header(data.header)
+  {
+    set text(font: th.heading-font)
+    header(data.header, accent: light)
+  }
   for key in layout.at("order", default: default-order) {
     if key in sections {
       let (title, body) = sections.at(key)
-      section(title, body(sp(key)), sp: sp(key))
+      section(title, body(sp(key)), sp: sp(key), accent-deep: deep)
     }
   }
 }

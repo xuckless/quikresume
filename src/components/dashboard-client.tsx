@@ -1,8 +1,10 @@
 "use client";
 
-import React, { Suspense, useEffect, useRef, useState } from "react";
+import React, { Suspense, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
+import { updateLayout } from "@/app/actions/layout-actions";
+import type { ResumeTheme } from "@/lib/layout/theme";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { ResumeData, ResumeListKey } from "@/types/schema";
 import { RESUME_LIST_KEYS } from "@/types/schema";
 import type { ResumeVariant } from "@/types/db";
@@ -11,7 +13,7 @@ import type { AliasMap } from "@/lib/tags/normalize";
 import { ResumeForm } from "@/components/ui/editor/resume-form";
 import { LibraryView, libraryCounts, type LibraryLists } from "@/components/ui/library/library-view";
 import { ResumeImport } from "@/components/ui/resume-import";
-import { InsightsView } from "@/components/ui/insights-view";
+import { StaleTagsNotice } from "@/components/ui/library/stale-tags-notice";
 import { JobMatchView, type ExternalResume } from "@/components/ui/job-match-view";
 import { VariantToolbar } from "@/components/ui/variant-toolbar";
 import { SectionTabs, type SectionTab } from "@/components/ui/section-tabs";
@@ -21,7 +23,7 @@ import { ConfirmDialog, Dialog } from "@/components/ui/primitives/dialog";
 import { NoticeBanner } from "@/components/ui/primitives/notice-banner";
 import { PanelRight, PenLine, Search, Upload } from "@/components/ui/primitives/icons";
 import { Input } from "@/components/ui/primitives/field";
-import { parseView, useDashboardView, VIEW_TITLE, viewHref } from "@/lib/ui/use-dashboard-view";
+import { jobHref, parseView, useDashboardView, VIEW_TITLE, viewHref } from "@/lib/ui/use-dashboard-view";
 import { setLeaveGuard } from "@/lib/ui/leave-guard";
 import { useMediaQuery, XL } from "@/lib/ui/use-media-query";
 import { PANE_MIN, setPreviewPane, togglePreviewPane, usePreviewPane, usePreviewPaneWidth } from "@/lib/ui/preview-pane-store";
@@ -62,7 +64,7 @@ const ResumePreview = dynamic(
     {
         ssr: false,
         loading: () => (
-            <div className="mx-auto flex aspect-[210/297] w-full max-w-[210mm] items-center justify-center border border-border bg-white">
+            <div className="mx-auto flex aspect-[210/297] w-full max-w-[210mm] items-center justify-center border border-border bg-paper">
                 <span className="text-13 text-fg-subtle">Loading preview…</span>
             </div>
         ),
@@ -148,7 +150,10 @@ function DashboardClientInner({
     const [focusItem, setFocusItem] = useState<{ id: string; nonce: number } | null>(null);
 
     // Job Match state
-    const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+    // The open job lives in the URL (?view=jobs&job=<id>) so a job page can be linked to and Back returns to the board.
+    const searchParams = useSearchParams();
+    const selectedJobId = view === "jobs" ? searchParams.get("job") : null;
+    const setSelectedJobId = (id: string | null) => router.push(jobHref(id), { scroll: false });
     const [externalResume, setExternalResume] = useState<ExternalResume | null>(null);
 
     // Draft model: `draft` is null unless the editor is open. Everything else
@@ -163,6 +168,10 @@ function DashboardClientInner({
     const [pendingDeletes, setPendingDeletes] = useState<PendingDelete[]>([]);
     const editorDraft = draft ?? initialResumeData;
     const resumeData = view === "editor" ? editorDraft : initialResumeData;
+    const [optimisticLayout, setOptimisticLayout] = useOptimistic(initialResumeData.layout);
+    const [, startThemeTransition] = useTransition();
+    // The preview shows the optimistic layout (template picks land before the server round-trip).
+    const previewData = view === "editor" ? editorDraft : { ...initialResumeData, layout: optimisticLayout };
     const dirty = draft !== null && (pendingDeletes.length > 0 || JSON.stringify(draft) !== JSON.stringify(initialResumeData));
 
     // Sidebar links ask before leaving an editor with unsaved changes; reload / closing the tab gets the browser prompt.
@@ -217,6 +226,25 @@ function DashboardClientInner({
 
     const updateDraft = (updater: (prev: ResumeData) => ResumeData) => {
         setDraft(prev => updater(prev ?? initialResumeData));
+    };
+
+    // Template / accent / fonts / paper. In the editor it is part of the draft (saved with Save & Exit);
+    // everywhere else it is written straight to the working layout, shown optimistically meanwhile.
+    const changeTheme = (theme: ResumeTheme) => {
+        if (view === "editor") {
+            updateDraft(prev => ({ ...prev, layout: { ...prev.layout, theme } }));
+            return;
+        }
+        const next = { ...initialResumeData.layout, theme };
+        startThemeTransition(async () => {
+            setOptimisticLayout(next);
+            try {
+                await updateLayout(next);
+                router.refresh();
+            } catch {
+                setNotice({ tone: "warn", text: "Couldn't save the template. Try again." });
+            }
+        });
     };
 
     const openItem: OpenItem = (section, id) => {
@@ -431,16 +459,9 @@ function DashboardClientInner({
                 onDeletePersisted={(section, id) => setPendingDeletes(prev => [...prev, { section, id }])}
             />
         ) : view === "preview" ? (
-            <ResumePreview resumeData={resumeData} />
+            <ResumePreview resumeData={previewData} onThemeChange={changeTheme} />
         ) : view === "import" ? (
             <ResumeImport current={draft ?? initialResumeData} onImport={handleImport} onCancel={() => setView("library")} />
-        ) : view === "insights" ? (
-            <InsightsView
-                data={resumeData}
-                jobs={jobs}
-                aliases={tagAliases}
-                onOpenJob={id => { setSelectedJobId(id); setView("jobs"); }}
-            />
         ) : view === "jobs" ? (
             <JobMatchView
                 jobs={jobs}
@@ -448,7 +469,7 @@ function DashboardClientInner({
                 aliases={tagAliases}
                 variants={variants}
                 resumeData={resumeData}
-                selectedJobId={selectedJobId ?? jobs[0]?.id ?? null}
+                selectedJobId={selectedJobId}
                 onSelectJob={setSelectedJobId}
                 onApplyProposal={handleApplyProposal}
                 onImportExternal={(r) => {
@@ -502,6 +523,7 @@ function DashboardClientInner({
                         {notice && (view === "editor" || view === "library") && (
                             <NoticeBanner tone={notice.tone === "ok" ? "success" : "warning"} onDismiss={() => setNotice(null)}>{notice.text}</NoticeBanner>
                         )}
+                        {view === "library" && <StaleTagsNotice data={initialResumeData} />}
                         {view === "library" && about.status !== "complete" && !aboutNudgeDismissed && (
                             <NoticeBanner tone="warning" onDismiss={dismissAboutNudge}>
                                 Tell us about your goals so AI reviews and tailoring fit where you are in your career.{" "}
@@ -515,7 +537,7 @@ function DashboardClientInner({
                 {paneOpen && (
                     <aside className="hidden xl:block sticky top-14 h-[calc(100dvh-3.5rem)] border-l border-border bg-surface-muted/60" aria-label="Résumé preview">
                         <PaneResizeHandle containerRef={gridRef} width={paneWidth} onDrag={setDragWidth} />
-                        <ResumePreview resumeData={resumeData} compact onClose={() => setPreviewPane(false)} />
+                        <ResumePreview resumeData={previewData} compact onClose={() => setPreviewPane(false)} onThemeChange={changeTheme} />
                     </aside>
                 )}
             </div>

@@ -1,10 +1,14 @@
 @import "tailwindcss";
 
 /*
- * Design tokens. Light-only for now; a dark theme is one override block on
- * `:root[data-theme="dark"]` that redefines the variables below.
+ * Design tokens (brand v0.1: precise & calm, monochrome + one green). Light on :root, dark on
+ * :root[data-theme="dark"]. The theme attribute is set before first paint by the script in
+ * src/app/layout.tsx (saved choice, else the OS preference), so there is one copy of each value.
+ * Contrast ratios in the comments are WCAG; every text pair passes AA.
  */
 :root {
+  color-scheme: light;
+
   --bg: #fafafa;
   --surface: #ffffff;
   --surface-muted: #f5f5f5;
@@ -13,15 +17,18 @@
   --border: #e5e5e5;
   --border-strong: #d4d4d4;
 
-  --fg: #171717;
-  --fg-muted: #525252;
-  --fg-subtle: #a3a3a3;
+  --fg: #171717;            /* 17.18 on --bg */
+  --fg-muted: #525252;      /* 7.17 on --surface-muted */
+  --fg-subtle: #6e6e6e;     /* 4.68 on --surface-muted */
 
-  --accent: #171717;
-  --accent-hover: #404040;
-  --accent-fg: #ffffff;
+  --accent: #003200;        /* brand: primary fills, logo */
+  --accent-hover: #0b4a14;  /* white on it: 10.48 */
+  --accent-fg: #ffffff;     /* on --accent: 14.42 */
+  --accent-text: #1a6e38;   /* links, active nav, score ring, bars: 6.30 on white */
+  --accent-subtle: #edf5ef; /* selected / hover tint */
+  --accent-subtle-border: #cfe5d5;
 
-  --danger: #dc2626;
+  --danger: #b91c1c;
   --danger-bg: #fef2f2;
   --danger-border: #fecaca;
 
@@ -29,11 +36,21 @@
   --warning-bg: #fffbeb;
   --warning-border: #fde68a;
 
-  --success: #15803d;
-  --success-bg: #f0fdf4;
-  --success-border: #bbf7d0;
+  --success: #0e6f80;       /* petrol, kept apart from the brand green; pair with a check icon */
+  --success-bg: #ecfeff;
+  --success-border: #a5f3fc;
 
-  --ring: #171717;
+  --ring: #1a6e38;
+
+  --paper: #ffffff;         /* résumé preview page, never themed */
+  --paper-fg: #171717;
+
+  --chart-track: #ececec;
+  --chart-1: #1a6e38;
+  --chart-2: #525252;
+  --chart-3: #a3a3a3;
+
+  --overlay: rgb(0 0 0 / 0.35);
 
   /* Rainbow hairline marking AI-produced surfaces (see .ai-glow). */
   --ai-glow-1: #4285f4;
@@ -41,6 +58,59 @@
   --ai-glow-3: #d96570;
   --ai-glow-4: #f2a60c;
   --ai-glow-5: #34a853;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0a0a0a;
+  --surface: #121212;
+  --surface-muted: #1a1a1a;
+  --surface-hover: #222222;
+
+  --border: #2a2a2a;
+  --border-strong: #3a3a3a;
+
+  --fg: #ededed;
+  --fg-muted: #a1a1a1;
+  --fg-subtle: #8a8a8a;
+
+  --accent: #5fd38a;
+  --accent-hover: #7ee2a3;
+  --accent-fg: #003200;
+  --accent-text: #5fd38a;
+  --accent-subtle: #0f2416;
+  --accent-subtle-border: #1d4a2b;
+
+  --danger: #f87171;
+  --danger-bg: #2a1212;
+  --danger-border: #5c1f1f;
+
+  --warning: #fbbf24;
+  --warning-bg: #261d0a;
+  --warning-border: #5c4512;
+
+  --success: #67e8f9;
+  --success-bg: #0a2329;
+  --success-border: #155e6b;
+
+  --ring: #5fd38a;
+
+  --paper: #ffffff;
+  --paper-fg: #171717;
+
+  --chart-track: #262626;
+  --chart-1: #5fd38a;
+  --chart-2: #a1a1a1;
+  --chart-3: #525252;
+
+  --overlay: rgb(0 0 0 / 0.6);
+
+  --ai-glow-1: #6ea2ff;
+  --ai-glow-2: #b18ce0;
+  --ai-glow-3: #ec7f8a;
+  --ai-glow-4: #f6bb3c;
+  --ai-glow-5: #56c271;
 }
 
 @theme inline {
@@ -74,15 +144,29 @@
 
   --color-ring: var(--ring);
 
-  --font-sans: var(--font-montserrat), system-ui, sans-serif;
+  --color-accent-text: var(--accent-text);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-accent-subtle-border: var(--accent-subtle-border);
+  --color-paper: var(--paper);
+  --color-paper-fg: var(--paper-fg);
+  --color-chart-track: var(--chart-track);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
 
+  --text-12: 12px;
+  --text-12--line-height: 16px;
   --text-13: 13px;
-  --text-13--line-height: 1.4;
+  --text-13--line-height: 18px;
+  --text-15: 15px;
+  --text-15--line-height: 22px;
 }
 
 body {
@@ -156,5 +240,5 @@ body {
 
 /* Native <dialog> backdrop. */
 dialog::backdrop {
-  background: rgb(0 0 0 / 0.35);
+  background: var(--overlay);
 }

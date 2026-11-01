@@ -6,29 +6,37 @@ import type { ResumeData } from "@/types/schema";
 import { pdfFileName, toTypstDoc, type TypstResumeDoc } from "@/lib/typst/doc";
 import { compilePdf, compileSvg, ensureTypst, formatTypstError, isEngineError } from "@/lib/typst/client";
 import { DEFAULT_TEMPLATE, type TemplateId } from "@/lib/typst/templates";
+import { svgLayout } from "@/lib/typst/pages";
 import { cn } from "@/lib/cn";
 import { Button, IconButton } from "@/components/ui/primitives/button";
 import { Badge } from "@/components/ui/primitives/badge";
-import { Download, RefreshCw, X } from "@/components/ui/primitives/icons";
+import { Download, Palette, RefreshCw, X } from "@/components/ui/primitives/icons";
+import { TemplateGalleryDialog, TemplateSelect } from "@/components/ui/template-gallery";
+import type { ResumeTheme } from "@/lib/layout/theme";
 
 interface ResumePreviewProps {
     resumeData: ResumeData;
+    /** Overrides the template on the résumé's layout (gallery / comparisons). */
     template?: TemplateId;
     /** Pane mode: tighter toolbar with a close button. */
     compact?: boolean;
     onClose?: () => void;
     /** Hide the download button (the tailor window downloads through its own flow). */
     hideDownload?: boolean;
+    /** Shows the template picker; called with the new theme (the caller persists it). */
+    onThemeChange?: (theme: ResumeTheme) => void;
 }
 
 type Status = "loading-engine" | "compiling" | "ready" | "error" | "engine-failed";
 
 const DEBOUNCE_MS = 300;
 
-export function ResumePreview({ resumeData, template = DEFAULT_TEMPLATE, compact = false, onClose, hideDownload = false }: ResumePreviewProps) {
+export function ResumePreview({ resumeData, template: templateOverride, compact = false, onClose, hideDownload = false, onThemeChange }: ResumePreviewProps) {
+    const [galleryOpen, setGalleryOpen] = useState(false);
     // Key the effect on the serialized document so object identity churn never
     // triggers a recompile; only real content changes do.
     const docJson = JSON.stringify(toTypstDoc(resumeData));
+    const template: TemplateId = templateOverride ?? resumeData.layout?.theme?.templateId ?? DEFAULT_TEMPLATE;
 
     const [svg, setSvg] = useState<string | null>(null);
     const [pageCount, setPageCount] = useState(0);
@@ -104,6 +112,14 @@ export function ResumePreview({ resumeData, template = DEFAULT_TEMPLATE, compact
                 <span className={cn("text-xs", failed ? "text-danger" : "text-fg-subtle", status !== "ready" && !failed && "animate-pulse")}>{statusLabel[status]}</span>
                 {pageCount > 0 && <Badge tone={pageCount > 1 ? "warning" : "neutral"}>{pageCount} {pageCount === 1 ? "page" : "pages"}</Badge>}
                 <div className="ml-auto flex items-center gap-1">
+                    {onThemeChange && (
+                        <>
+                            <TemplateSelect theme={resumeData.layout.theme} onChange={onThemeChange} className={compact ? "w-28" : "w-36"} />
+                            <Button size="sm" variant="ghost" icon={Palette} onClick={() => setGalleryOpen(true)} aria-label="Templates and style">
+                                {compact ? null : "Style"}
+                            </Button>
+                        </>
+                    )}
                     {status === "engine-failed" && (
                         <Button size="sm" variant="secondary" icon={RefreshCw} onClick={() => setAttempt(a => a + 1)}>Retry</Button>
                     )}
@@ -116,6 +132,9 @@ export function ResumePreview({ resumeData, template = DEFAULT_TEMPLATE, compact
                 </div>
             </div>
 
+            {onThemeChange && (
+                <TemplateGalleryDialog open={galleryOpen} onClose={() => setGalleryOpen(false)} resumeData={resumeData} theme={resumeData.layout.theme} onChange={onThemeChange} />
+            )}
             <div className={cn(compact && "min-h-0 flex-1 overflow-y-auto p-4")}>
                 {downloadError && <ErrorPanel title="PDF export failed" message={downloadError} />}
                 {status === "engine-failed" && error && (
@@ -134,20 +153,45 @@ export function ResumePreview({ resumeData, template = DEFAULT_TEMPLATE, compact
                 )}
                 <div className={cn("mx-auto w-full overflow-hidden", compact ? "" : "max-w-[210mm]")}>
                     {svg ? (
-                        <div
-                            className={cn(
-                                "border border-border bg-white shadow-sm transition-opacity [&>svg]:block [&>svg]:h-auto [&>svg]:w-full",
-                                status === "compiling" || status === "error" ? "opacity-60" : "opacity-100",
-                            )}
-                            dangerouslySetInnerHTML={{ __html: svg }}
-                        />
+                        <PageSheets svg={svg} pageCount={pageCount} dimmed={status === "compiling" || status === "error"} />
                     ) : (
-                        <div className="flex aspect-[210/297] w-full items-center justify-center border border-border bg-white">
+                        <div className="flex aspect-[210/297] w-full items-center justify-center border border-border bg-paper">
                             <span className="text-13 text-fg-subtle">{failed ? "Nothing rendered yet" : statusLabel[status]}</span>
                         </div>
                     )}
                 </div>
             </div>
+        </div>
+    );
+}
+
+/**
+ * One white sheet per page with a gap between them. Each sheet is a window onto the same SVG: the
+ * box has the page's aspect ratio and the SVG inside is shifted up by the page's offset. Falls back
+ * to the single tall SVG when the page boxes can't be read.
+ */
+function PageSheets({ svg, pageCount, dimmed }: { svg: string; pageCount: number; dimmed: boolean }) {
+    const layout = svgLayout(svg, pageCount);
+    const sheet = "border border-border bg-paper shadow-sm [&_svg]:block [&_svg]:h-auto [&_svg]:w-full";
+    if (!layout || layout.pages.length <= 1) {
+        return <div className={cn(sheet, "transition-opacity", dimmed ? "opacity-60" : "opacity-100")} dangerouslySetInnerHTML={{ __html: svg }} />;
+    }
+    return (
+        <div className={cn("space-y-4 transition-opacity", dimmed ? "opacity-60" : "opacity-100")}>
+            {layout.pages.map((p, i) => (
+                <div key={i} className="relative">
+                    <div className={cn(sheet, "relative overflow-hidden")} style={{ aspectRatio: `${p.width} / ${p.height}` }}>
+                        <div
+                            aria-hidden={i > 0 || undefined}
+                            className="absolute inset-x-0 top-0"
+                            // Shift by the page's top as a share of the whole document height (translateY % is of the element itself).
+                            style={{ transform: `translateY(-${(p.y / layout.height) * 100}%)` }}
+                            dangerouslySetInnerHTML={{ __html: svg }}
+                        />
+                    </div>
+                    <span className="absolute -bottom-3.5 right-0 font-mono text-[11px] tabular-nums text-fg-subtle">{i + 1} / {layout.pages.length}</span>
+                </div>
+            ))}
         </div>
     );
 }

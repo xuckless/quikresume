@@ -10,7 +10,7 @@
 //   /typst/templates/*.typ    styling templates exporting render(data)
 
 import type { TypstResumeDoc } from "@/lib/typst/doc";
-import { DEFAULT_TEMPLATE, TEMPLATES, type TemplateId } from "@/lib/typst/templates";
+import { DEFAULT_TEMPLATE, TEMPLATES, TYPST_LIBS, type TemplateId } from "@/lib/typst/templates";
 
 type Snippet = typeof import("@myriaddreamin/typst.ts/contrib/snippet");
 type TypstInstance = Snippet["$typst"];
@@ -20,12 +20,12 @@ export type TypstStage = "idle" | "loading" | "ready" | "failed";
 const WASM_COMPILER = "/typst/wasm/typst_ts_web_compiler_bg.wasm";
 const WASM_RENDERER = "/typst/wasm/typst_ts_renderer_bg.wasm";
 const MAIN_FILE = "/main.typ";
+// Every family a template or font pair (lib/layout/theme.ts FONT_PAIRS) can ask for. All OFL.
 const FONT_URLS = [
-    "/typst/fonts/Inter-Regular.ttf",
-    "/typst/fonts/Inter-Italic.ttf",
-    "/typst/fonts/Inter-Medium.ttf",
-    "/typst/fonts/Inter-SemiBold.ttf",
-    "/typst/fonts/Inter-Bold.ttf",
+    ...["Regular", "Italic", "Medium", "SemiBold", "Bold"].map(w => `/typst/fonts/Inter-${w}.ttf`),
+    ...["Regular", "Italic", "Medium", "SemiBold", "Bold"].map(w => `/typst/fonts/IBMPlexSans-${w}.ttf`),
+    ...["Regular", "Italic", "SemiBold", "Bold"].map(w => `/typst/fonts/IBMPlexSerif-${w}.ttf`),
+    ...["Regular", "Italic", "Semibold", "Bold"].map(w => `/typst/fonts/LibertinusSerif-${w}.otf`),
 ];
 
 let stage: TypstStage = "idle";
@@ -83,12 +83,14 @@ async function init(): Promise<TypstInstance> {
     typst.use(TypstSnippet.disableDefaultFontAssets(), TypstSnippet.preloadFonts(FONT_URLS));
 
     const templateIds = Object.keys(TEMPLATES) as TemplateId[];
-    const [main, ...templateSources] = await Promise.all([
+    const [main, libSources, ...templateSources] = await Promise.all([
         fetchText("/typst/main.typ"),
+        Promise.all(TYPST_LIBS.map(path => fetchText(`/typst${path}`))),
         ...templateIds.map(id => fetchText(TEMPLATES[id].file)),
     ]);
 
     await typst.addSource(MAIN_FILE, main);
+    await Promise.all(TYPST_LIBS.map((path, i) => typst.addSource(path, libSources[i])));
     await Promise.all(templateIds.map((id, i) => typst.addSource(`/templates/${id}.typ`, templateSources[i])));
 
     return typst;
@@ -140,7 +142,8 @@ export interface SvgResult {
     pageCount: number;
 }
 
-export function compileSvg(doc: TypstResumeDoc, template: TemplateId = DEFAULT_TEMPLATE): Promise<SvgResult> {
+/** `template` overrides the document's own (`doc.layout.theme.template`), e.g. for gallery thumbnails. */
+export function compileSvg(doc: TypstResumeDoc, template: TemplateId = doc.layout.theme?.template ?? DEFAULT_TEMPLATE): Promise<SvgResult> {
     return enqueue(async () => {
         const $typst = await ensureTypst();
         const svg = await $typst.svg({ mainFilePath: MAIN_FILE, inputs: compileInputs(doc, template) });
@@ -149,7 +152,7 @@ export function compileSvg(doc: TypstResumeDoc, template: TemplateId = DEFAULT_T
     });
 }
 
-export function compilePdf(doc: TypstResumeDoc, template: TemplateId = DEFAULT_TEMPLATE): Promise<Uint8Array> {
+export function compilePdf(doc: TypstResumeDoc, template: TemplateId = doc.layout.theme?.template ?? DEFAULT_TEMPLATE): Promise<Uint8Array> {
     return enqueue(async () => {
         const $typst = await ensureTypst();
         const pdf = await $typst.pdf({ mainFilePath: MAIN_FILE, inputs: compileInputs(doc, template) });

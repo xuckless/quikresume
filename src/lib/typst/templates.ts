@@ -6,8 +6,14 @@
 //   3. add an entry here
 
 export const TEMPLATES = {
-    ledger: { label: "Ledger", file: "/typst/templates/ledger.typ" },
+    ledger: { label: "Ledger", file: "/typst/templates/ledger.typ", blurb: "Airy sans-serif with a soft accent rule. Balanced default." },
+    classic: { label: "Classic", file: "/typst/templates/classic.typ", blurb: "Traditional serif, centred header. Law, finance, academia, executive." },
+    modern: { label: "Modern", file: "/typst/templates/modern.typ", blurb: "Clean sans-serif with a date column and accent headings." },
+    compact: { label: "Compact", file: "/typst/templates/compact.typ", blurb: "Dense and tight. Fits more on one page." },
 } as const;
+
+/** Shared Typst modules every template imports (registered with the browser compiler at their root path). */
+export const TYPST_LIBS = ["/lib/theme.typ"] as const;
 
 export type TemplateId = keyof typeof TEMPLATES;
 
