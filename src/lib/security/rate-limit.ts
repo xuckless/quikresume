@@ -50,6 +50,8 @@ export const RATE = {
     extPair: { name: "ext-pair", limit: 10, windowMs: HOUR },
     /** Extension reads (lookups, match summaries, status changes). */
     extRead: { name: "ext-read", limit: 600, windowMs: HOUR },
+    /** Auto Fill AI answers (one call per form page). */
+    autofill: { name: "autofill", limit: 40, windowMs: HOUR },
     /** Save & Exit (runs the tagger). */
     save: { name: "save", limit: 60, windowMs: HOUR },
     /** Dev-only effort comparison. */

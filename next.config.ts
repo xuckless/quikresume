@@ -47,6 +47,14 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
     reactCompiler: true,
     poweredByHeader: false,
+    // Native Typst compiler for server-side PDFs (lib/typst/server-pdf.ts): never bundled, and the
+    // templates + fonts it reads from public/typst are traced into the function that uses it.
+    serverExternalPackages: ["@myriaddreamin/typst-ts-node-compiler"],
+    outputFileTracingIncludes: {
+        "/api/ext/resume/pdf": [
+            "./public/typst/main.typ", "./public/typst/sample.json", "./public/typst/templates/**", "./public/typst/lib/**", "./public/typst/fonts/**",
+        ],
+    },
     images: {
         remotePatterns: [
             {

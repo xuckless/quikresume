@@ -36,10 +36,22 @@ export interface JobSummary {
     whatIf: { display: string; importance: "must" | "nice"; gain: number }[];
 }
 
+export interface AutofillReport {
+    running: boolean;
+    filled: number;
+    drafted: number;
+    attached: string | null;
+    /** Labels of fields left for the user (no data, custom widget, etc.). */
+    unmapped: string[];
+    error: string | null;
+}
+
 /** Per-tab state the background keeps and the side panel renders. */
 export interface TabState {
     posting: Posting | null;
+    /** The saved job for this tab's posting; kept when the tab moves on to the application form. */
     summary: JobSummary | null;
+    autofill: AutofillReport | null;
     /** True while the posting is being saved / analysed. */
     saving: boolean;
     error: string | null;
@@ -56,7 +68,11 @@ export type BgRequest =
     | { type: "save"; tabId: number }
     | { type: "refresh"; tabId: number }
     | { type: "set-status"; tabId: number; status: JobStatus }
-    | { type: "connect-page" };
+    | { type: "connect-page" }
+    | { type: "autofill"; tabId: number }
+    | { type: "autofill-data"; needPdf: boolean }
+    | { type: "autofill-answers"; questions: { id: string; label: string; options?: string[]; maxLength?: number }[] }
+    | { type: "autofill-report"; filled: number; drafted: number; attached: string | null; unmapped: string[]; host: string };
 
 export interface AccountStatus {
     paired: boolean;

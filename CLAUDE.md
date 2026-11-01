@@ -475,6 +475,23 @@ npm run dev`, `npm run build` -> `.output/chrome-mv3`, `npm test` for the jsdom 
   "Scan this page" via activeTab), `background.ts` (token, per-tab state in `chrome.storage.session`, badge: `•` detected / score
   saved), side panel (`entrypoints/sidepanel`: connect, save & match, score ± band, must-haves, what would raise it, status).
   The footer always reads "AI can make mistakes please review the work before applying."
+- **Auto Fill** (side panel button -> background injects `fill.content.ts` into every frame, runtime registration): `lib/fields.ts`
+  scans controls (radio groups merged; labels from `aria-labelledby`, `<label for>`, wrapping label, `aria-label`, a wrapper holding
+  only that control, placeholder), `classify`s them by regex rules over label + name / id / autocomplete (long question-like labels on
+  fact fields become `"question"`), fills empty ones only (native value setter + input / change / blur so React inputs register;
+  `matchOption` for selects / radios incl. yes/no and "decline" synonyms), attaches the résumé PDF through `DataTransfer`, sends open
+  questions to `POST /api/ext/autofill/answers`, outlines filled fields (solid) and AI drafts (dashed), and reports counts + fields left
+  for the user (also stored as `unmapped` on Autofill preferences). Never submits; checkboxes (consent) are never ticked.
+- **Autofill preferences** (`/dashboard/autofill`, `meta/autofill`, `lib/autofill/types.ts` `readAutofillPrefs` clamps everything):
+  address, salary (min / target / currency / period), notice period, earliest start, work authorised / sponsorship / relocation
+  (prefilled from About you when empty), EEO answers (default "Decline to answer"), "how did you hear", saved answers (used word for
+  word when a question matches, `savedAnswerFor`), agent instructions (the user's own rules for AI answers), unmapped fields.
+- **Server routes**: `GET /api/ext/autofill/profile?jobId=` (contact details, latest role / school by date, years, prefs, résumé
+  source), `POST /api/ext/autofill/answers` (`AUTOFILL_SYSTEM_PROMPT`, low effort: résumé text + brief + instructions + saved answers
+  + posting; facts only from the input, options verbatim or "", never answers protected-characteristic questions, `RATE.autofill`),
+  `POST /api/ext/autofill/unmapped`, `GET /api/ext/resume/pdf?jobId=` (`lib/typst/server-pdf.ts`: native
+  `@myriaddreamin/typst-ts-node-compiler` 0.7.0, same templates + fonts; `serverExternalPackages` + `outputFileTracingIncludes` in
+  `next.config.ts`).
 
 ## About you (characterization)
 
@@ -646,6 +663,7 @@ Subcollections, each item doc has `isSelected`, `tags`, `contentHash`, `tagsHash
 | `meta/characterization` | `status: draft \| skipped \| complete, answers, followUps[], followUpsHash, answersHash, brief, briefHash, briefAt, briefStale, facts` |
 | `meta/review` | `runningUntil, lastRunAt` (review lock) |
 | `meta/layout` | `sectionOrder, itemOrder, page, sections, items` (see Layout and order) |
+| `meta/autofill` | Autofill preferences (see Browser extension): `address, salary, noticePeriod, earliestStart, workAuthorized, needsSponsorship, willingToRelocate, eeo, howDidYouHear, answers[], agentInstructions, unmapped[]` |
 | `meta/preferences` | `mutedProposals: {kind, tag?, itemId?}[], caps: Record<ResumeListKey, number \| null>, declinedSoftSkills: {name, display, at}[]` (hard + soft) |
 
 Top-level (not per user): `rate_limits/{policy}__{uid}` (`count, windowStart, expiresAt`) and `ai_usage/{uid}_{YYYY-MM-DD}`

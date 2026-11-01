@@ -2,10 +2,11 @@
 // Keeps per-tab state (detected posting, saved job summary) in chrome.storage.session so it survives
 // the worker being suspended, drives the toolbar badge, and answers the side panel / content scripts.
 
-import { api, ApiError, appUrl, clearToken, getToken, setToken } from "../lib/api";
+import { api, apiBytes, ApiError, appUrl, clearToken, getToken, setToken } from "../lib/api";
+import type { AutofillData } from "../lib/fields";
 import type { AccountStatus, BgRequest, JobSummary, Posting, TabState } from "../lib/types";
 
-const EMPTY: TabState = { posting: null, summary: null, saving: false, error: null };
+const EMPTY: TabState = { posting: null, summary: null, autofill: null, saving: false, error: null };
 const key = (tabId: number) => `tab:${tabId}`;
 
 async function getState(tabId: number): Promise<TabState> {
@@ -52,6 +53,20 @@ function deviceName(): string {
 
 let cachedUser: AccountStatus["user"] = null;
 
+/** Profile + preferences (+ PDF) for one Auto Fill run, shared by every frame of the tab. */
+const runs = new Map<number, { at: number; data?: Promise<AutofillData>; pdf?: Promise<{ base64: string; fileName: string } | null> }>();
+
+function toBase64(buf: ArrayBuffer): string {
+    const bytes = new Uint8Array(buf);
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+}
+
+async function jobIdOf(tabId: number): Promise<string | null> {
+    return (await getState(tabId)).summary?.job.id ?? null;
+}
+
 async function status(): Promise<AccountStatus> {
     const token = await getToken();
     if (!token) return { paired: false, user: null, appUrl: appUrl() };
@@ -72,7 +87,9 @@ async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Pro
             if (tabId === undefined) return null;
             const cur = await getState(tabId);
             const same = cur.posting?.url === msg.posting?.url;
-            const next = await setState(tabId, { posting: msg.posting, summary: same ? cur.summary : null, error: null, saving: same ? cur.saving : false });
+            // Leaving the posting for its application form keeps the job (Auto Fill uses it); a new posting replaces it.
+            const keep = same || msg.posting === null;
+            const next = await setState(tabId, { posting: msg.posting, summary: keep ? cur.summary : null, error: null, saving: same ? cur.saving : false });
             if (msg.posting && !same) void lookup(tabId, msg.posting);
             return next;
         }
@@ -148,6 +165,64 @@ async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Pro
             } catch (err) {
                 await setState(msg.tabId, { error: errorText(err) });
             }
+            return null;
+        }
+        case "autofill": {
+            const tabId = msg.tabId;
+            runs.set(tabId, { at: Date.now() });
+            await setState(tabId, { autofill: { running: true, filled: 0, drafted: 0, attached: null, unmapped: [], error: null } });
+            try {
+                await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ["/content-scripts/fill.js"] });
+            } catch {
+                await setState(tabId, { autofill: { running: false, filled: 0, drafted: 0, attached: null, unmapped: [], error: "This page can't be filled (browser pages and the Web Store are off limits)." } });
+                return null;
+            }
+            // Frames without a form never report; stop the spinner after a while.
+            setTimeout(async () => {
+                const s = await getState(tabId);
+                if (s.autofill?.running) await setState(tabId, { autofill: { ...s.autofill, running: false, error: s.autofill.filled || s.autofill.drafted ? null : "No application form found on this page." } });
+            }, 45_000);
+            return null;
+        }
+        case "autofill-data": {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) return { ok: false };
+            const run = runs.get(tabId) ?? { at: Date.now() };
+            runs.set(tabId, run);
+            const jobId = await jobIdOf(tabId);
+            const q = jobId ? `?jobId=${encodeURIComponent(jobId)}` : "";
+            run.data ??= api<AutofillData>(`/api/ext/autofill/profile${q}`).then(r => ({ profile: r.profile, prefs: r.prefs }));
+            if (msg.needPdf) run.pdf ??= apiBytes(`/api/ext/resume/pdf${q}`).then(r => ({ base64: toBase64(r.bytes), fileName: r.fileName })).catch(() => null);
+            try {
+                return { ok: true, data: await run.data, pdf: msg.needPdf ? await run.pdf : null };
+            } catch (err) {
+                const s = await getState(tabId);
+                await setState(tabId, { autofill: { ...(s.autofill ?? { filled: 0, drafted: 0, attached: null, unmapped: [] }), running: false, error: errorText(err) } });
+                return { ok: false, error: errorText(err) };
+            }
+        }
+        case "autofill-answers": {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) return { ok: false };
+            try {
+                return await api("/api/ext/autofill/answers", { method: "POST", body: { jobId: await jobIdOf(tabId), questions: msg.questions } });
+            } catch (err) {
+                return { ok: false, error: errorText(err) };
+            }
+        }
+        case "autofill-report": {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) return null;
+            const s = await getState(tabId);
+            const prev = s.autofill ?? { running: false, filled: 0, drafted: 0, attached: null, unmapped: [], error: null };
+            await setState(tabId, {
+                autofill: {
+                    running: false, error: null,
+                    filled: prev.filled + msg.filled, drafted: prev.drafted + msg.drafted, attached: msg.attached ?? prev.attached,
+                    unmapped: [...new Set([...prev.unmapped, ...msg.unmapped])].slice(0, 30),
+                },
+            });
+            if (msg.unmapped.length) void api("/api/ext/autofill/unmapped", { method: "POST", body: { host: msg.host, labels: msg.unmapped } }).catch(() => undefined);
             return null;
         }
         case "connect-page":

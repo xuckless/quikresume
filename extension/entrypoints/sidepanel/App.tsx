@@ -190,7 +190,7 @@ export function App() {
                             </div>
                         )}
                         {state?.summary && <Summary s={state.summary} tabId={tabId} appUrl={appUrl} />}
-                        <AutofillCard tabId={tabId} summary={state?.summary ?? null} />
+                        <AutofillCard tabId={tabId} summary={state?.summary ?? null} state={state} appUrl={appUrl} />
                         <div className="card switch">
                             <span className="muted">Floating button on job pages</span>
                             <input type="checkbox" checked={fabEnabled} aria-label="Floating button on job pages" onChange={e => { setFabEnabled(e.target.checked); void chrome.storage.local.set({ fabEnabled: e.target.checked }); }} />

@@ -44,3 +44,16 @@ export async function api<T = unknown>(
     }
     return json;
 }
+
+/** Binary GET (the résumé PDF). */
+export async function apiBytes(path: string): Promise<{ bytes: ArrayBuffer; fileName: string }> {
+    const token = await getToken();
+    if (!token) throw new ApiError("Connect the extension to your quikResume account first.", 401);
+    const res = await fetch(`${appUrl()}${path}`, { headers: { Authorization: `Bearer ${token}` }, credentials: "omit" });
+    if (!res.ok) {
+        const json = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new ApiError(json?.error ?? `Request failed (${res.status}).`, res.status);
+    }
+    const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "resume.pdf";
+    return { bytes: await res.arrayBuffer(), fileName: name };
+}
