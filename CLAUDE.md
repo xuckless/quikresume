@@ -49,7 +49,8 @@ Required env (`.env.local`): `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRE
 `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (escaped `\n` newlines are unescaped in code),
 `GLM_API_KEY` (import, tags, Job Match, reviews, About you). Optional: `GITHUB_TOKEN` (raises the GitHub API limit for link checks), `GLM_BASE_URL` (default `https://api.z.ai/api/paas/v4`),
 `GLM_MODEL` (vision, default `glm-4.6v`), `GLM_TEXT_MODEL` (tags / JD analysis / proposals, default `glm-5.3-flash`),
-`GLM_EFFORT_RECONCILE` / `GLM_EFFORT_REVIEW` / `GLM_EFFORT_TAILOR` (`low | high | max`, see Reasoning effort),
+`EXTENSION_IDS` (comma-separated Chrome extension ids allowed by CORS on `/api/ext/*`), `NEXT_PUBLIC_EXTENSION_URL` (Web Store link
+on `/dashboard/extension`), `GLM_EFFORT_RECONCILE` / `GLM_EFFORT_REVIEW` / `GLM_EFFORT_TAILOR` (`low | high | max`, see Reasoning effort),
 `AI_DAILY_TOKEN_BUDGET` / `AI_DAILY_CALL_BUDGET` (per-user daily AI budget, see Security). `VOYAGE_API_KEY` (semantic matching;
 without it Job Match runs on tags only), optional `VOYAGE_EMBED_MODEL` (default `voyage-4-lite`), `VOYAGE_RERANK_MODEL`
 (`rerank-3-lite`), `VOYAGE_MAX_RERANK_CALLS` (30 per job).
@@ -445,6 +446,35 @@ questions (uncovered hard + soft reqs) -> window on the working selection -> (ba
   skipped when unchanged), so reopening starts where you left off. Save variant -> `createVariantFromPlan` (writes and
   loads the variant). Save variant & download PDF compiles the PDF first, then saves and downloads. Both saves need one
   page or the multi-page tick; Close never does. A Preview toggle swaps the list for the Typst preview.
+
+## Browser extension
+
+`extension/` is its own WXT + React + TS project (Chrome MV3; `cd extension && npm install`, `WXT_APP_URL=http://localhost:3000
+npm run dev`, `npm run build` -> `.output/chrome-mv3`, `npm test` for the jsdom extraction tests). The root tsconfig / eslint ignore it.
+
+- **Pairing** (`lib/ext/tokens.ts`): `/dashboard/extension` (`ExtensionPanel`) calls `createExtensionCode` (8 chars, no 0/O/1/I/L,
+  10 min, single use, stored as sha256 in top-level `extension_codes/{hash}` with `expiresAt`). Click-to-connect: the page posts
+  `{source: "quikresume-app", type: "pair", code}` (`lib/ext/bridge.ts`); the extension's `site.content.ts` (only on the app origin)
+  forwards it to the background, which redeems it at `POST /api/ext/pair` and stores the token. Fallback: the code is shown and
+  typed into the side panel. Tokens `qr_<43 base64url>` are stored only as sha256 in `extension_tokens/{hash}`
+  (`uid, deviceName, prefix, createdAt, lastUsedAt`), ≤ 10 per user, revoked from the page or by the extension's Disconnect;
+  verified tokens are cached 30 s per instance. Enable a TTL policy on `extension_codes.expiresAt` like `rate_limits`.
+- **API** (`src/app/api/ext/*`, every handler starts with `guardExtension` from `lib/security/ext-guard.ts`: Bearer token,
+  per-user rate limit, AI budget for AI routes, no same-origin check (no cookies), CORS only for `chrome-extension://<EXTENSION_IDS>`
+  (any extension origin outside production when unset), web-page origins rejected): `pair`, `me`, `signout`, `jobs` (GET `?url=`
+  lookup, POST import), `jobs/[id]` (GET summary, PATCH `{status, variantId}`). Import canonicalises the URL; a known `urlKey`
+  refreshes url / location / employment type only; a new posting goes through `analyzeAndSaveJob` (`lib/match/analyze-job.ts`,
+  shared with `/api/jobs/analyze`) with `source.kind: "extension"` and a background reconcile against the whole library.
+- **Summary** (`lib/ext/match-summary.ts`): scored server-side with the same `scoreJob` on the job's `variantId` variant, else the
+  working selection. Library getters authenticate through `currentUid()`; `asUser(uid, fn)` (`lib/db/session.ts`,
+  AsyncLocalStorage, server-only) lets token-authenticated code reuse them.
+- **Extension side**: `lib/extract.ts` (site adapters -> JSON-LD `JobPosting` -> readable-text heuristic; `postingUrl` turns
+  LinkedIn / Indeed / Glassdoor list panes into the posting URL), `lib/detector.ts` (re-checks on SPA URL changes / DOM settles,
+  reports to the background, mounts the bouncing floating button from `lib/fab.ts` in a closed shadow root; per-site dismiss in
+  `fabHidden`, global `fabEnabled`), `job.content.ts` on `lib/sites.ts`, `scan.content.ts` (runtime registration, injected by
+  "Scan this page" via activeTab), `background.ts` (token, per-tab state in `chrome.storage.session`, badge: `•` detected / score
+  saved), side panel (`entrypoints/sidepanel`: connect, save & match, score ± band, must-haves, what would raise it, status).
+  The footer always reads "AI can make mistakes please review the work before applying."
 
 ## About you (characterization)
 

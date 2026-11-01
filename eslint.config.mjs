@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The browser extension is its own WXT project (extension/, own tsconfig + lint).
+    "extension/**",
     // Vendored browser bundles copied by the postinstall scripts.
     "public/pdfjs/**",
     "public/typst/wasm/**",

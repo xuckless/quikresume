@@ -1,0 +1,57 @@
+/* Tokens mirror src/app/globals.css in the app (light + dark). */
+:root {
+  --bg: #fafafa; --surface: #ffffff; --surface-muted: #f4f4f5; --border: #e4e4e7; --fg: #0a0a0a; --fg-muted: #525252;
+  --fg-subtle: #6e6e6e; --accent: #003200; --accent-fg: #ffffff; --accent-text: #1a6e38; --accent-subtle: #e8f3ec;
+  --warning: #92400e; --warning-bg: #fef3c7; --danger: #b91c1c; --chart-track: #e7ece8;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0a0a0a; --surface: #111111; --surface-muted: #1a1a1a; --border: #262626; --fg: #ededed; --fg-muted: #a3a3a3;
+    --fg-subtle: #8a8a8a; --accent: #5fd38a; --accent-fg: #052e12; --accent-text: #5fd38a; --accent-subtle: #11281a;
+    --warning: #fbbf24; --warning-bg: #2a2110; --danger: #f87171; --chart-track: #242a26;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+#root { min-height: 100vh; display: flex; flex-direction: column; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; }
+.brand svg { color: var(--accent); }
+.brand .r { color: var(--accent-text); }
+main { flex: 1; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+footer { padding: 10px 14px; border-top: 1px solid var(--border); color: var(--fg-subtle); font-size: 11px; text-align: center; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.card h2 { margin: 0 0 2px; font-size: 14px; font-weight: 600; }
+.muted { color: var(--fg-muted); }
+.subtle { color: var(--fg-subtle); font-size: 12px; }
+.row { display: flex; align-items: center; gap: 8px; }
+.between { justify-content: space-between; }
+.stack { display: flex; flex-direction: column; gap: 8px; }
+button, select, input { font: inherit; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); cursor: pointer; }
+.btn:hover { background: var(--surface-muted); }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+.btn.primary:hover { filter: brightness(1.1); }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.block { width: 100%; }
+.btn:disabled { opacity: .55; cursor: default; }
+.btn:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 1px; }
+input, select { height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--fg); }
+input.code { font: 600 16px ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .15em; text-transform: uppercase; width: 100%; }
+.score { display: flex; align-items: center; gap: 12px; }
+.ring { position: relative; width: 64px; height: 64px; flex: none; }
+.ring svg { transform: rotate(-90deg); }
+.ring span { position: absolute; inset: 0; display: grid; place-items: center; font: 600 18px ui-monospace, "SF Mono", Menlo, monospace; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }
+.warn { color: var(--warning); }
+.err { color: var(--danger); }
+.notice { border-radius: 6px; padding: 8px 10px; font-size: 12px; background: var(--warning-bg); color: var(--warning); }
+.notice.err { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+ul.plain { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.gain { color: var(--accent-text); }
+a { color: var(--accent-text); }
+.spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.switch { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

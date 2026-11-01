@@ -12,7 +12,7 @@ import { useMediaQuery, XL } from "@/lib/ui/use-media-query";
 import { togglePreviewPane, usePreviewPane } from "@/lib/ui/preview-pane-store";
 import { interceptNavigation } from "@/lib/ui/leave-guard";
 import { FOCUS_RING } from "@/components/ui/primitives/button";
-import { Monitor, Moon, Sun, Compass, Eye, Layers, Library, LogOut, PenLine, Target, Upload, User, type LucideIcon } from "@/components/ui/primitives/icons";
+import { Monitor, Moon, Sun, Compass, Eye, Layers, Library, LogOut, PenLine, Puzzle, Target, Upload, User, type LucideIcon } from "@/components/ui/primitives/icons";
 
 export interface ShellUser { name: string; email: string; image: string | null }
 
@@ -35,6 +35,7 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
         label: "Jobs",
         items: [
             { label: "Tracker", icon: Target, href: viewHref("jobs"), view: "jobs", match: (p, v) => p === "/dashboard" && v === "jobs" },
+            { label: "Extension", icon: Puzzle, href: "/dashboard/extension", match: p => p.startsWith("/dashboard/extension") },
         ],
     },
     {

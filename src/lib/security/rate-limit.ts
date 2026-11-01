@@ -45,6 +45,11 @@ export const RATE = {
     /** About you: prefill / follow-ups / save. */
     about: { name: "about", limit: 30, windowMs: HOUR },
     linkChecks: { name: "link-checks", limit: 30, windowMs: HOUR },
+    /** Extension pairing: code creation per user, redemption per IP. */
+    extCode: { name: "ext-code", limit: 10, windowMs: HOUR },
+    extPair: { name: "ext-pair", limit: 10, windowMs: HOUR },
+    /** Extension reads (lookups, match summaries, status changes). */
+    extRead: { name: "ext-read", limit: 600, windowMs: HOUR },
     /** Save & Exit (runs the tagger). */
     save: { name: "save", limit: 60, windowMs: HOUR },
     /** Dev-only effort comparison. */

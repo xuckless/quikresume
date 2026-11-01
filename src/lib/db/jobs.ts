@@ -107,7 +107,7 @@ export function readProposals(v: unknown): Proposal[] {
 
 export const MATCH_STALLED_WARNING = "The AI match check did not finish.";
 
-function readMatch(v: unknown): JobMatchState {
+export function readMatch(v: unknown): JobMatchState {
     if (!v || typeof v !== "object") return IDLE_MATCH;
     const o = v as Record<string, unknown>;
     const status = o.status === "running" || o.status === "done" || o.status === "failed" ? o.status : "idle";
