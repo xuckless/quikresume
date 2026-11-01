@@ -57,8 +57,12 @@ export function normalizePhone(raw: string): FieldResult {
         if (digits.length >= 7 && digits.length <= 15) return { value: `+${body.trim().slice(1).replace(/\s+/g, " ").trim()}${ext}`, level: "note", message: "International number kept as entered." };
         return { value: v, level: "warning", message: "Check phone number." };
     }
-    if (digits.length === 10) return ok(nanp(digits) + ext);
+    if (digits.length === 10 && !digits.startsWith("0")) return ok(nanp(digits) + ext);
     if (digits.length === 11 && digits.startsWith("1")) return ok(nanp(digits.slice(1)) + ext);
+    // National format outside North America (UK 07700 900123, AU 0412 345 678, DE 030 1234567): keep it.
+    if (digits.startsWith("0") && digits.length >= 9 && digits.length <= 12) {
+        return { value: body.trim().replace(/\s+/g, " ") + ext, level: "note", message: "Kept as entered. Add the country code (e.g. +44) if you apply abroad." };
+    }
     return { value: v, level: "warning", message: "Check phone number: expected 10 digits, like (123) 456-7890." };
 }
 

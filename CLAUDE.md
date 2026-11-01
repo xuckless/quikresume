@@ -548,7 +548,8 @@ current, proposed, reason }], dismissed[], reviewHash, briefHash, reviewedAt }` 
 
 - `lib/contact/normalize.ts` (pure, run on blur in `ContactInput`, again in both save actions, and on import): email must be
   `local@domain.tld` (the only check that blocks a save: "Fix email" in the editor TopBar); phones with 10 digits (or 11 starting
-  with 1 / `+1`) become `(123) 456-7890` (+ ` x123`), other `+` numbers are kept with a note, anything else warns; LinkedIn ->
+  with 1 / `+1`) become `(123) 456-7890` (+ ` x123`), other `+` numbers and national numbers starting with 0 (9–12 digits, UK / AU /
+  EU style) are kept with a note, anything else warns; LinkedIn ->
   `https://www.linkedin.com/in/<slug>`, GitHub (`@user`, URL, repo URL) -> `https://github.com/<user>`, websites get `https://`.
 - **Link checks** (`/api/profile/check-links`, kicked after a Profile save or an editor save that changed a link): LinkedIn is
   never fetched (format only, `format-ok`); GitHub via `api.github.com/users/<name>` (optional `GITHUB_TOKEN`); websites get a
