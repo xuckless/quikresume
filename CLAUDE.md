@@ -224,6 +224,9 @@ One global working layout in `meta/layout`; variants snapshot it.
   clamped by `RANGES`). Normal = the template's original values, so an untouched layout renders exactly as before.
   Item gap and item overrides only exist for entry sections (`ENTRY_SECTIONS`: experience, education, projects,
   volunteering, publications, awards); skills / certifications / languages print as one grid or line.
+- **Headings**: `layout.headings[sectionId]` renames a printed section heading (≤ 40 chars, "Licences & Certifications"); edited in
+  the advanced layout section controls, passed as `layout.headings` in the Typst doc, read by every template through
+  `heading-for(data, key, fallback)` in `lib/theme.typ`.
 - Writes use `replaceMeta` (plain `set`): `writeMeta` merges nested maps, so reset keys would survive.
 
 ## Word cap and dates
@@ -269,7 +272,10 @@ Weight of a tag = number of selected items carrying it (`aggregateTags`, compute
   ("Bachelor's Degree"). Libraries tagged before this rule keep their old tags until re-tagged (the Library's stale-tags notice, or `POST /api/tags/backfill {force:true}`). A failure never blocks the save: items stay stale and the
   action returns `tagWarning`. `POST /api/tags/analyze` tags draft items without persisting (live Job Match,
   uploaded resumes); `POST /api/tags/backfill` re-tags stale (or all) persisted items.
-- **Normalisation** (`lib/tags/normalize.ts`): lowercase key + built-in alias table (`js` -> `javascript`,
+- **Normalisation** (`lib/tags/normalize.ts`): lowercase key + built-in alias table (no ambiguous short forms: `cv`, `cs`, `ms`, `ba`,
+  `pg`, `tf`, bare `rest` are left alone; degree abbreviations beyond tech (BSN, BEd, BBA, LLB, MBA, MSN, JD, PharmD, DNP…) and licences
+  (RN, LPN/RPN, NP, CPA, PMP, journeyman) are mapped; `BUILTIN_SATISFIERS` has licence ladders: NP satisfies RN, RN satisfies LPN,
+  master electrician satisfies journeyman) (`js` -> `javascript`,
   `k8s` -> `kubernetes`, …) + model-reported aliases stored in `users/{uid}/meta/tags` (accepted only when the
   canonical is a returned tag name; built-ins never overridden). `display` keeps the pretty spelling.
 - Profile tags live on `ResumeData.profileTags` (not inside `PersonalInfo`, which is treated as a flat string map).
@@ -651,7 +657,7 @@ Subcollections, each item doc has `isSelected`, `tags`, `contentHash`, `tagsHash
 | `education` | `schoolName, programName, startDate, endDate, isActive, gpa, minorName, details, locationCity?, locationProvince?, locationCountry?, doubleMajor?` |
 | `skills` | `category, items, hidden: string[]` |
 | `projects` | `title, stack, link, startDate, endDate, isActive, description: string[], hidden: string[]` |
-| `certifications` | `name, issuer, year` |
+| `certifications` | `name, issuer, year, credentialId, expires` (certifications and licences; number + expiry print as "Issuer · No. X" / "2019 · exp. May 2027") |
 | `awards` | `title, issuer, date, description` |
 | `volunteering` | `role, organization, startDate, endDate, isActive, description: string[], hidden: string[]` |
 | `publications` | `title, venue, date, link, authors` |

@@ -55,8 +55,10 @@ export function clampTo(key: RangeKey, v: unknown, fallback: number): number {
 export const DEFAULT_PAGE: PageSettings = { preset: "normal", ...PAGE_PRESETS.normal };
 export const DEFAULT_SECTION_SPACING: SectionSpacing = { preset: "normal", ...SECTION_PRESETS.normal };
 
+export const MAX_HEADING = 40;
+
 export function defaultLayout(): ResumeLayout {
-    return { sectionOrder: [...DEFAULT_SECTION_ORDER], itemOrder: {}, page: { ...DEFAULT_PAGE }, sections: {}, items: {}, theme: { ...DEFAULT_THEME } };
+    return { sectionOrder: [...DEFAULT_SECTION_ORDER], itemOrder: {}, page: { ...DEFAULT_PAGE }, sections: {}, items: {}, theme: { ...DEFAULT_THEME }, headings: {} };
 }
 
 export const sectionSpacing = (layout: ResumeLayout, id: SectionId): SectionSpacing => layout.sections[id] ?? DEFAULT_SECTION_SPACING;
@@ -122,7 +124,15 @@ export function normalizeLayout(raw: unknown): ResumeLayout {
         }
     }
 
-    return { sectionOrder: order, itemOrder, page, sections, items, theme: normalizeTheme(r.theme) };
+    const headings: ResumeLayout["headings"] = {};
+    if (isObj(r.headings)) {
+        for (const id of DEFAULT_SECTION_ORDER) {
+            const h = r.headings[id];
+            if (typeof h === "string" && h.trim()) headings[id] = h.replace(/[\u0000-\u001f]/g, "").trim().slice(0, MAX_HEADING);
+        }
+    }
+
+    return { sectionOrder: order, itemOrder, page, sections, items, theme: normalizeTheme(r.theme), headings };
 }
 
 /** Drops item ids that no longer exist and renames temp ids to their saved ids. */

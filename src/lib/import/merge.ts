@@ -82,7 +82,7 @@ export function mergeItem<K extends ResumeListKey>(
         case "projects": next.description = unionBullets(e.description, i.description); fillFields(["stack", "link", "startDate", "endDate"]); break;
         case "education": fillFields(["gpa", "minor", "details", "startDate", "endDate"]); break;
         case "skills": next.items = unionSkills(e.items, i.items); break;
-        case "certifications": fillFields(["issuer", "year"]); break;
+        case "certifications": fillFields(["issuer", "year", "credentialId", "expires"]); break;
         case "awards": fillFields(["issuer", "date", "description"]); break;
         case "publications": fillFields(["venue", "date", "link", "authors"]); break;
         case "languages": fillFields(["proficiency"]); break;

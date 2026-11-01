@@ -7,7 +7,7 @@
 // Same data contract as ledger.typ (see src/lib/typst/doc.ts). Entry point: `render(data)`.
 // Defaults: Libertinus Serif, near-black accent; both overridable through data.layout.theme.
 
-#import "/lib/theme.typ": resolve, opt, join-present, as-url, url-label, contact-links, stack-entries, page-settings, section-spacing, section-order
+#import "/lib/theme.typ": resolve, opt, join-present, as-url, url-label, contact-links, stack-entries, page-settings, section-spacing, section-order, heading-for
 
 #let ink = rgb("#1b1b1b")
 #let muted = rgb("#4a4a4a")
@@ -122,6 +122,7 @@
   for key in section-order(data) {
     if key in sections {
       let (title, body) = sections.at(key)
+      let title = heading-for(data, key, title)
       let sp = section-spacing(data, key)
       section(title, body(sp), sp, th.accent, th.heading-font)
     }

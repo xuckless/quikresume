@@ -83,3 +83,19 @@ describe("scoreJob v2", () => {
         expect(m.subScores.years).toBeCloseTo(3.1 / 5, 2);
     });
 });
+
+import { builtinSatisfiers, canonicalKey as canonicalTagName } from "@/lib/tags/normalize";
+
+describe("aliases and satisfiers beyond software", () => {
+    it("no longer maps ambiguous short forms", () => {
+        expect(canonicalTagName("cv")).toBe("cv");
+        expect(canonicalTagName("cs")).toBe("cs");
+        expect(canonicalTagName("BSN")).toBe("bachelor of science in nursing");
+        expect(canonicalTagName("RN licence")).toBe("registered nurse");
+    });
+    it("degree and licence ladders", () => {
+        expect(builtinSatisfiers("bachelor's degree", ["bachelor of science in nursing", "juris doctor", "cpr"])).toEqual(["bachelor of science in nursing", "juris doctor"]);
+        expect(builtinSatisfiers("registered nurse", ["nurse practitioner", "licensed practical nurse"])).toEqual(["nurse practitioner"]);
+        expect(builtinSatisfiers("journeyman electrician", ["master electrician"])).toEqual(["master electrician"]);
+    });
+});

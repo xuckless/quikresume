@@ -14,7 +14,7 @@ export const RESUME_JSON_SHAPE = `{
   "education": [{ "degree": "", "institution": "", "startDate": "", "endDate": "", "gpa": "", "minor": "", "details": "" }],
   "skills": [{ "category": "", "items": [""] }],
   "projects": [{ "title": "", "stack": "", "link": "", "startDate": "", "endDate": "", "bullets": [""] }],
-  "certifications": [{ "name": "", "issuer": "", "year": "" }],
+  "certifications": [{ "name": "", "issuer": "", "year": "", "credentialId": "", "expires": "" }],
   "awards": [{ "title": "", "issuer": "", "date": "", "description": "" }],
   "volunteering": [{ "role": "", "organization": "", "startDate": "", "endDate": "", "bullets": [""] }],
   "publications": [{ "title": "", "venue": "", "date": "", "link": "", "authors": "" }],
@@ -38,7 +38,8 @@ Content rules:
   - Work / Professional Experience / Internships -> workExperience
   - Education / Academic -> education (degree = programme name, details = honors, coursework, thesis)
   - Projects / Personal or Academic Projects -> projects (stack = technologies used; if only in the bullets, leave stack "")
-  - Certifications / Licenses / Courses with a credential -> certifications (year = 4-digit year)
+  - Certifications / Licenses / Registrations / Courses with a credential -> certifications (year = 4-digit year obtained;
+    credentialId = licence or registration number only when printed; expires = expiry as YYYY or YYYY-MM when printed)
   - Awards / Honors / Scholarships / Prizes -> awards
   - Volunteering / Leadership / Extracurricular / Community / Clubs -> volunteering
   - Publications / Papers / Talks / Patents -> publications (authors as written)

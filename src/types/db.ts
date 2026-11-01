@@ -105,6 +105,8 @@ export interface CertificationItem extends TagFields {
     name: string;
     issuer: string | null;
     year: string;
+    credentialId: string | null;
+    expires: string | null;
     isSelected: boolean;
     createdAt: string | null;
     updatedAt?: string | null;

@@ -49,4 +49,6 @@ export interface ResumeLayout {
     items: Record<string, ItemLayout>;
     /** Template, accent, fonts and paper. */
     theme: ResumeTheme;
+    /** Printed section headings the user renamed ("Licences & Certifications"); absent = the template's. */
+    headings: Partial<Record<SectionId, string>>;
 }

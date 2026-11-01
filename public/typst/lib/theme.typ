@@ -63,4 +63,9 @@
 // Page / spacing settings with defaults.
 #let page-settings(data) = default-page + data.at("layout", default: (:)).at("page", default: (:))
 #let section-spacing(data, key) = default-sp + data.at("layout", default: (:)).at("sections", default: (:)).at(key, default: (:))
+// A heading the user renamed for this section (layout.headings), else the template's own.
+#let heading-for(data, key, fallback) = {
+  let h = data.at("layout", default: (:)).at("headings", default: (:)).at(key, default: "")
+  if h == "" { fallback } else { h }
+}
 #let section-order(data) = data.at("layout", default: (:)).at("order", default: default-order)

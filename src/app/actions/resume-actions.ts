@@ -208,6 +208,8 @@ export async function saveResumeData(input: ResumeData, opts: SaveOptions = {}):
             name: cert.name.trim() || PLACEHOLDER.certification,
             issuer: orNull(cert.issuer),
             year: cert.year.trim(),
+            credentialId: orNull(cert.credentialId ?? ""),
+            expires: orNull(cert.expires ?? ""),
             isSelected: cert.isSelected ?? true,
         }), { merge: true }));
     }

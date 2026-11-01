@@ -18,6 +18,8 @@ export interface DateErrors {
     end?: string;
     /** Single date (awards, publications) or certification year. */
     date?: string;
+    /** Certification / licence expiry ("YYYY" or "YYYY-MM"; past dates are allowed, an expired licence is still a fact). */
+    expires?: string;
 }
 
 type AnyItem = ResumeData[ResumeListKey][number];
@@ -51,10 +53,14 @@ export function validateItemDates(key: ResumeListKey, item: AnyItem, now: Date =
         if (y === null) errors.date = "Use a 4-digit year, e.g. 2024.";
         else if (y > now.getFullYear()) errors.date = "Year can't be in the future.";
     }
+    if (key === "certifications" && x.expires?.trim()) {
+        const m = /^(\d{4})(?:-(\d{2}))?$/.exec(x.expires.trim());
+        if (!m || (m[2] !== undefined && (Number(m[2]) < 1 || Number(m[2]) > 12))) errors.expires = "Use YYYY or YYYY-MM, e.g. 2027-05.";
+    }
     return errors;
 }
 
-export const hasDateErrors = (e: DateErrors) => Boolean(e.start || e.end || e.date);
+export const hasDateErrors = (e: DateErrors) => Boolean(e.start || e.end || e.date || e.expires);
 
 export interface InvalidDateItem {
     section: ResumeListKey;
@@ -68,7 +74,7 @@ export function invalidDateItems(data: ResumeData, now: Date = new Date()): Inva
     for (const key of RESUME_LIST_KEYS) {
         for (const item of data[key] as AnyItem[]) {
             const e = validateItemDates(key, item, now);
-            const message = e.start ?? e.end ?? e.date;
+            const message = e.start ?? e.end ?? e.date ?? e.expires;
             if (message) out.push({ section: key, id: item.id, label: itemShortTitle(key, item), message });
         }
     }

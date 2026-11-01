@@ -13,7 +13,7 @@
 // Exported entry point: `render(data)`.
 // Fonts: Inter (vendored in public/typst/fonts). Falls back to Helvetica/Arial.
 
-#import "/lib/theme.typ": resolve
+#import "/lib/theme.typ": resolve, heading-for
 
 // ---------- Tokens ----------
 #let ink = rgb("#292b31")
@@ -232,6 +232,7 @@
   for key in layout.at("order", default: default-order) {
     if key in sections {
       let (title, body) = sections.at(key)
+      let title = heading-for(data, key, title)
       section(title, body(sp(key)), sp: sp(key), accent-deep: deep)
     }
   }

@@ -9,11 +9,12 @@ import type { ResumeLayout, Preset, SectionId } from "@/lib/layout/types";
 import {
     DEFAULT_PAGE, DEFAULT_SECTION_SPACING, ENTRY_SECTIONS, itemLayout, PAGE_PRESETS, RANGES, SECTION_PRESETS, sectionSpacing,
     type RangeKey,
+    MAX_HEADING,
 } from "@/lib/layout/presets";
 import { Card, CardBody, CardHeader } from "@/components/ui/primitives/card";
 import { Segmented } from "@/components/ui/primitives/segmented";
 import { RangeField } from "@/components/ui/primitives/range-field";
-import { Checkbox } from "@/components/ui/primitives/field";
+import { Checkbox, Input } from "@/components/ui/primitives/field";
 import { Switch } from "@/components/ui/primitives/switch";
 import { Button } from "@/components/ui/primitives/button";
 
@@ -68,8 +69,27 @@ export function SectionLayoutControls({ layout, id, onChange }: { layout: Resume
         });
     const setValue = (k: "above" | "below" | "itemGap" | "indent", v: number) =>
         onChange(l => ({ ...l, sections: { ...l.sections, [id]: { ...sectionSpacing(l, id), preset: "custom", [k]: v } } }));
+    const setHeading = (v: string) =>
+        onChange(l => {
+            const headings = { ...l.headings };
+            const h = v.slice(0, MAX_HEADING);
+            if (h.trim()) headings[id] = h;
+            else delete headings[id];
+            return { ...l, headings };
+        });
     return (
         <div className="space-y-3 rounded-lg border border-border bg-surface-muted/50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <label htmlFor={`layout-${id}-heading`} className="text-13 font-medium text-fg-muted">Printed heading</label>
+                <Input
+                    id={`layout-${id}-heading`}
+                    className="h-8 max-w-64 text-13"
+                    maxLength={MAX_HEADING}
+                    value={layout.headings[id] ?? ""}
+                    placeholder="Template default"
+                    onChange={e => setHeading(e.target.value)}
+                />
+            </div>
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-13 font-medium text-fg-muted">Section spacing</p>
                 <Segmented value={sp.preset} onChange={setPreset} options={PRESET_OPTIONS} />
