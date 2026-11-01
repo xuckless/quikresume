@@ -50,7 +50,7 @@ function parseRequirements(raw: unknown, aliases: AliasMap): Requirement[] {
             ...tag,
             importance: o.importance === "nice" ? "nice" : "must",
             yearsMin: typeof o.yearsMin === "number" && o.yearsMin > 0 ? Math.min(40, Math.round(o.yearsMin)) : null,
-            satisfiedBy: [], evidence: [], reason: "",
+            satisfiedBy: [], evidence: [], reason: "", semantic: [],
         });
     }
     return out;

@@ -1,0 +1,205 @@
+{
+  "_about": "Hand-labelled requirement -> résumé unit pairs for the initial Platt fit (scripts/calibration/fit.mjs). label 1 = a hiring manager would accept this line as evidence; 0 = not. Hard negatives (near-miss tools, wrong licence level, generic filler) are deliberate. Unit texts follow lib/match/units.ts: '<title> at <org> (<dates>): <bullet>'.",
+  "groups": [
+    {
+      "req": "Kubernetes (Tool / platform)",
+      "units": [
+        ["Software Engineer at Contoso (Jan 2022 – Present): Migrated 40 services from VMs to Kubernetes with Helm charts and ArgoCD", 1],
+        ["Platform Engineer at Acme (2019 – 2021): Ran our container workloads on Amazon EKS and wrote custom operators in Go", 1],
+        ["Software Engineer at Contoso (Jan 2022 – Present): Containerised the build with Docker and pushed images to ECR", 0],
+        ["Backend Developer at Initech (2018 – 2020): Built REST APIs in Java Spring Boot", 0],
+        ["Software Engineer at Contoso (Jan 2022 – Present): Collaborated with cross-functional teams to deliver features on time", 0]
+      ]
+    },
+    {
+      "req": "JavaScript (Technical skill)",
+      "units": [
+        ["Frontend Developer at Globex (2020 – 2023): Built a React single-page app in TypeScript with Redux", 1],
+        ["Web Developer at Studio Nine (2017 – 2019): Wrote vanilla JavaScript widgets and jQuery plugins for client sites", 1],
+        ["Backend Developer at Initech (2018 – 2020): Built REST APIs in Java Spring Boot and Hibernate", 0],
+        ["Data Analyst at Northwind (2021 – Present): Automated reports in Python with pandas", 0],
+        ["Barista at Blue Bottle (2015 – 2016): Served 200+ customers a day", 0]
+      ]
+    },
+    {
+      "req": "SQL (Technical skill)",
+      "units": [
+        ["Data Analyst at Northwind (2021 – Present): Wrote PostgreSQL queries and window functions for weekly revenue dashboards", 1],
+        ["Analytics Intern at Fabrikam (Summer 2020): Built dbt models over Snowflake tables", 1],
+        ["Data Analyst at Northwind (2021 – Present): Presented findings to the VP of Sales every quarter", 0],
+        ["Software Engineer at Contoso (2022 – Present): Stored session data in Redis", 0],
+        ["Teacher at Lincoln High (2014 – 2019): Taught algebra to 120 students", 0]
+      ]
+    },
+    {
+      "req": "Registered Nurse license (Credential)",
+      "units": [
+        ["Certification: Registered Nurse (RN), California Board of Registered Nursing", 1],
+        ["Staff Nurse at St. Mary's Hospital (2019 – Present): Licensed RN providing care on a 32-bed med-surg unit", 1],
+        ["Certification: Licensed Practical Nurse (LPN), Texas Board of Nursing", 0],
+        ["Certification: Basic Life Support (BLS), American Heart Association", 0],
+        ["Medical Assistant at Valley Clinic (2016 – 2018): Took vitals and roomed patients", 0]
+      ]
+    },
+    {
+      "req": "Patient assessment (Technical skill)",
+      "units": [
+        ["Staff Nurse at St. Mary's Hospital (2019 – Present): Performed head-to-toe assessments and escalated early warning scores", 1],
+        ["ER Nurse at City General (2016 – 2019): Triaged 40+ patients a shift using the ESI scale", 1],
+        ["Staff Nurse at St. Mary's Hospital (2019 – Present): Precepted 6 new graduate nurses", 0],
+        ["Medical Biller at Valley Clinic (2015 – 2016): Coded claims in ICD-10", 0],
+        ["Retail Associate at Target (2013 – 2015): Restocked shelves and handled returns", 0]
+      ]
+    },
+    {
+      "req": "Classroom management (Soft skill)",
+      "units": [
+        ["Teacher at Lincoln High (2014 – 2019): Cut referrals by 40% with a restorative-practices behaviour plan for 30-student classes", 1],
+        ["Student Teacher at Jefferson Middle (Spring 2013): Ran routines and transitions for a class of 28 seventh graders", 1],
+        ["Teacher at Lincoln High (2014 – 2019): Designed a new algebra curriculum aligned to state standards", 0],
+        ["Camp Counselor at YMCA (Summer 2012): Organised arts and crafts", 0],
+        ["Software Engineer at Contoso (2022 – Present): Managed a Jira board for the team", 0]
+      ]
+    },
+    {
+      "req": "Lesson planning (Methodology)",
+      "units": [
+        ["Teacher at Lincoln High (2014 – 2019): Wrote weekly lesson plans with differentiated activities for ELL students", 1],
+        ["Teacher at Lincoln High (2014 – 2019): Designed a new algebra curriculum aligned to state standards", 1],
+        ["Teacher at Lincoln High (2014 – 2019): Coached the varsity debate team to state finals", 0],
+        ["Corporate Trainer at Globex (2020 – Present): Delivered onboarding sessions to 50 new hires a month", 0],
+        ["Project Manager at Initech (2018 – 2021): Planned sprint schedules", 0]
+      ]
+    },
+    {
+      "req": "GAAP (Domain)",
+      "units": [
+        ["Staff Accountant at Deloitte (2018 – 2021): Prepared month-end close and financial statements under US GAAP", 1],
+        ["Senior Accountant at Fabrikam (2021 – Present): Led ASC 606 revenue recognition adoption", 1],
+        ["Senior Accountant at Fabrikam (2021 – Present): Prepared statutory accounts under IFRS for UK subsidiary", 0],
+        ["Bookkeeper at Main St Bakery (2015 – 2017): Entered invoices in QuickBooks", 0],
+        ["Sales Associate at Macy's (2013 – 2015): Exceeded holiday sales targets", 0]
+      ]
+    },
+    {
+      "req": "Certified Public Accountant (Credential)",
+      "units": [
+        ["Certification: Certified Public Accountant (CPA), New York State Board", 1],
+        ["Certification: Certified Management Accountant (CMA), IMA", 0],
+        ["Staff Accountant at Deloitte (2018 – 2021): Passed all four sections of the CPA exam while working full time", 1],
+        ["Certification: Chartered Financial Analyst (CFA) Level II candidate", 0],
+        ["Education: Master of Accountancy, University of Texas", 0]
+      ]
+    },
+    {
+      "req": "Quota attainment (Soft skill)",
+      "units": [
+        ["Account Executive at Salesforce (2020 – Present): Closed $1.4M ARR, 132% of annual quota", 1],
+        ["Sales Development Rep at HubSpot (2018 – 2020): Booked 25 meetings a month, top of a 12-person team", 1],
+        ["Account Executive at Salesforce (2020 – Present): Maintained pipeline hygiene in Salesforce CRM", 0],
+        ["Marketing Coordinator at Globex (2017 – 2018): Scheduled social posts", 0],
+        ["Software Engineer at Contoso (2022 – Present): Shipped features ahead of quarterly deadlines", 0]
+      ]
+    },
+    {
+      "req": "Salesforce CRM (Tool / platform)",
+      "units": [
+        ["Account Executive at Salesforce (2020 – Present): Maintained pipeline hygiene and forecasts in Salesforce CRM", 1],
+        ["Sales Ops Analyst at Fabrikam (2019 – 2021): Built Salesforce reports and dashboards for 60 reps", 1],
+        ["Sales Development Rep at HubSpot (2018 – 2020): Logged all activity in HubSpot CRM", 0],
+        ["Account Executive at Oracle (2016 – 2018): Sold Oracle ERP to mid-market manufacturers", 0],
+        ["Customer Support at Zendesk (2014 – 2016): Resolved 60 tickets a day", 0]
+      ]
+    },
+    {
+      "req": "Figma (Tool / platform)",
+      "units": [
+        ["Product Designer at Globex (2021 – Present): Built and maintained the Figma design system with 120 components", 1],
+        ["UX Designer at Studio Nine (2018 – 2021): Prototyped mobile flows in Figma and ran usability tests", 1],
+        ["UX Designer at Studio Nine (2018 – 2021): Created wireframes in Sketch and InVision", 0],
+        ["Graphic Designer at PrintCo (2015 – 2018): Laid out brochures in Adobe InDesign", 0],
+        ["Frontend Developer at Globex (2020 – 2023): Implemented designs handed off from the design team", 0]
+      ]
+    },
+    {
+      "req": "User research (Methodology)",
+      "units": [
+        ["UX Designer at Studio Nine (2018 – 2021): Ran 30+ user interviews and synthesised insights into journey maps", 1],
+        ["Product Designer at Globex (2021 – Present): Planned and ran moderated usability tests for checkout", 1],
+        ["Product Designer at Globex (2021 – Present): Built the Figma design system", 0],
+        ["Market Research Analyst at Nielsen (2016 – 2018): Analysed panel survey data on consumer packaged goods", 0],
+        ["Barista at Blue Bottle (2015 – 2016): Talked with regulars about their coffee preferences", 0]
+      ]
+    },
+    {
+      "req": "National Electrical Code (Domain)",
+      "units": [
+        ["Journeyman Electrician at Bright Electric (2017 – Present): Wired commercial tenant fit-outs to NEC 2020 and passed every inspection", 1],
+        ["Apprentice Electrician at Volt Co (2013 – 2017): Installed conduit, panels and branch circuits under code", 1],
+        ["Journeyman Electrician at Bright Electric (2017 – Present): Supervised two apprentices", 0],
+        ["HVAC Technician at CoolAir (2014 – 2016): Serviced rooftop units", 0],
+        ["Warehouse Associate at Amazon (2012 – 2013): Operated forklifts", 0]
+      ]
+    },
+    {
+      "req": "Journeyman electrician license (Credential)",
+      "units": [
+        ["Certification: Journeyman Electrician License, State of Washington", 1],
+        ["Certification: Master Electrician License, State of Washington", 1],
+        ["Certification: OSHA 30-Hour Construction", 0],
+        ["Apprentice Electrician at Volt Co (2013 – 2017): Completed 8,000 supervised hours", 0],
+        ["Certification: EPA Section 608 Universal", 0]
+      ]
+    },
+    {
+      "req": "Litigation (Domain)",
+      "units": [
+        ["Associate at Baker & Lee LLP (2019 – Present): Drafted motions and took 25 depositions in commercial litigation matters", 1],
+        ["Judicial Clerk at US District Court (2018 – 2019): Drafted opinions on summary judgment motions", 1],
+        ["Associate at Baker & Lee LLP (2019 – Present): Negotiated SaaS licensing agreements for tech clients", 0],
+        ["Paralegal at Smith & Co (2015 – 2017): Organised discovery binders", 0],
+        ["Customer Service Rep at Comcast (2013 – 2015): Resolved billing disputes", 0]
+      ]
+    },
+    {
+      "req": "Machine Learning (Technical skill)",
+      "units": [
+        ["Project: Support Ticket Classifier (Jan 2026 – Apr 2026): Fine-tuned a DistilBERT model to route 12k tickets into 8 categories, 91% macro-F1", 1],
+        ["Data Scientist at Northwind (2020 – Present): Built gradient-boosted churn models in XGBoost, lifting retention 6%", 1],
+        ["Data Analyst at Northwind (2021 – Present): Built Tableau dashboards for revenue", 0],
+        ["Software Engineer at Contoso (2022 – Present): Integrated the OpenAI API into the support widget", 0],
+        ["Teacher at Lincoln High (2014 – 2019): Taught statistics", 0]
+      ]
+    },
+    {
+      "req": "Team leadership (Soft skill)",
+      "units": [
+        ["Engineering Manager at Contoso (2021 – Present): Managed a team of 8 engineers and ran weekly 1:1s and performance reviews", 1],
+        ["Charge Nurse at St. Mary's Hospital (2020 – Present): Led a team of 10 nurses and aides on night shift", 1],
+        ["Software Engineer at Contoso (2019 – 2021): Collaborated with cross-functional teams", 0],
+        ["Teacher at Lincoln High (2014 – 2019): Taught algebra", 0],
+        ["Barista at Blue Bottle (2015 – 2016): Trained 2 new hires on the espresso machine", 0]
+      ]
+    },
+    {
+      "req": "Bachelor's degree (Credential)",
+      "units": [
+        ["Education: B.S. in Computer Science, State University", 1],
+        ["Education: Bachelor of Science in Nursing (BSN), University of Washington", 1],
+        ["Education: Associate of Applied Science, Community College of Denver", 0],
+        ["Education: High School Diploma, Lincoln High", 0],
+        ["Certification: Google Data Analytics Professional Certificate", 0]
+      ]
+    },
+    {
+      "req": "Spanish (Language)",
+      "units": [
+        ["Spoken language: Spanish (Native)", 1],
+        ["Spoken language: Spanish (Professional working proficiency)", 1],
+        ["Spoken language: Portuguese (Fluent)", 0],
+        ["Spoken language: French (B2)", 0],
+        ["Teacher at Lincoln High (2014 – 2019): Taught algebra to English language learners", 0]
+      ]
+    }
+  ]
+}

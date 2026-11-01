@@ -56,13 +56,21 @@ export function satisfierIndex(requirements: Requirement[], inventory: Iterable<
     return index;
 }
 
-/** Requirement keys one item covers (by tags, satisfiers or cited evidence). */
+/**
+ * A semantic hit strong enough for selection decisions (Tailor, set cover): calibrated p ≥ SEMANTIC_COVERS and
+ * not rejected by the AI judge. The scorer itself uses every hit with its own weight (lib/match/score.ts).
+ */
+export const SEMANTIC_COVERS = 0.6;
+const semanticCovers = (r: Requirement, itemId: string) =>
+    (r.semantic ?? []).some(h => h.itemId === itemId && h.p >= SEMANTIC_COVERS && h.confirmed !== false);
+
+/** Requirement keys one item covers (by tags, satisfiers, cited evidence or a strong semantic hit). */
 export function coveredByItem(item: CoverageItem, requirements: Requirement[], index: Map<string, Set<string>>): Set<string> {
     const names = new Set(item.tags.map(t => t.name));
     const out = new Set<string>();
     for (const r of requirements) {
         const accepted = index.get(r.name);
-        if (r.evidence.includes(item.carrier.id) || (accepted && [...accepted].some(k => names.has(k)))) out.add(r.name);
+        if (r.evidence.includes(item.carrier.id) || (accepted && [...accepted].some(k => names.has(k))) || semanticCovers(r, item.carrier.id)) out.add(r.name);
     }
     return out;
 }

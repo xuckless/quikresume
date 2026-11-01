@@ -10,7 +10,8 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "node scripts/copy-typst-wasm.mjs && node scripts/copy-pdfjs-worker.mjs",
-    "typst:sample": "typst compile --root public/typst --font-path public/typst/fonts --ignore-system-fonts public/typst/main.typ .typst-out/sample.pdf"
+    "typst:sample": "typst compile --root public/typst --font-path public/typst/fonts --ignore-system-fonts public/typst/main.typ .typst-out/sample.pdf",
+    "test": "vitest run"
   },
   "dependencies": {
     "@auth/firebase-adapter": "^2.11.1",
@@ -41,6 +42,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }

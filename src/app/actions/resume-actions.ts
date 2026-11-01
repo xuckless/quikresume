@@ -268,6 +268,8 @@ export async function saveResumeData(input: ResumeData, opts: SaveOptions = {}):
         if (!d || !RESUME_LIST_KEYS.includes(d.section) || !isDocId(d.id) || isTempId(d.id) || kept.has(d.id)) continue;
         const ref = userRef.collection(SECTION_COLLECTION[d.section]).doc(d.id);
         writes.push(batch => batch.delete(ref));
+        const vecRef = userRef.collection("vecs").doc(d.id);
+        writes.push(batch => batch.delete(vecRef));
     }
 
     try {

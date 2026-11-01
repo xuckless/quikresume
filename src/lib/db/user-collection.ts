@@ -95,4 +95,6 @@ export async function updateUserDoc(uid: string, name: string, id: string, patch
 
 export async function deleteUserDoc(uid: string, name: string, id: string) {
     await userDoc(uid, name, id).delete();
+    // The item's cached embeddings (lib/match/evidence.ts) go with it.
+    await userCol(uid, "vecs").doc(id).delete().catch(() => {});
 }

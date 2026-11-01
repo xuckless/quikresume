@@ -9,16 +9,20 @@ Resume builder. Users keep their full professional history in a **Master Library
 - Next.js 16.1.6, App Router, Turbopack, React 19 + React Compiler (`reactCompiler: true`), TypeScript strict
 - Tailwind CSS v4 (CSS-first: `@import "tailwindcss"` + `@theme` in `src/app/globals.css`; no tailwind.config).
   Design tokens live there as CSS variables (`--bg`, `--surface`, `--border`, `--fg-muted`, `--accent`, `--danger`, …)
-  mapped to utilities (`bg-surface`, `border-border`, `text-fg-muted`, `text-13`, …). Font: Montserrat 400/500/600
-  via `next/font` (`--font-montserrat`); Geist Mono only for Typst diagnostics. Icons: `lucide-react`.
+  mapped to utilities (`bg-surface`, `border-border`, `text-fg-muted`, `text-13`, `bg-accent-subtle`, `text-accent-text`, `bg-paper`,
+  `bg-chart-1`, …). Fonts: Geist Sans (`--font-geist-sans`) for UI, Geist Mono for numbers / scores / diagnostics, via `next/font`.
+  Icons: `lucide-react`. Brand (Route A): `components/brand.tsx` (`QBolt`, `BrandMonogram`, `Wordmark` "quikResume" with the
+  accent R); static icons in `public/icons` (favicon.svg follows the OS theme, apple-touch-icon.png, extension/icon-*.png) and
+  `public/favicon.ico`, rendered from the same 32-unit paths.
 - NextAuth v5 beta: Google provider, JWT sessions, `@auth/firebase-adapter`; `src/proxy.ts` (Next 16 name for middleware) guards `/dashboard/*`
 - `firebase-admin` Firestore, **named database `"quikresume"`** (`src/lib/firestore.ts`)
 - `@myriaddreamin/typst.ts` 0.7.0 (+ `typst-ts-web-compiler`, `typst-ts-renderer`), wraps Typst 0.13
 - Resume import: Z.ai GLM-4.6V (vision) via plain `fetch` (`src/lib/glm/client.ts`), `pdfjs-dist` (browser PDF
   rasterising), `mammoth` (DOCX text), `zod` (lenient output parsing)
-- Smart tags + Job Match: Z.ai text model `glm-5.3-flash` in JSON mode (same client); `recharts` for the charts
+- Smart tags + Job Match: Z.ai text model `glm-5.3-flash` in JSON mode (same client); `recharts` is still a dependency (charts on the match page)
 - Drag to reorder: `@dnd-kit/core` + `@dnd-kit/sortable` behind `components/ui/primitives/sortable.tsx`
-- No test framework, no CI. Lint is `eslint-config-next` (core-web-vitals + typescript).
+- Tests: `vitest` (`npm test`, `test/**/*.test.ts`, pure modules only; `server-only` is aliased to a stub). No CI.
+  Lint is `eslint-config-next` (core-web-vitals + typescript).
 
 ## Commands
 
@@ -46,7 +50,9 @@ Required env (`.env.local`): `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRE
 `GLM_API_KEY` (import, tags, Job Match, reviews, About you). Optional: `GITHUB_TOKEN` (raises the GitHub API limit for link checks), `GLM_BASE_URL` (default `https://api.z.ai/api/paas/v4`),
 `GLM_MODEL` (vision, default `glm-4.6v`), `GLM_TEXT_MODEL` (tags / JD analysis / proposals, default `glm-5.3-flash`),
 `GLM_EFFORT_RECONCILE` / `GLM_EFFORT_REVIEW` / `GLM_EFFORT_TAILOR` (`low | high | max`, see Reasoning effort),
-`AI_DAILY_TOKEN_BUDGET` / `AI_DAILY_CALL_BUDGET` (per-user daily AI budget, see Security).
+`AI_DAILY_TOKEN_BUDGET` / `AI_DAILY_CALL_BUDGET` (per-user daily AI budget, see Security). `VOYAGE_API_KEY` (semantic matching;
+without it Job Match runs on tags only), optional `VOYAGE_EMBED_MODEL` (default `voyage-4-lite`), `VOYAGE_RERANK_MODEL`
+(`rerank-3-lite`), `VOYAGE_MAX_RERANK_CALLS` (30 per job).
 
 ## Layout
 
@@ -109,7 +115,9 @@ src/
   components/ui/resume-import.tsx            multi-file upload (PDF -> page images) + combined review step
   components/ui/variant-toolbar.tsx          Save as / Load / Update variant on the library view
   components/ui/variants-page.tsx            /dashboard/variants: search, labels, rename, duplicate, delete, load
-  components/ui/insights-view.tsx, tag-charts.tsx   tag charts (recharts radar / bars) + tag table, filterable by kind
+  components/ui/job-tracker/tracker-view.tsx  Job Tracker home (?view=jobs): Board (dnd-kit columns per status) / Table, search
+  components/ui/library/stale-tags-notice.tsx  "N items changed since skills were detected" + Analyse (POST /api/tags/backfill)
+  components/ui/template-gallery.tsx         TemplateSelect (preview toolbar) + gallery dialog (thumbnails, accent, fonts, paper)
   components/ui/job-match-view.tsx, proposal-cards.tsx, use-page-count.ts   Job Match (grouped requirements, Guidelines card)
   components/ui/job-match/{tailor-dialog,skill-questions}.tsx   Tailor window + hard/soft skill questionnaire
   lib/match/auto-tailor.ts                   pure: buildTailorPlan, mergeAiReview, selections, diffSuggestions, trimSteps /
@@ -149,7 +157,9 @@ src/
   types/db.ts                                serialized Firestore row types
 public/typst/
   main.typ                                   entry: picks template, reads sys.inputs.resume
-  templates/ledger.typ                       styling template exporting render(data)
+  templates/{ledger,classic,modern,compact}.typ   styling templates exporting render(data)
+  lib/theme.typ                              shared: resolve(data, defaults) -> accent / fonts / paper, helpers, stack-entries
+  fonts/                                     Inter, IBM Plex Sans, IBM Plex Serif (TTF), Libertinus Serif (OTF); OFL texts alongside
   sample.json                                full sample doc for CLI iteration
   fonts/Inter-*.ttf (+ OFL.txt)              vendored fonts
   wasm/                                      gitignored, filled by scripts/copy-typst-wasm.mjs
@@ -161,7 +171,8 @@ public/pdfjs/pdf.worker.min.mjs              gitignored, filled by scripts/copy-
 1. `dashboard/page.tsx` (RSC) fetches profile + `experience`, `education`, `skills`, `projects`,
    `certifications`, `awards`, `volunteering`, `publications`, `languages` in parallel and builds
    `initialResumeData` with `toResumeData`.
-2. `DashboardClient` reads the view from `?view=editor|preview|import|insights|jobs` (no param = library) and
+2. `DashboardClient` reads the view from `?view=editor|preview|import|jobs` (no param = library; the removed `insights` maps to `jobs`;
+   `?view=jobs&job=<id>` opens one job's Match page, `jobHref()`) and
    navigates with `router.push` so Back works; the page never unmounts, so `draft` survives view switches.
    It holds `draft: ResumeData | null`. In the editor `resumeData = draft ?? initialResumeData`; every other view reads
    `initialResumeData`, so a stale draft can never hide what Job Match / variant actions just wrote.
@@ -254,8 +265,7 @@ Weight of a tag = number of selected items carrying it (`aggregateTags`, compute
   summary; not hashed) so the model can file items under the candidate's field, and the prompt asks for
   *implied* concepts ("5-service architecture" -> Microservices, a compiler project -> Computer Science as domain)
   while tools/platforms must still be named. Degrees yield the specific degree **and** the generic level
-  ("Bachelor's Degree"). Libraries tagged before this rule keep their old tags until re-tagged (Insights ->
-  Analyse everything, or `POST /api/tags/backfill {force:true}`). A failure never blocks the save: items stay stale and the
+  ("Bachelor's Degree"). Libraries tagged before this rule keep their old tags until re-tagged (the Library's stale-tags notice, or `POST /api/tags/backfill {force:true}`). A failure never blocks the save: items stay stale and the
   action returns `tagWarning`. `POST /api/tags/analyze` tags draft items without persisting (live Job Match,
   uploaded resumes); `POST /api/tags/backfill` re-tags stale (or all) persisted items.
 - **Normalisation** (`lib/tags/normalize.ts`): lowercase key + built-in alias table (`js` -> `javascript`,
@@ -338,19 +348,47 @@ each effort over your library and returns outputs + timings, writing nothing.
   turns a run past `runningUntil` into failed. While running, the job page shows a banner and polls
   `GET /api/jobs/reconcile?jobId=` (one doc read) every 5 s, then `router.refresh()`. `/api/jobs/proposals` still reconciles
   inline at low effort. Failures never block: requirements stay unchanged and the built-in hierarchy still applies.
+- **Semantic evidence** (`lib/match/evidence.ts`, server-only, runs first inside `runReconcileJob`): library units
+  (`lib/match/units.ts`: one head unit per item + one per bullet with "<title> at <org> (<dates>): " context) are embedded with
+  Voyage (`lib/embed/voyage.ts`, voyage-4-lite @512, `document`) and cached in `users/{uid}/vecs/{itemId}`
+  (`{space, hash: contentHashOf, units: [{k: bulletKey | "\0head", v: base64 Float32}]}`; re-embedded when the content hash or
+  `VECTOR_SPACE` changes). Requirements (`"<display> (<kind label>)"`, `query`) and the job title are embedded per run. Cosine
+  matrix -> CSLS ranking (`cslsMatrix`, penalises generic lines) -> best unit per item, top 8 -> requirements whose cosine-only p
+  is in [0.15, 0.9] get `rerank-3-lite` (budget `VOYAGE_MAX_RERANK_CALLS`; a 429 stops reranking for the run, never waits) ->
+  calibrated p (`probability`, Platt fit in `lib/match/calibration.json`) -> top 5 hits with p ≥ 0.15 stored as
+  `requirement.semantic: {itemId, bullet, p, quote, reranked, confirmed}`; `job.titleSim` = calibrated title similarity per
+  work-experience item. Uncertain hits (0.25 ≤ p < 0.9) go to the LLM reconcile as `hints`; afterwards `confirmed` = the judge
+  cited that item (true), saw it and did not (false), or did not run (null). Any Voyage failure returns a warning and the job
+  scores on tags alone. Free tier without a payment method = 3 requests / 10K tokens per minute (embeddings are batched).
+- **O*NET categories** (`lib/match/taxonomy.ts`, data `lib/match/taxonomy-onet.json` from `scripts/build-taxonomy.mjs`, O*NET 30.0,
+  CC BY 4.0, credited in the marketing footer): 4,262 software / tool categories + 34K product names (with vendor-less short
+  names: "Excel", "AutoCAD"; small alias list: "Epic", "Cerner"). One direction only: a requirement whose query embedding
+  (first 256 dims) is ≥ 0.6 from a category title and which is not itself a known product ("EHR software", "CRM", "CAD",
+  "multimeters") is satisfied by candidate tags that are products of that category; they are merged into `satisfiedBy`
+  after the reconcile pass with reason "Counts as <category> (O*NET)". Products of the same category are never treated as
+  related (Java and JavaScript share one). Probe: categories scored 0.60–0.75, non-categories ≤ 0.53.
+- **Selection** (Tailor plan, set cover) uses `coveredByItem`, which also counts a semantic hit with p ≥ `SEMANTIC_COVERS`
+  (0.6) that the judge did not reject. Seniority is not scored numerically; JD analysis reports conflicts in `fitNotes`.
+- **Calibration** (`scripts/calibration/fit.mjs`, `node --env-file=.env.local scripts/calibration/fit.mjs [extra.json]`): logistic
+  fits `p = σ(a·cos + c·rerank + b)` and cosine-only on labelled pairs (`scripts/calibration/seed.json`, several professions,
+  deliberate hard negatives). Features are cached in `scripts/calibration/.features.json` (gitignored). Refit whenever the
+  embedding or rerank model changes (the `space` field records which). First fit (100 seed pairs, in-sample, so optimistic):
+  cosine-only AUC 0.81, cosine + rerank AUC 0.957: the reranker carries most of the signal, which is why nearly every
+  requirement is reranked and why a rate-limited run (no rerank) leans on the LLM judge for confirmation.
 - **Coverage** (`lib/match/coverage.ts`, pure): an item covers a requirement when it carries the exact key, a
   `satisfiedBy` key, a key the built-in hierarchy accepts (`builtinSatisfiers` in `lib/tags/normalize.ts`:
   `bachelor's degree` <- any `bachelor of …` / master / doctorate, etc.), or is cited in `evidence`. Shared by
   the scorer and the set cover.
-- **Scoring** (`lib/match/score.ts`, pure, runs in the browser for the live panel):
-  `strength = covered ? min(1, 0.5 + 0.25·weight) : literalHit ? 0.5 : 0` (credentials / languages: any carrier = 1);
-  `score = 100·Σ(w·strength)/Σw` with `w = importance (must 1, nice 0.4) × tier (hard 1, soft 0.3)`.
-  **Tier** (`requirementTier`): `soft-skill`, `methodology`, `domain` kinds and a built-in list of generic practices
-  (`PRACTICE_KEYS`: SDLC, documentation, software testing, code review, analytical thinking, …) are *soft*;
-  named technologies, tools, credentials and languages are *hard*. `missingMust` = hard must-haves with no
-  coverage (the disqualifiers, e.g. C++ with no coursework or project); `keywordGaps` = soft requirements with
-  no coverage ("add these keywords before applying"). `MatchRow.via` / `.reason` explain inferred hits in the UI.
-  `literalHit` searches the exact strings Typst prints (`renderedText(toTypstDoc(data))`) — the ATS check.
+- **Scoring v2** (`lib/match/score.ts`, pure, runs in the browser; the header comment has every formula): per selected item,
+  evidence e = 0.95 exact tag (binary kinds 1) / 0.9 reconcile-cited / 0.85 satisfying tag / p semantic (confirmed -> ≥ 0.9,
+  rejected -> 0.4·p), × recency 0.5^(age/4y) for dated work; hidden bullets and unselected items never count. Strength
+  m = noisy-OR of the top 3 (binary kinds: best e); a literal hit with nothing better = 0.5. Sub-scores: coverage
+  Σw·m/Σw (w = must 1 / nice 0.4 × hard 1 / soft 0.3), ats (hard reqs printed; summary / skills / latest role = 1, elsewhere 0.6),
+  years (evidenced dated spans vs `yearsMin`), title (`job.titleSim`), education (credential reqs); composite weights
+  `SUB_WEIGHTS` .55/.15/.10/.10/.10 over the non-null ones. A hard must-have with m < 0.3 caps the score at `MUST_GATE_CAP` (70).
+  `band` = ±95% from Σw²m(1−m); `row.gain` = exact points for fully evidencing that requirement. `missingMust` / `keywordGaps`
+  use m < 0.3. UI: `components/ui/job-match/match-breakdown.tsx` (headline ± band + must-haves, sub-score bars, "What would
+  raise it", evidence table with Direct / Related / Semantic / Keyword only).
 - **Recommendation** (`lib/match/recommend.ts`): greedy weighted set cover (must = 3, nice = 1, a requirement
   saturates after 2 carriers) under per-section caps (`DEFAULT_CAPS`, user-editable in `meta/preferences`);
   matching skill categories always in; education never excluded. Produces include/exclude proposals.
@@ -359,6 +397,11 @@ each effort over your library and returns outputs + timings, writing nothing.
   `{kind, tag | itemId}` rule to `users/{uid}/meta/preferences.mutedProposals`.
 - Apply: include/exclude call the item's `update*` action (or edit the draft when one is open); rewrite /
   add-skill always edit the draft (`applyProposal`) and open the editor.
+- **Tracker** (`?view=jobs`): jobs carry `status` (`saved|applied|interview|offer|rejected`, missing = saved), `appliedAt`
+  (YYYY-MM-DD, stamped the first time status leaves "saved"), `notes`, `variantId`, and posting fields `url`, `urlKey`
+  (`jobUrlKey(canonicalJobUrl(url))`, `lib/jobs/canonical-url.ts`), `location`, `employmentType`; `source.kind` may be
+  `extension`. `setJobStatus` / `updateJobMeta` (`updateJobTracking`) change them; a re-import of the same `urlKey` must refresh
+  posting fields only. Board drag and the status Select do the same thing (keyboard users never need the drag).
 - **Job list**: `saveJobScore` writes only `lastScore` (no `updatedAt`, which orders the list) 1.5 s after the working-selection
   score changes; titles rename inline (`renameJob`); a trash button on each list row deletes.
 - **The Suggestions card is hidden** (`SHOW_SUGGESTIONS = false` in `job-match-view.tsx`); the route, proposal cards and
@@ -510,7 +553,19 @@ ResumeData --toTypstDoc()--> TypstResumeDoc (JSON) --sys.inputs.resume--> main.t
   SVG visible while recompiling and shows Typst diagnostics on error.
 - **Adding a template:** write `public/typst/templates/<id>.typ` exporting `#let render(data) = { ... }`;
   import it in `public/typst/main.typ` and add it to the `templates` dict; add an entry to
-  `TEMPLATES` in `src/lib/typst/templates.ts`. A template should iterate `data.layout.order` and honour the page /
+  `TEMPLATES` in `src/lib/typst/templates.ts`. Import shared helpers with `#import "/lib/theme.typ": ...` (root-absolute
+  path: the CLI uses `--root public/typst`, the browser registers `TYPST_LIBS` at the same paths) and start `render` with
+  `resolve(data, accent: ..., heading-font: ..., body-font: ...)` so the user's accent / font pair / paper apply. Never name a
+  parameter `h` (shadows Typst's `h()` spacing). Section heading blocks use `sticky: true` so a heading never ends a page.
+- **Theme** (`lib/layout/theme.ts`, on `ResumeLayout.theme`, normalised by `normalizeLayout`): `templateId`, `accent`
+  (`ACCENTS`, `"template"` = the template's own), `font` (`FONT_PAIRS`: heading + body family), `paper` (`a4 | us-letter`).
+  `toTypstDoc` passes `layout.theme = { template, accent: "#hex" | "", heading_font, body_font, paper }`; `compileSvg` /
+  `compilePdf` default to `doc.layout.theme.template`. Saved with the working layout (Preview toolbar -> `updateLayout`, or the
+  editor draft while the editor is open), so variants snapshot it; `createVariant*` also write `templateId` from it.
+  Every font family a pair can name must be in `FONT_URLS` (`lib/typst/client.ts`) and `public/typst/fonts`.
+- **Page sheets**: typst.ts renders all pages into one SVG (`g.typst-page`, `transform="translate(0, y)"`,
+  `data-page-width/height`). `svgLayout` (`lib/typst/pages.ts`) reads those boxes and `ResumePreview` shows each page as its own
+  clipped window onto the same SVG, with a gap and "n / N". A template should iterate `data.layout.order` and honour the page /
   section / entry layout values (see `render` and `stack-entries` in `ledger.typ`, which fall back to defaults when absent).
   Section macros in `ledger.typ`
   (`header`, `summary`, `education`, `skills`, `projects`, `experience`, `certifications`) are the
@@ -555,7 +610,8 @@ Subcollections, each item doc has `isSelected`, `tags`, `contentHash`, `tagsHash
 | `publications` | `title, venue, date, link, authors` |
 | `languages` | `language, proficiency` |
 | `variants` | `name, labels: string[], items: {experience: string[], …}, hidden: {itemId: string[]}, layout: ResumeLayout \| null, templateId` (pointers only) |
-| `jobs` | `title, company, source, jdText, summary, requirements[] ({name, display, kind, importance, yearsMin, satisfiedBy[], evidence[], reason}), match ({status, runningUntil, checkedAt, libraryHash, warning}), proposals[], proposalsAt, lastScore, fitNotes[]` |
+| `jobs` | `title, company, source, jdText, summary, requirements[] ({name, display, kind, importance, yearsMin, satisfiedBy[], evidence[], reason}), match ({status, runningUntil, checkedAt, libraryHash, warning}), proposals[], proposalsAt, lastScore, fitNotes[], status, appliedAt, notes, variantId, url, urlKey, location, employmentType` |
+| `vecs` | `space, hash, units: [{k, v}]`: cached embeddings per item id (see Semantic evidence); deleted with the item |
 | `meta/tags` | `aliases: Record<alias, canonical>` |
 | `meta/characterization` | `status: draft \| skipped \| complete, answers, followUps[], followUpsHash, answersHash, brief, briefHash, briefAt, briefStale, facts` |
 | `meta/review` | `runningUntil, lastRunAt` (review lock) |
@@ -579,8 +635,12 @@ editor and `string[]` in Firestore.
 - No `setState` from props inside effects; key effects on primitive strings; no manual `useMemo`/`useCallback`
   (React Compiler handles it).
 - Optional strings are stored as `null`, not `""`. Mappers default missing fields to `""`.
-- UI is light-only; no `dark:` variants. Colours go through the tokens in `globals.css` (`bg-surface`, `text-fg-muted`,
-  `border-border`, `text-danger`…), never raw palette classes; no `font-black`, no uppercase micro-labels, radii ≤ `rounded-lg`,
+- Light + dark themes come from the tokens only: `:root` and `:root[data-theme="dark"]` in `globals.css`; never `dark:` variants.
+  `data-theme` is set before first paint by `THEME_SCRIPT` in `app/layout.tsx` from `localStorage["quikresume.theme"]`
+  (`lib/ui/theme-store.ts`: light | dark | system; the sidebar footer toggle) or the OS. The résumé sheet is always `bg-paper`.
+  The accent is the brand green (#003200 light / #5fd38a dark): primary fills only; `accent-text` for links / active nav /
+  score; scores are one green plus a word band (`scoreBand`), never red/amber/green by value. Colours go through the tokens
+  (`bg-surface`, `text-fg-muted`, `border-border`, `text-danger`…), never raw palette classes; no `font-black`, no uppercase micro-labels, radii ≤ `rounded-lg`,
   shadows ≤ `shadow-sm`. New UI is built from `components/ui/primitives`.
 - Browser-persisted UI state (preview pane, expanded rows) uses the `createPersistedStore` + `useSyncExternalStore` pattern
   in `lib/ui/persisted-store.ts` (server snapshot = initial) rather than reading storage in effects.

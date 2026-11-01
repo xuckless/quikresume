@@ -10,7 +10,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ResumeData } from "@/types/schema";
 import type { ResumeVariant } from "@/types/db";
-import type { JobRecord, MuteRule, Preferences, Proposal, Requirement, ResumeSource } from "@/lib/match/types";
+import { JOB_STATUS_LABEL, JOB_STATUSES, type JobRecord, type JobStatus, type MuteRule, type Preferences, type Proposal, type Requirement, type ResumeSource } from "@/lib/match/types";
 import type { AliasMap } from "@/lib/tags/normalize";
 import { requirementTier, scoreJob, uncoveredRequirements } from "@/lib/match/score";
 import { muteRuleFor } from "@/lib/match/proposals";
@@ -21,24 +21,23 @@ import { documentFormData } from "@/lib/import/pdf-pages";
 import { MAX_FILE_BYTES, type ImportResponse } from "@/lib/import/types";
 import { RESUME_LIST_KEYS } from "@/types/schema";
 import { SECTION_LABEL } from "@/lib/sections";
-import { deleteJob, muteProposal, renameJob, saveJobScore, setProposalStatus, unmuteProposal, saveCaps } from "@/app/actions/job-actions";
+import { deleteJob, muteProposal, renameJob, saveJobScore, setJobStatus, setProposalStatus, unmuteProposal, saveCaps, updateJobMeta } from "@/app/actions/job-actions";
 import { cn } from "@/lib/cn";
 import { Button, FOCUS_RING, IconButton } from "@/components/ui/primitives/button";
-import { Input, Select, Textarea } from "@/components/ui/primitives/field";
+import { Field, Input, Select, Textarea } from "@/components/ui/primitives/field";
 import { ConfirmDialog } from "@/components/ui/primitives/dialog";
 import { ProposalCards } from "@/components/ui/proposal-cards";
-import { ScoreRing } from "@/components/ui/primitives/score-ring";
+import { EvidenceTable, ScoreHeadline, SubScoreBars, WhatIfList } from "@/components/ui/job-match/match-breakdown";
 import { Segmented } from "@/components/ui/primitives/segmented";
 import { GuidelineRow } from "@/components/ui/primitives/guideline-row";
 import { Card, CardBody, CardHeader } from "@/components/ui/primitives/card";
 import { Badge } from "@/components/ui/primitives/badge";
 import { NoticeBanner } from "@/components/ui/primitives/notice-banner";
-import { EmptyState } from "@/components/ui/primitives/empty-state";
-import { Table, Td, Th } from "@/components/ui/primitives/table";
-import { ChevronDown, Target } from "@/components/ui/primitives/icons";
+import { ChevronDown } from "@/components/ui/primitives/icons";
 import { useResumePageCount } from "@/components/ui/use-page-count";
 import { Dialog } from "@/components/ui/primitives/dialog";
-import { Loader2, PenLine, Trash2, Wand2 } from "@/components/ui/primitives/icons";
+import { ArrowLeft, ExternalLink, Loader2, PenLine, Wand2 } from "@/components/ui/primitives/icons";
+import { TrackerView } from "@/components/ui/job-tracker/tracker-view";
 import { TailorDialog } from "@/components/ui/job-match/tailor-dialog";
 import { SkillQuestions } from "@/components/ui/job-match/skill-questions";
 import { readJson } from "@/lib/ui/fetch-json";
@@ -74,93 +73,54 @@ export function JobMatchView(props: JobMatchViewProps) {
     const [error, setError] = useState<string | null>(null);
     const [pendingDelete, setPendingDelete] = useState<JobRecord | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [analysing, setAnalysing] = useState(false);
     const selected = jobs.find(j => j.id === selectedJobId) ?? null;
 
     return (
         // Container queries, not viewport breakpoints: the width left over depends on the sidebar and the resizable preview pane.
-        <div className="@container">
-            <div className="grid gap-6 @4xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]">
-                <aside className="min-w-0 space-y-4">
-                    <AnalyzeForm resumeData={props.resumeData} onAnalyzed={(job) => { onSelectJob(job.id); router.refresh(); }} onError={setError} />
-                    {jobs.length > 0 && (
-                        <>
-                            <div className="@4xl:hidden">
-                                <Select value={selectedJobId ?? ""} onChange={e => onSelectJob(e.target.value || null)} aria-label="Analysed jobs">
-                                    <option value="">Pick an analysed job…</option>
-                                    {jobs.map(j => <option key={j.id} value={j.id}>{j.title}{j.company ? ` · ${j.company}` : ""}</option>)}
-                                </Select>
-                            </div>
-                            <div className="hidden @4xl:block">
-                                <p className="mb-2 px-1 text-13 font-medium text-fg-muted">Analysed jobs</p>
-                                <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
-                                    {jobs.map(j => {
-                                        const active = j.id === selectedJobId;
-                                        return (
-                                            <li key={j.id} className={cn("group/job flex items-center transition-colors hover:bg-surface-hover", active && "bg-surface-muted")}>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => onSelectJob(j.id)}
-                                                    aria-current={active || undefined}
-                                                    className={cn("flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-3 text-left", FOCUS_RING, "focus-visible:ring-inset focus-visible:ring-offset-0")}
-                                                >
-                                                    <span className={cn("h-8 w-0.5 shrink-0 rounded-full", active ? "bg-accent" : "bg-transparent")} aria-hidden />
-                                                    <span className="min-w-0 flex-1">
-                                                        <span className="block truncate text-sm font-medium text-fg">{j.title}</span>
-                                                        <span className="block truncate text-xs text-fg-muted">{j.company || "Unknown company"}</span>
-                                                    </span>
-                                                    {j.match.status === "running" && <Loader2 className="size-3.5 shrink-0 animate-spin text-fg-subtle" aria-label="Checking matches with AI" />}
-                                                    {j.lastScore !== null && <span className="text-13 tabular-nums text-fg-muted" title="Last score of your working selection">{j.lastScore}</span>}
-                                                </button>
-                                                <IconButton
-                                                    icon={Trash2}
-                                                    variant="ghost"
-                                                    aria-label={`Delete ${j.title}`}
-                                                    onClick={() => setPendingDelete(j)}
-                                                    className="mx-1 opacity-0 group-hover/job:opacity-100 focus-visible:opacity-100"
-                                                />
-                                            </li>
-                                        );
-                                    })}
-                                </ul>
-                            </div>
-                        </>
-                    )}
-                </aside>
-
+        <div className="@container space-y-4">
+            {error && <NoticeBanner tone="danger" onDismiss={() => setError(null)}>{error}</NoticeBanner>}
+            {selected ? (
                 <section className="@container min-w-0 space-y-4">
-                    {error && <NoticeBanner tone="danger" onDismiss={() => setError(null)}>{error}</NoticeBanner>}
-                    {selected ? (
-                        <JobDetail key={selected.id} job={selected} {...props} onDelete={() => setPendingDelete(selected)} onError={setError} />
-                    ) : (
-                        <EmptyState icon={Target} title="Pick a job or analyse a new one" body="Paste a job description on the left. We extract its requirements and score your résumé against them." />
-                    )}
+                    <Button size="sm" variant="ghost" icon={ArrowLeft} onClick={() => onSelectJob(null)}>All jobs</Button>
+                    <JobDetail key={selected.id} job={selected} {...props} onDelete={() => setPendingDelete(selected)} onError={setError} />
                 </section>
+            ) : (
+                <TrackerView jobs={jobs} onOpen={onSelectJob} onAnalyse={() => setAnalysing(true)} onDelete={setPendingDelete} />
+            )}
 
-                <ConfirmDialog
-                    open={pendingDelete !== null}
-                    title={`Delete "${pendingDelete?.title}"?`}
-                    confirmLabel="Delete"
-                    danger
-                    busy={deleting}
-                    onCancel={() => setPendingDelete(null)}
-                    onConfirm={async () => {
-                        if (!pendingDelete) return;
-                        setDeleting(true);
-                        try {
-                            await deleteJob(pendingDelete.id);
-                            if (selectedJobId === pendingDelete.id) onSelectJob(null);
-                            setPendingDelete(null);
-                            router.refresh();
-                        } catch (err) {
-                            setError(err instanceof Error ? err.message : "Could not delete the job.");
-                        } finally {
-                            setDeleting(false);
-                        }
-                    }}
-                >
-                    <p>The analysis and its suggestions are removed. Your library is not affected.</p>
-                </ConfirmDialog>
-            </div>
+            <Dialog open={analysing} onClose={() => setAnalysing(false)} title="Analyse a job" description="Paste a job description or upload it. We extract its requirements and score your résumé against them.">
+                <AnalyzeForm
+                    resumeData={props.resumeData}
+                    onAnalyzed={(job) => { setAnalysing(false); onSelectJob(job.id); router.refresh(); }}
+                    onError={setError}
+                />
+            </Dialog>
+
+            <ConfirmDialog
+                open={pendingDelete !== null}
+                title={`Delete "${pendingDelete?.title}"?`}
+                confirmLabel="Delete"
+                danger
+                busy={deleting}
+                onCancel={() => setPendingDelete(null)}
+                onConfirm={async () => {
+                    if (!pendingDelete) return;
+                    setDeleting(true);
+                    try {
+                        await deleteJob(pendingDelete.id);
+                        if (selectedJobId === pendingDelete.id) onSelectJob(null);
+                        setPendingDelete(null);
+                        router.refresh();
+                    } catch (err) {
+                        setError(err instanceof Error ? err.message : "Could not delete the job.");
+                    } finally {
+                        setDeleting(false);
+                    }
+                }}
+            >
+                <p>The analysis, its suggestions and the tracker entry are removed. Your library is not affected.</p>
+            </ConfirmDialog>
         </div>
     );
 }
@@ -204,9 +164,7 @@ function AnalyzeForm({ resumeData, onAnalyzed, onError }: { resumeData: ResumeDa
     };
 
     return (
-        <Card>
-            <CardHeader title="Analyse a job" />
-            <CardBody className="space-y-3">
+        <div className="space-y-3">
                 <Textarea value={text} onChange={e => setText(e.target.value)} rows={7} placeholder="Paste the job description here…" disabled={busy !== null} />
                 <div className="flex items-center gap-3 text-xs text-fg-subtle">
                     <span className="h-px flex-1 bg-border" />or upload<span className="h-px flex-1 bg-border" />
@@ -229,8 +187,7 @@ function AnalyzeForm({ resumeData, onAnalyzed, onError }: { resumeData: ResumeDa
                 <Button variant="primary" className="w-full" onClick={submit} disabled={!text.trim() && !file} loading={busy !== null}>
                     {busy ?? "Analyse"}
                 </Button>
-            </CardBody>
-        </Card>
+        </div>
     );
 }
 
@@ -254,7 +211,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
         source.kind === "upload" && externalResume ? externalResume.data
         : variant ? applyVariant(resumeData, variant.items, variant.hidden)
         : resumeData;
-    const match = scoreJob(job.requirements, resume, aliases);
+    const match = scoreJob(job.requirements, resume, aliases, { titleSim: job.titleSim });
     const { pages, error: pageError } = useResumePageCount(resume);
     const reqDisplay = (name: string) => job.requirements.find(r => r.name === name)?.display ?? name;
 
@@ -445,6 +402,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                         </>
                     }
                 />
+                <JobTrackingStrip job={job} onError={onError} />
                 <CardBody className="space-y-3">
                     {job.summary && <p className="text-13 text-fg-muted">{job.summary}</p>}
                     <RequirementGroups requirements={job.requirements} />
@@ -483,18 +441,28 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                     {source.kind === "upload" && !externalResume ? (
                         <p className="text-13 text-fg-muted">Upload a résumé to score it against this job. It is not saved unless you import it.</p>
                     ) : (
-                        <div className="flex flex-col gap-5 @2xl:flex-row @2xl:items-center">
-                            <ScoreRing score={match.score} size={80} />
-                            <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-13">
-                                <dt className="text-fg-subtle">Must-haves</dt><dd className="tabular-nums">{match.must.hit}/{match.must.total} covered</dd>
-                                <dt className="text-fg-subtle">Nice-to-haves</dt><dd className="tabular-nums">{match.nice.hit}/{match.nice.total} covered</dd>
-                                <dt className="text-fg-subtle">Length</dt>
-                                <dd className={cn("tabular-nums", pages !== null && pages > 1 && "text-warning")}>{pages === null ? (pageError ? "Couldn't measure length" : "…") : `${pages} ${pages === 1 ? "page" : "pages"}${pages > 1 ? " · over one page" : ""}`}</dd>
-                            </dl>
-                            <div className="@2xl:ml-auto">
-                                <Button size="sm" onClick={recheck} loading={busy === "recheck" || matchRunning} title="Ask the AI to match requirements against your whole library: equivalent degrees, implied skills, related projects.">
-                                    Re-check with AI
-                                </Button>
+                        <div className="space-y-5">
+                            <div className="flex flex-col gap-5 @2xl:flex-row @2xl:items-center">
+                                <ScoreHeadline match={match} />
+                                <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-13">
+                                    <dt className="text-fg-subtle">Length</dt>
+                                    <dd className={cn("tabular-nums", pages !== null && pages > 1 && "text-warning")}>{pages === null ? (pageError ? "Couldn't measure length" : "…") : `${pages} ${pages === 1 ? "page" : "pages"}${pages > 1 ? " · over one page" : ""}`}</dd>
+                                </dl>
+                                <div className="@2xl:ml-auto">
+                                    <Button size="sm" onClick={recheck} loading={busy === "recheck" || matchRunning} title="Re-run semantic matching and the AI check against your whole library: equivalent degrees, implied skills, related projects.">
+                                        Re-check with AI
+                                    </Button>
+                                </div>
+                            </div>
+                            <div className="grid gap-6 @3xl:grid-cols-2">
+                                <section aria-label="Score breakdown" className="space-y-2">
+                                    <h3 className="text-13 font-medium text-fg">Breakdown</h3>
+                                    <SubScoreBars subScores={match.subScores} />
+                                </section>
+                                <section aria-label="What would raise the score" className="space-y-2">
+                                    <h3 className="text-13 font-medium text-fg">What would raise it</h3>
+                                    <WhatIfList rows={match.rows} />
+                                </section>
                             </div>
                         </div>
                     )}
@@ -510,43 +478,14 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                     fitNotes={job.fitNotes}
                 />
 
-                {/* ATS table, still collapsible */}
+                {/* Evidence per requirement, collapsible */}
                 <div className="border-t border-border">
                     <CardHeader
-                        title="ATS keyword check"
+                        title="Evidence by requirement"
+                        hint="Direct = a skill on the item or confirmed by the AI check · Related = an equivalent skill · Semantic = a line that means it · Keyword only = printed but not shown in your work."
                         action={<Button size="sm" variant="ghost" onClick={() => setShowAts(v => !v)} aria-expanded={showAts}>{showAts ? "Hide" : "Show"}<ChevronDown className={cn("size-3.5 transition-transform", showAts && "rotate-180")} /></Button>}
                     />
-                    {showAts && (
-                        <Table>
-                        <thead>
-                            <tr>
-                                <Th>Requirement</Th>
-                                <Th>Priority</Th>
-                                <Th>In your tags</Th>
-                                <Th>Printed on résumé</Th>
-                                <Th className="min-w-56">Where</Th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {match.rows.map(r => (
-                                <tr key={r.requirement.name}>
-                                    <Td className={cn("whitespace-nowrap font-medium", r.strength === 0 ? "text-danger" : "text-fg")}>{r.requirement.display}</Td>
-                                    <Td className="whitespace-nowrap text-fg-muted">
-                                        {r.requirement.importance === "must" ? "Must" : "Nice"}
-                                        <span className="text-fg-subtle" title={r.tier === "hard" ? "Hard skill: missing it counts fully against the score." : "Soft skill or practice: missing it is keyword advice, weighted 0.3."}> · {r.tier}</span>
-                                    </Td>
-                                    <Td title={r.reason || undefined}>
-                                        {r.tagHit ? <span className="font-medium text-success">Yes · {r.weight}</span> : <span className="text-fg-subtle">No</span>}
-                                        {r.via.length > 0 && <span className="block text-xs text-fg-muted">via {r.via.slice(0, 3).join(", ")}{r.via.length > 3 ? ` +${r.via.length - 3}` : ""}</span>}
-                                        {r.via.length === 0 && r.reason && <span className="block text-xs text-fg-muted">inferred from your items</span>}
-                                    </Td>
-                                    <Td>{r.literalHit ? <span className="font-medium text-success">Yes</span> : <span className={r.tagHit ? "font-medium text-warning" : "text-fg-subtle"}>{r.tagHit ? "Not literally" : "No"}</span>}</Td>
-                                    <Td className="min-w-56 text-xs leading-relaxed text-fg-muted">{r.items.map(i => i.label).slice(0, 3).join(" · ")}{r.items.length > 3 ? ` +${r.items.length - 3}` : ""}</Td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </Table>
-                    )}
+                    {showAts && <EvidenceTable rows={match.rows} />}
                 </div>
             </Card>
 
@@ -612,6 +551,42 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
 }
 
 // ---------- requirement groups
+
+/** Status, applied date, posting link and notes for one job (the tracker fields). */
+function JobTrackingStrip({ job, onError }: { job: JobRecord; onError: (e: string | null) => void }) {
+    const router = useRouter();
+    const [notes, setNotes] = useState(job.notes);
+    const save = async (fn: () => Promise<void>) => {
+        try { await fn(); router.refresh(); } catch (err) { onError(err instanceof Error ? err.message : "Could not save."); }
+    };
+    return (
+        <div className="grid gap-3 border-b border-border px-4 py-3 @2xl:grid-cols-[10rem_10rem_minmax(0,1fr)]">
+            <Field label="Status" htmlFor={`status-${job.id}`}>
+                <Select id={`status-${job.id}`} value={job.status} onChange={e => void save(() => setJobStatus(job.id, e.target.value as JobStatus))}>
+                    {JOB_STATUSES.map(st => <option key={st} value={st}>{JOB_STATUS_LABEL[st]}</option>)}
+                </Select>
+            </Field>
+            <Field label="Applied" htmlFor={`applied-${job.id}`}>
+                <Input id={`applied-${job.id}`} type="date" defaultValue={job.appliedAt ?? ""} onBlur={e => {
+                    const v = e.target.value || null;
+                    if (v !== job.appliedAt) void save(() => updateJobMeta(job.id, { appliedAt: v }));
+                }} />
+            </Field>
+            <Field label="Notes" htmlFor={`notes-${job.id}`} hint={job.url ? undefined : "Private to you."}>
+                <div className="flex items-center gap-2">
+                    <Input id={`notes-${job.id}`} value={notes} placeholder="Recruiter name, referral, next step…" onChange={e => setNotes(e.target.value)} onBlur={() => {
+                        if (notes !== job.notes) void save(() => updateJobMeta(job.id, { notes }));
+                    }} />
+                    {job.url && (
+                        <a href={job.url} target="_blank" rel="noreferrer noopener" className={cn("inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 text-13 text-fg-muted hover:bg-surface-hover hover:text-fg", FOCUS_RING)}>
+                            <ExternalLink className="size-3.5" aria-hidden />Posting
+                        </a>
+                    )}
+                </div>
+            </Field>
+        </div>
+    );
+}
 
 function RequirementGroups({ requirements }: { requirements: Requirement[] }) {
     const order = (a: Requirement, b: Requirement) =>

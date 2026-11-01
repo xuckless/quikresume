@@ -27,6 +27,7 @@ import { RECONCILE_SYSTEM_PROMPT, reconcileUserMessage, type ProposalPromptItem,
 import { cleanModelText } from "@/lib/security/prompt";
 import type { Requirement } from "@/lib/match/types";
 import type { CandidatePromptContext } from "@/lib/about/types";
+import { reconcileHints, semanticEvidence } from "@/lib/match/evidence";
 
 const MAX_TAGS = 400;
 const MAX_ITEMS = 120;
@@ -82,7 +83,11 @@ export async function reconcileRequirements(
     aliases: AliasMap,
     /** Routes with a time budget pass a shorter timeout and no retry. */
     /** `effort` defaults to the reconcile effort (max); inline callers with a short budget pass "low". */
-    opts: { timeoutMs?: number; retries?: number; candidate?: CandidatePromptContext | null; effort?: Effort } = {},
+    opts: {
+        timeoutMs?: number; retries?: number; candidate?: CandidatePromptContext | null; effort?: Effort;
+        /** Similarity-search candidates per requirement (display name -> item ids with p), from lib/match/evidence.ts. */
+        hints?: Record<string, { id: string; p: number }[]>;
+    } = {},
 ): Promise<ReconcileResult> {
     const inventory = aggregateTags(resume, { selectedOnly: false });
     const tagByKey = new Map(inventory.map(t => [t.name, t]));
@@ -103,7 +108,7 @@ export async function reconcileRequirements(
         const result = await chatCompletion(
             [
                 { role: "system", content: RECONCILE_SYSTEM_PROMPT },
-                { role: "user", content: reconcileUserMessage({ requirements, candidateTags, items, candidate: opts.candidate }) },
+                { role: "user", content: reconcileUserMessage({ requirements, candidateTags, items, candidate: opts.candidate, hints: opts.hints }) },
             ],
             { model: textModel(), json: true, effort, temperature: 0.1, maxTokens: maxTokensFor(effort, 6000), timeoutMs: opts.timeoutMs ?? 60_000, retries: opts.retries },
         );
@@ -159,16 +164,39 @@ export async function reconcileRequirements(
  */
 export async function runReconcileJob(
     uid: string,
-    job: { id: string; requirements: Requirement[] },
+    job: { id: string; title: string; requirements: Requirement[] },
     resume: ResumeData,
     aliases: AliasMap,
     candidate: CandidatePromptContext | null,
     timeoutMs: number,
 ): Promise<void> {
     const libraryHash = reconcileLibraryHash(job.requirements, resume, candidate);
+    const started = Date.now();
     try {
-        const rec = await reconcileRequirements(job.requirements, resume, aliases, { candidate, timeoutMs, retries: 0 });
-        await finishJobMatch(uid, job.id, rec.warning ? { libraryHash, warning: rec.warning } : { requirements: rec.requirements, libraryHash });
+        // Semantic pass first (embeddings + reranker, seconds): its uncertain candidates become hints for the
+        // LLM judge, and its hits are stored on the requirements whatever the judge does.
+        const sem = await semanticEvidence(uid, job.requirements, resume, job.title);
+        const withSemantic = job.requirements.map(r => ({ ...r, semantic: sem.byRequirement.get(r.name) ?? r.semantic ?? [] }));
+        const rec = await reconcileRequirements(withSemantic, resume, aliases, {
+            candidate, timeoutMs: Math.max(10_000, timeoutMs - (Date.now() - started)), retries: 0, hints: reconcileHints(withSemantic, sem),
+        });
+        const judged = rec.warning ? withSemantic : rec.requirements;
+        // The judge saw these items: cited = confirmed, not cited = rejected. Without a verdict they stay unjudged (null).
+        const final = judged.map(r => {
+            // O*NET category match: named products count as satisfying tags (coverage "related").
+            const tax = sem.taxonomy.get(r.name);
+            const satisfiedBy = tax ? [...new Set([...r.satisfiedBy, ...tax.satisfiers])].slice(0, 12) : r.satisfiedBy;
+            const reason = r.reason || (tax ? `Counts as ${tax.category.toLowerCase()} (O*NET).` : "");
+            return {
+                ...r, satisfiedBy, reason,
+                semantic: r.semantic.map(h => ({ ...h, confirmed: rec.warning ? null : r.evidence.includes(h.itemId) })),
+            };
+        });
+        const warning = rec.warning ?? undefined;
+        await finishJobMatch(uid, job.id, warning
+            ? { requirements: final, titleSim: sem.titleSim, libraryHash, warning }
+            : { requirements: final, titleSim: sem.titleSim, libraryHash });
+        if (sem.warning) console.warn("[reconcile] semantic:", sem.warning);
     } catch (err) {
         if ((err as { code?: number })?.code === 5) return; // job deleted meanwhile
         console.error("[reconcile] background run failed:", err);

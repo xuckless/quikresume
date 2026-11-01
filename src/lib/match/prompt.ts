@@ -56,6 +56,7 @@ How to reason (like a human reading the resume, not a keyword matcher):
 - Cite evidence item ids only for items that genuinely demonstrate the requirement. Prefer satisfiedBy (tag names) when a tag fits; use evidence for cases no tag captures.
 - When nothing in the library supports a requirement, leave it out. Never stretch: a hiring manager must agree with every match.
 - For a student or new graduate (see "candidate"), coursework, academic and personal projects count as evidence of fundamentals; they still never satisfy a named tool they do not use.
+- "hints" (optional) maps some requirement names to item ids a similarity search found close, with its probability. They are leads, not evidence: open the item, and cite it only when it genuinely demonstrates the requirement. Hints can be wrong in both directions (a near-miss tool, a generic line), and items without a hint can still be evidence.
 - satisfiedBy entries must be copied verbatim from candidateTags names; evidence ids verbatim from items. Valid JSON only, no markdown.
 ${CANDIDATE_CONTEXT_RULE}
 ${UNTRUSTED_INPUT_RULE}`;
@@ -67,12 +68,14 @@ export function reconcileUserMessage(input: {
     candidateTags: ReconcileTagRow[];
     items: ProposalPromptItem[];
     candidate?: Candidate;
+    hints?: Record<string, { id: string; p: number }[]>;
 }): string {
     return JSON.stringify({
         candidate: candidatePayload(input.candidate),
         requirements: input.requirements.map(r => ({ name: r.display, kind: r.kind, importance: r.importance })),
         candidateTags: input.candidateTags,
         items: input.items,
+        ...(input.hints && Object.keys(input.hints).length ? { hints: input.hints } : {}),
     });
 }
 
