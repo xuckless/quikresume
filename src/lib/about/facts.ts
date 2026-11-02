@@ -7,7 +7,9 @@ import { currentMonthKey, monthKey, PRESENT } from "@/lib/dates";
 import { stableHash } from "@/lib/hash";
 import type { CandidateFacts, CareerStage, CharacterizationAnswers, EducationStatus, FollowUp } from "./types";
 
-const INTERN_RE = /\b(intern(ship)?|co-?op|trainee|apprentice|student\s+(assistant|worker))\b/i;
+// Apprenticeships and trainee roles are paid work that trades and many employers count toward
+// years of experience, so only internships, co-ops and student jobs are set apart.
+const INTERN_RE = /\b(intern(ship)?|co-?op|student\s+(assistant|worker))\b/i;
 
 type Interval = [number, number];
 

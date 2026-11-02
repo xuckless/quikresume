@@ -19,6 +19,8 @@ export async function getCertifications(): Promise<CertificationItem[]> {
         name: strOf(d.name),
         issuer: strOrNull(d.issuer),
         year: strOf(d.year),
+        credentialId: strOrNull(d.credentialId),
+        expires: strOrNull(d.expires),
         isSelected: Boolean(d.isSelected),
         ...tagFieldsOf(d),
         createdAt: isoOf(d.createdAt),
@@ -34,6 +36,8 @@ export async function updateCertification(certificationId: string, formData: For
     if (formData.has("name")) patch.name = formStr(formData, "name");
     if (formData.has("issuer")) patch.issuer = formStrOrNull(formData, "issuer");
     if (formData.has("year")) patch.year = formStr(formData, "year", 16);
+    if (formData.has("credentialId")) patch.credentialId = formStrOrNull(formData, "credentialId", 60);
+    if (formData.has("expires")) patch.expires = formStrOrNull(formData, "expires", 16);
     if (formData.has("isSelected")) patch.isSelected = formBool(formData, "isSelected");
 
     if (Object.keys(patch).length > 0) await updateUserDoc(uid, COL, certificationId, patch);

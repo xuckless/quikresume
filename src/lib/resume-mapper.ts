@@ -118,6 +118,8 @@ export function toResumeData(src: ResumeSources): ResumeData {
             name: c.name,
             issuer: s(c.issuer),
             year: c.year,
+            credentialId: s(c.credentialId),
+            expires: s(c.expires),
             isSelected: c.isSelected,
             tags: c.tags,
             tagsHash: c.tagsHash,

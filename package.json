@@ -10,13 +10,15 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "node scripts/copy-typst-wasm.mjs && node scripts/copy-pdfjs-worker.mjs",
-    "typst:sample": "typst compile --root public/typst --font-path public/typst/fonts --ignore-system-fonts public/typst/main.typ .typst-out/sample.pdf"
+    "typst:sample": "typst compile --root public/typst --font-path public/typst/fonts --ignore-system-fonts public/typst/main.typ .typst-out/sample.pdf",
+    "test": "vitest run"
   },
   "dependencies": {
     "@auth/firebase-adapter": "^2.11.1",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@myriaddreamin/typst-ts-node-compiler": "^0.7.0",
     "@myriaddreamin/typst-ts-renderer": "0.7.0",
     "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
     "@myriaddreamin/typst.ts": "0.7.0",
@@ -41,6 +43,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }

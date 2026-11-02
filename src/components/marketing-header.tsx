@@ -1,6 +1,6 @@
 // Header for the public pages (landing, login). The signed-in app uses the sidebar shell.
 import Link from "next/link";
-import Image from "next/image";
+import { Wordmark } from "@/components/brand";
 import type { Session } from "next-auth";
 
 const BTN = "inline-flex h-9 items-center justify-center rounded-md px-3.5 text-sm font-medium transition-colors";
@@ -10,8 +10,7 @@ export function MarketingHeader({ session, backHome = false }: { session: Sessio
         <header className="border-b border-border bg-surface">
             <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-6">
                 <Link href="/" className="flex items-center gap-2">
-                    <Image src="/icons/quik-resume.svg" alt="" width={24} height={24} className="size-6" priority />
-                    <span className="text-[15px] font-semibold tracking-tight">quikResume</span>
+                    <Wordmark className="text-[18px]" />
                 </Link>
                 <nav className="flex items-center gap-2">
                     {session ? (
@@ -34,7 +33,12 @@ export function MarketingFooter() {
     return (
         <footer className="border-t border-border">
             <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-6 py-8 text-13 text-fg-subtle sm:flex-row sm:items-center sm:justify-between">
-                <span>&copy; {new Date().getFullYear()} quikResume. All rights reserved.</span>
+                <span>
+                    &copy; {new Date().getFullYear()} quikResume. All rights reserved.
+                    <span className="block text-xs">
+                        Skill categories from <a href="https://www.onetcenter.org/database.html" className="underline underline-offset-2 hover:text-fg" rel="noreferrer noopener" target="_blank">O*NET 30.0</a> by the U.S. Department of Labor, ETA, used under CC BY 4.0.
+                    </span>
+                </span>
                 <nav className="flex gap-5">
                     <Link href="#features" className="hover:text-fg">Features</Link>
                     <Link href="/login" className="hover:text-fg">Log in</Link>

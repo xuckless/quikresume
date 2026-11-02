@@ -13,6 +13,8 @@ import type { PersonalInfo, ResumeData, ResumeListKey } from "@/types/schema";
 import { orderedItems } from "@/lib/layout/order";
 import { defaultLayout, itemLayout, sectionSpacing } from "@/lib/layout/presets";
 import type { ResumeLayout, SectionId } from "@/lib/layout/types";
+import { ACCENTS, FONT_PAIRS, type PaperId } from "@/lib/layout/theme";
+import type { TemplateId } from "@/lib/typst/templates";
 
 /** Per-entry layout, present on every list entry (pt / booleans). */
 export interface TypstItemLayout {
@@ -33,6 +35,10 @@ export interface TypstLayout {
     order: TypstSectionKey[];
     page: { margin: number; size: number; leading: number };
     sections: Record<TypstSectionKey, TypstSectionLayout>;
+    /** Template id plus the overrides templates read (`""` = the template's own choice). */
+    theme: { template: TemplateId; accent: string; heading_font: string; body_font: string; paper: PaperId };
+    /** Renamed section headings by template key; missing = the template's own heading. */
+    headings: Partial<Record<TypstSectionKey, string>>;
 }
 
 export type TypstSectionKey =
@@ -152,10 +158,25 @@ function typstLayout(layout: ResumeLayout): TypstLayout {
         order: layout.sectionOrder.map(id => TYPST_SECTION_KEY[id]),
         page: { margin: layout.page.marginMm, size: layout.page.fontPt, leading: layout.page.leadingEm },
         sections,
+        theme: {
+            template: layout.theme.templateId,
+            accent: ACCENTS[layout.theme.accent].hex,
+            heading_font: FONT_PAIRS[layout.theme.font].heading,
+            body_font: FONT_PAIRS[layout.theme.font].body,
+            paper: layout.theme.paper,
+        },
+        headings: Object.fromEntries((Object.entries(layout.headings ?? {}) as [SectionId, string][]).map(([id, h]) => [TYPST_SECTION_KEY[id], h])),
     };
 }
 
 const s = (v: string | null | undefined): string => (v ?? "").trim();
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** "2027-05" -> "May 2027", "2027" -> "2027". */
+function expiryLabel(v: string): string {
+    const m = /^(\d{4})-(\d{2})/.exec(v);
+    return m ? `${MONTHS[Number(m[2]) - 1] ?? ""} ${m[1]}`.trim() : v;
+}
 
 /** Newline-separated text -> trimmed, non-empty bullet strings (leading "- " / "• " stripped). */
 export function toBullets(text: string | null | undefined): string[] {
@@ -240,7 +261,13 @@ export function toTypstDoc(data: ResumeData): TypstResumeDoc {
             description: s(a.description),
             ...lay(a.id),
         })),
-        certifications: pick("certifications").map(c => ({ name: s(c.name), issuer: s(c.issuer), year: s(c.year), ...lay(c.id) })),
+        // Licence number and expiry ride on the existing fields so every template prints them unchanged.
+        certifications: pick("certifications").map(c => ({
+            name: s(c.name),
+            issuer: [s(c.issuer), s(c.credentialId) && `No. ${s(c.credentialId)}`].filter(Boolean).join(" · "),
+            year: [s(c.year), s(c.expires) && `exp. ${expiryLabel(s(c.expires))}`].filter(Boolean).join(" · "),
+            ...lay(c.id),
+        })),
         languages: pick("languages").map(l => ({ language: s(l.language), proficiency: s(l.proficiency), ...lay(l.id) })),
         layout: typstLayout(layout),
     };

@@ -17,14 +17,15 @@ Output ONE JSON object and nothing else:
 {"title":"<job title>","company":"<company or empty>","summary":"<one or two sentences on the role>","requirements":[{"name":"<canonical skill/keyword>","kind":"<kind>","importance":"must"|"nice","yearsMin":<number or null>}],"fitNotes":["<short note>"]}
 
 Kinds (exact ids): ${TAG_KINDS.map(k => k.id).join(", ")}.
-- technical-skill: languages, frameworks, concepts. tool-platform: products, clouds, tools. domain: industries / problem areas. soft-skill: interpersonal traits and generic abilities ("Analytical Thinking", "Communication", "Problem Solving"). methodology: ways of working and engineering practices ("Agile", "CI/CD", "Software Development Lifecycle", "Documentation", "Software Testing", "Code Review", "Debugging"). credential: degrees, certifications, clearances. language: human languages.
-- Hard skills (technical-skill, tool-platform, credential, language) are scored as disqualifying when missing; soft-skill and methodology entries are keyword advice. Classify accordingly: a named language, framework, product or degree is hard; a practice or trait is not, even when the posting lists it under "technical requirements".
+- technical-skill: the field's hard skills ("Python", "Patient Assessment", "Financial Reporting", "Lesson Planning", "Blueprint Reading"). tool-platform: named products, systems and equipment ("Epic", "Salesforce", "Microsoft Excel", "AutoCAD", "Kubernetes"). domain: industries / problem areas. soft-skill: interpersonal traits and generic abilities ("Analytical Thinking", "Communication", "Problem Solving"). methodology: ways of working and general practices ("Agile", "CI/CD", "Software Development Lifecycle", "Documentation", "Code Review", "Infection Control", "Classroom Management"). credential: degrees, certifications, licences, registrations, clearances ("Registered Nurse", "CPA", "Teaching Certificate", "Journeyman Electrician", "Secret Clearance"). language: human languages.
+- Hard skills (technical-skill, tool-platform, credential, language) are scored as disqualifying when missing; soft-skill and methodology entries are keyword advice. Classify accordingly: a named skill, product, licence or degree is hard; a practice or trait is not, even when the posting lists it under "technical requirements". A licence the posting requires to practise ("active RN licence", "valid driver's licence", "CPA") is a must credential.
 
 Rules:
 - 8 to 30 requirements. Merge duplicates. Skip generic filler ("team player", "fast-paced environment") unless the posting stresses it.
 - "must": stated as required / must / minimum qualifications, or clearly central to the role. "nice": preferred / bonus / plus.
-- Canonical names as commonly written: "PostgreSQL", "Node.js", "Amazon Web Services", "Machine Learning", "CI/CD", "Bachelor of Science". Split compounds ("React/Vue" -> two entries). No version numbers.
-- Degree requirements become two entries: the level and the field, both credential. Level: "Bachelor's Degree" / "Master's Degree" / "Doctorate" when the posting says bachelor's/master's/PhD generically; the specific degree ("Bachelor of Science") only when the posting names it. Field: "Computer Science". "or a related field" makes the field entry "nice"; "or equivalent experience" makes both "nice".
+- Canonical names as commonly written in the field: "PostgreSQL", "Amazon Web Services", "Registered Nurse", "Basic Life Support", "Microsoft Excel", "Bachelor of Science". Split compounds ("React/Vue" -> two entries; "BLS/ACLS" -> two). No version numbers.
+- Degree requirements become two entries: the level and the field, both credential. Level: "Bachelor's Degree" / "Master's Degree" / "Doctorate" when the posting says bachelor's/master's/PhD generically; the specific degree ("Bachelor of Science") only when the posting names it. Field: "Computer Science", "Nursing", "Accounting". "or a related field" makes the field entry "nice"; "or equivalent experience" makes both "nice".
+- Alternatives ("Epic or Meditech EHR", "Python or Java", "QuickBooks or Xero"): one "must" entry for what they have in common, named as the category ("EHR Software", "Programming Language" is too vague so use "Object-Oriented Programming", "Accounting Software"), plus each named option as its own "nice" entry. Never make two alternatives both "must".
 - yearsMin only when the posting states a number of years for that requirement (e.g. "5+ years of Go" -> Go with yearsMin 5).
 - Never invent requirements that are not in the posting.
 - Requirements describe the posting only; the candidate never changes them.
@@ -41,7 +42,7 @@ export function jdUserMessage(text: string, candidate?: Candidate): string {
 
 // ---------- reconcile: requirements vs the candidate's actual library
 
-export const RECONCILE_SYSTEM_PROMPT = `You are a senior technical recruiter. A job's requirements are matched against a candidate's skill tags by exact name, which misses what a human sees at once. Decide, requirement by requirement, which of the candidate's OTHER tags and items also satisfy it. A requirement whose exact tag the candidate already has may still get extra satisfiers or evidence; one nothing supports is left out.
+export const RECONCILE_SYSTEM_PROMPT = `You are an experienced recruiter in the posting's field. A job's requirements are matched against a candidate's skill tags by exact name, which misses what a human sees at once. Decide, requirement by requirement, which of the candidate's OTHER tags and items also satisfy it. A requirement whose exact tag the candidate already has may still get extra satisfiers or evidence; one nothing supports is left out.
 
 Input: {"requirements":[{"name":"...","kind":"...","importance":"must"|"nice"}],"candidateTags":[{"name":"...","kind":"...","items":<count>}],"items":[{"id":"...","section":"...","label":"...","bullets":["..."],"tags":["..."]}]}
 
@@ -49,13 +50,14 @@ Output ONE JSON object and nothing else:
 {"matches":[{"requirement":"<requirement name, verbatim>","satisfiedBy":["<candidateTags name, verbatim>"],"evidence":["<item id>"],"reason":"<one short sentence>"}]}
 
 How to reason (like a human reading the resume, not a keyword matcher):
-- A more specific or higher credential satisfies a generic one: "Bachelor of Science" or "Master of Engineering" satisfies "Bachelor's Degree"; "B.Sc. in Computer Science" satisfies "Computer Science"; a Software Engineering degree satisfies "Computer Science" for software roles.
+- A more specific or higher credential satisfies a generic one: "Bachelor of Science" or "Master of Engineering" satisfies "Bachelor's Degree"; "B.Sc. in Computer Science" satisfies "Computer Science"; a Software Engineering degree satisfies "Computer Science" for software roles; "Nurse Practitioner" satisfies "Registered Nurse"; "ACLS" holders are expected to hold "BLS" only when the item says so.
 - A described practice satisfies the concept: an item that split a system into several services satisfies "Microservices"; deploying with Docker images on a cluster satisfies "Containerisation"; a project that trains a CNN satisfies "Deep Learning".
-- A body of work satisfies a field: several substantial computer-science projects (compilers, systems, algorithms, distributed systems) evidence "Computer Science"; shipping production software evidences "Software Engineering" and "Software Development Lifecycle".
+- A body of work satisfies a field: several substantial computer-science projects evidence "Computer Science"; shipping production software evidences "Software Development Lifecycle"; years on an ICU unit evidence "Critical Care"; running a classroom evidences "Classroom Management".
 - Equivalents and supersets count ("Amazon Web Services" for "Cloud Computing"; "PostgreSQL" for "SQL" and "Relational Databases"; "React" for "Frontend Development"). The reverse does NOT: "Cloud Computing" does not satisfy "Amazon Web Services", "SQL" does not satisfy "PostgreSQL", and one named tool never satisfies a different named tool (React is not Angular, Java is not JavaScript).
 - Cite evidence item ids only for items that genuinely demonstrate the requirement. Prefer satisfiedBy (tag names) when a tag fits; use evidence for cases no tag captures.
 - When nothing in the library supports a requirement, leave it out. Never stretch: a hiring manager must agree with every match.
 - For a student or new graduate (see "candidate"), coursework, academic and personal projects count as evidence of fundamentals; they still never satisfy a named tool they do not use.
+- "hints" (optional) maps some requirement names to item ids a similarity search found close, with its probability. They are leads, not evidence: open the item, and cite it only when it genuinely demonstrates the requirement. Hints can be wrong in both directions (a near-miss tool, a generic line), and items without a hint can still be evidence.
 - satisfiedBy entries must be copied verbatim from candidateTags names; evidence ids verbatim from items. Valid JSON only, no markdown.
 ${CANDIDATE_CONTEXT_RULE}
 ${UNTRUSTED_INPUT_RULE}`;
@@ -67,12 +69,14 @@ export function reconcileUserMessage(input: {
     candidateTags: ReconcileTagRow[];
     items: ProposalPromptItem[];
     candidate?: Candidate;
+    hints?: Record<string, { id: string; p: number }[]>;
 }): string {
     return JSON.stringify({
         candidate: candidatePayload(input.candidate),
         requirements: input.requirements.map(r => ({ name: r.display, kind: r.kind, importance: r.importance })),
         candidateTags: input.candidateTags,
         items: input.items,
+        ...(input.hints && Object.keys(input.hints).length ? { hints: input.hints } : {}),
     });
 }
 

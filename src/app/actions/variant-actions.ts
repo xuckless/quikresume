@@ -11,7 +11,6 @@ import { normalizeLayout } from "@/lib/layout/presets";
 import type { ResumeLayout } from "@/lib/layout/types";
 import { COLLECTION_NAMES } from "@/lib/sections";
 import { readVariantHidden, readVariantItems, type VariantHidden, type VariantItems } from "@/lib/variants";
-import { DEFAULT_TEMPLATE } from "@/lib/typst/templates";
 import { clampStr } from "@/lib/validation/limits";
 import type { ResumeVariant } from "@/types/db";
 
@@ -56,7 +55,7 @@ export async function createVariant(input: { name: string; labels?: string[] }):
     const [{ items, hidden }, layout] = await Promise.all([snapshotSelection(uid), readWorkingLayout(uid)]);
     const now = Timestamp.now();
     const ref = await userCol(uid, "variants").add({
-        name, labels: cleanLabels(input.labels), items, hidden, layout, templateId: DEFAULT_TEMPLATE, createdAt: now, updatedAt: now,
+        name, labels: cleanLabels(input.labels), items, hidden, layout, templateId: layout.theme.templateId, createdAt: now, updatedAt: now,
     });
     await db.collection("users").doc(uid).set({ loadedVariantId: ref.id, updatedAt: now }, { merge: true });
     revalidate();
@@ -151,7 +150,7 @@ export async function createVariantFromPlan(input: { name: string; labels?: stri
 
     const now = Timestamp.now();
     const ref = await userCol(uid, "variants").add({
-        name: cleanName(input.name) || "Tailored resume", labels: cleanLabels(input.labels), items, hidden, layout, templateId: DEFAULT_TEMPLATE, createdAt: now, updatedAt: now,
+        name: cleanName(input.name) || "Tailored resume", labels: cleanLabels(input.labels), items, hidden, layout, templateId: layout.theme.templateId, createdAt: now, updatedAt: now,
     });
     const { missing } = await applyVariantSelection(uid, items, hidden);
     await replaceMeta(uid, "layout", { ...layout });

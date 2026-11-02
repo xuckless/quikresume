@@ -1,0 +1,84 @@
+// Shapes shared by the background worker, content scripts and the side panel.
+
+export type ExtractionMethod = "adapter" | "json-ld" | "readable";
+
+export interface Posting {
+    url: string;
+    title: string;
+    company: string;
+    location: string;
+    employmentType: string;
+    description: string;
+    method: ExtractionMethod;
+    /** Adapter / site name for display ("LinkedIn", "Greenhouse", "this page"). */
+    site: string;
+}
+
+export type JobStatus = "saved" | "applied" | "interview" | "offer" | "rejected";
+export const JOB_STATUSES: JobStatus[] = ["saved", "applied", "interview", "offer", "rejected"];
+export const JOB_STATUS_LABEL: Record<JobStatus, string> = { saved: "Saved", applied: "Applied", interview: "Interview", offer: "Offer", rejected: "Rejected" };
+
+/** GET /api/ext/jobs/[id] summary (src/lib/ext/match-summary.ts in the app). */
+export interface JobSummary {
+    job: {
+        id: string; title: string; company: string; status: JobStatus; url: string | null; location: string;
+        appliedAt: string | null; variantId: string | null;
+        match: { status: "idle" | "running" | "done" | "failed"; warning: string | null };
+    };
+    resume: { kind: "variant" | "selection"; variantId: string | null; name: string };
+    score: number;
+    band: number;
+    gated: boolean;
+    must: { hit: number; total: number };
+    nice: { hit: number; total: number };
+    subScores: Record<"coverage" | "ats" | "years" | "title" | "education", number | null>;
+    missingMust: string[];
+    whatIf: { display: string; importance: "must" | "nice"; gain: number }[];
+}
+
+export interface AutofillReport {
+    running: boolean;
+    filled: number;
+    drafted: number;
+    attached: string | null;
+    /** Labels of fields left for the user (no data, custom widget, etc.). */
+    unmapped: string[];
+    error: string | null;
+}
+
+/** Per-tab state the background keeps and the side panel renders. */
+export interface TabState {
+    posting: Posting | null;
+    /** The saved job for this tab's posting; kept when the tab moves on to the application form. */
+    summary: JobSummary | null;
+    autofill: AutofillReport | null;
+    /** True while the posting is being saved / analysed. */
+    saving: boolean;
+    error: string | null;
+}
+
+export type BgRequest =
+    | { type: "detected"; posting: Posting | null }
+    | { type: "open-panel" }
+    | { type: "pair"; code: string }
+    | { type: "status" }
+    | { type: "signout" }
+    | { type: "tab-state"; tabId: number }
+    | { type: "scan"; tabId: number }
+    | { type: "save"; tabId: number }
+    | { type: "refresh"; tabId: number }
+    | { type: "set-status"; tabId: number; status: JobStatus }
+    | { type: "connect-page" }
+    | { type: "autofill"; tabId: number }
+    | { type: "autofill-data"; needPdf: boolean }
+    | { type: "autofill-answers"; questions: { id: string; label: string; options?: string[]; maxLength?: number }[] }
+    | { type: "autofill-report"; filled: number; drafted: number; attached: string | null; unmapped: string[]; host: string };
+
+export interface AccountStatus {
+    paired: boolean;
+    user: { name: string; email: string; image: string } | null;
+    appUrl: string;
+}
+
+export const APP_SOURCE = "quikresume-app";
+export const EXT_SOURCE = "quikresume-ext";

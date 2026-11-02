@@ -9,8 +9,8 @@ import { isTagKind } from "@/lib/tags/types";
 import { clampStr, isDocId } from "@/lib/validation/limits";
 import { RESUME_LIST_KEYS, type ResumeListKey } from "@/types/schema";
 import {
-    DEFAULT_CAPS, IDLE_MATCH, type Caps, type DeclinedSkill, type JobMatchState, type JobRecord, type MuteRule, type Preferences, type Proposal, type ProposalKind,
-    type ProposalStatus, type Requirement,
+    DEFAULT_CAPS, IDLE_MATCH, isJobStatus, type Caps, type JobPosting, type JobTracking, type DeclinedSkill, type JobMatchState, type JobRecord, type MuteRule, type Preferences, type Proposal, type ProposalKind,
+    type ProposalStatus, type Requirement, type SemanticHit,
 } from "@/lib/match/types";
 
 const KINDS = new Set<string>(["include", "exclude", "rewrite-bullet", "add-skill", "gap"]);
@@ -49,7 +49,35 @@ export function readRequirements(v: unknown): Requirement[] {
             satisfiedBy: strArray(o.satisfiedBy),
             evidence: strArray(o.evidence),
             reason: strOf(o.reason),
+            semantic: readSemantic(o.semantic),
         });
+    }
+    return out;
+}
+
+function readSemantic(v: unknown): SemanticHit[] {
+    if (!Array.isArray(v)) return [];
+    const out: SemanticHit[] = [];
+    for (const r of v.slice(0, 8)) {
+        if (!r || typeof r !== "object") continue;
+        const o = r as Record<string, unknown>;
+        if (!isDocId(o.itemId) || typeof o.p !== "number" || !Number.isFinite(o.p)) continue;
+        out.push({
+            itemId: o.itemId,
+            bullet: typeof o.bullet === "string" ? o.bullet : null,
+            p: Math.max(0, Math.min(1, o.p)),
+            quote: strOf(o.quote).slice(0, 200),
+            reranked: o.reranked === true,
+            confirmed: o.confirmed === true ? true : o.confirmed === false ? false : null,
+        });
+    }
+    return out;
+}
+
+function readTitleSim(v: unknown): Record<string, number> {
+    const out: Record<string, number> = {};
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+        for (const [k, x] of Object.entries(v as Record<string, unknown>)) if (isDocId(k) && typeof x === "number" && Number.isFinite(x)) out[k] = Math.max(0, Math.min(1, x));
     }
     return out;
 }
@@ -79,7 +107,7 @@ export function readProposals(v: unknown): Proposal[] {
 
 export const MATCH_STALLED_WARNING = "The AI match check did not finish.";
 
-function readMatch(v: unknown): JobMatchState {
+export function readMatch(v: unknown): JobMatchState {
     if (!v || typeof v !== "object") return IDLE_MATCH;
     const o = v as Record<string, unknown>;
     const status = o.status === "running" || o.status === "done" || o.status === "failed" ? o.status : "idle";
@@ -104,7 +132,7 @@ function mapJob(id: string, d: DocumentData): JobRecord {
         id,
         title: strOf(d.title),
         company: strOf(d.company),
-        source: { kind: src.kind === "file" ? "file" : "paste", fileName: typeof src.fileName === "string" ? src.fileName : null },
+        source: { kind: src.kind === "file" || src.kind === "extension" ? src.kind : "paste", fileName: typeof src.fileName === "string" ? src.fileName : null },
         jdText: strOf(d.jdText),
         summary: strOf(d.summary),
         requirements: readRequirements(d.requirements),
@@ -113,13 +141,28 @@ function mapJob(id: string, d: DocumentData): JobRecord {
         lastScore: typeof d.lastScore === "number" ? d.lastScore : null,
         fitNotes: strArray(d.fitNotes),
         match: readMatch(d.match),
+        titleSim: readTitleSim(d.titleSim),
+        status: isJobStatus(d.status) ? d.status : "saved",
+        appliedAt: typeof d.appliedAt === "string" ? d.appliedAt : null,
+        notes: strOf(d.notes),
+        variantId: isDocId(d.variantId) ? d.variantId : null,
+        url: typeof d.url === "string" && d.url ? d.url : null,
+        urlKey: typeof d.urlKey === "string" && d.urlKey ? d.urlKey : null,
+        location: strOf(d.location),
+        employmentType: strOf(d.employmentType),
         createdAt: isoOf(d.createdAt),
         updatedAt: isoOf(d.updatedAt),
     };
 }
 
 /** Fields the job list needs. `jdText` (up to 30k chars per job) stays on the server; nothing in the UI shows it. */
-const LIST_FIELDS = ["title", "company", "source", "summary", "requirements", "proposals", "proposalsAt", "lastScore", "fitNotes", "match", "createdAt", "updatedAt"];
+const LIST_FIELDS = [
+    "title", "company", "source", "summary", "requirements", "proposals", "proposalsAt", "lastScore", "fitNotes", "match", "titleSim",
+    "status", "appliedAt", "notes", "variantId", "url", "urlKey", "location", "employmentType", "createdAt", "updatedAt",
+];
+
+export const DEFAULT_TRACKING: JobTracking = { status: "saved", appliedAt: null, notes: "", variantId: null };
+export const EMPTY_POSTING: JobPosting = { url: null, urlKey: null, location: "", employmentType: "" };
 
 /** The user's jobs, newest first, without the pasted job description (see LIST_FIELDS). */
 export async function readJobs(uid: string): Promise<JobRecord[]> {
@@ -153,15 +196,18 @@ function matchDoc(m: { status: JobMatchState["status"]; runningUntilMs?: number 
 /** `runningForMs` set = a background reconcile starts right after (status "running"). */
 export async function createJob(
     uid: string,
-    job: Omit<JobRecord, "id" | "createdAt" | "updatedAt" | "proposals" | "proposalsAt" | "lastScore" | "match">,
+    input: Omit<JobRecord, "id" | "createdAt" | "updatedAt" | "proposals" | "proposalsAt" | "lastScore" | "match" | "titleSim" | keyof JobTracking | keyof JobPosting>
+        & Partial<JobTracking> & Partial<JobPosting>,
     opts: { runningForMs?: number } = {},
 ): Promise<JobRecord> {
+    const job = { ...DEFAULT_TRACKING, ...EMPTY_POSTING, ...input };
     const now = Timestamp.now();
     const runningUntilMs = opts.runningForMs ? now.toMillis() + opts.runningForMs : null;
     const match = matchDoc({ status: runningUntilMs ? "running" : "idle", runningUntilMs });
-    const ref = await userCol(uid, "jobs").add({ ...job, match, proposals: [], proposalsAt: null, lastScore: null, createdAt: now, updatedAt: now });
+    const ref = await userCol(uid, "jobs").add({ ...job, match, titleSim: {}, proposals: [], proposalsAt: null, lastScore: null, createdAt: now, updatedAt: now });
     return {
         ...job,
+        titleSim: {},
         id: ref.id,
         match: { ...IDLE_MATCH, status: match.status, runningUntil: runningUntilMs ? new Date(runningUntilMs).toISOString() : null },
         proposals: [],
@@ -185,12 +231,13 @@ export async function markJobMatchRunning(uid: string, id: string, runningForMs:
 export async function finishJobMatch(
     uid: string,
     id: string,
-    result: { requirements?: Requirement[]; libraryHash: string | null; warning?: string },
+    result: { requirements?: Requirement[]; titleSim?: Record<string, number>; libraryHash: string | null; warning?: string },
 ): Promise<void> {
     const ok = !result.warning;
     const match = matchDoc({ status: ok ? "done" : "failed", checkedAt: Timestamp.now(), libraryHash: ok ? result.libraryHash : null, warning: result.warning });
-    if (result.requirements) await patchJob(uid, id, { requirements: result.requirements, match });
-    else await jobDoc(uid, id).update({ match });
+    const extra = result.titleSim ? { titleSim: result.titleSim } : {};
+    if (result.requirements) await patchJob(uid, id, { requirements: result.requirements, match, ...extra });
+    else await jobDoc(uid, id).update({ match, ...extra });
 }
 
 /**
@@ -214,6 +261,26 @@ export async function patchJob(uid: string, id: string, patch: Record<string, un
 /** Writes only `lastScore`: no `updatedAt`, so recording a score never reorders the job list. */
 export async function setJobScore(uid: string, id: string, lastScore: number): Promise<void> {
     await jobDoc(uid, id).update({ lastScore });
+}
+
+/** The job imported from this canonical URL, if any (dedupe for the extension). */
+export async function findJobByUrlKey(uid: string, urlKey: string): Promise<JobRecord | null> {
+    const snap = await userCol(uid, "jobs").where("urlKey", "==", urlKey).limit(1).get();
+    const doc = snap.docs[0];
+    return doc ? mapJob(doc.id, doc.data()) : null;
+}
+
+/** Tracker update: status (stamps `appliedAt` the first time a job leaves "saved"), notes, linked variant. */
+export async function updateJobTracking(uid: string, id: string, patch: Partial<JobTracking>, prev: JobTracking): Promise<void> {
+    const data: Record<string, unknown> = {};
+    if (patch.status !== undefined && isJobStatus(patch.status)) {
+        data.status = patch.status;
+        if (patch.status !== "saved" && !prev.appliedAt) data.appliedAt = new Date().toISOString().slice(0, 10);
+    }
+    if (patch.appliedAt !== undefined) data.appliedAt = patch.appliedAt && /^\d{4}-\d{2}-\d{2}$/.test(patch.appliedAt) ? patch.appliedAt : null;
+    if (patch.notes !== undefined) data.notes = clampStr(patch.notes, 4000);
+    if (patch.variantId !== undefined) data.variantId = isDocId(patch.variantId) ? patch.variantId : null;
+    if (Object.keys(data).length) await patchJob(uid, id, data);
 }
 
 export async function deleteJobDoc(uid: string, id: string): Promise<void> {

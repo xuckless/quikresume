@@ -74,7 +74,7 @@ const experience = z.object({ title: str, company: str, startDate: z.unknown(), 
 const education = z.object({ degree: str, institution: str, startDate: z.unknown(), endDate: z.unknown(), gpa: str.catch(""), minor: str.catch(""), details: str.catch("") });
 const skill = z.object({ category: str, items: strList.catch([]) });
 const project = z.object({ title: str, stack: str.catch(""), link: str.catch(""), startDate: z.unknown(), endDate: z.unknown(), bullets: strList.catch([]) });
-const certification = z.object({ name: str, issuer: str.catch(""), year: z.unknown() });
+const certification = z.object({ name: str, issuer: str.catch(""), year: z.unknown(), credentialId: str.catch(""), expires: z.unknown() });
 const award = z.object({ title: str, issuer: str.catch(""), date: z.unknown(), description: str.catch("") });
 const volunteering = z.object({ role: str, organization: str, startDate: z.unknown(), endDate: z.unknown(), bullets: strList.catch([]) });
 const publication = z.object({ title: str, venue: str.catch(""), date: z.unknown(), link: str.catch(""), authors: str.catch("") });
@@ -166,7 +166,8 @@ export function parseModelOutput(text: string): ParsedImport {
         title: x.title, stack: x.stack, link: x.link, ...normalizeDateRange(x.startDate, x.endDate), description: x.bullets.join("\n"),
     }));
     convert("certifications", certification, x => missing("name")(Boolean(x.name)), x => ({
-        name: x.name, issuer: x.issuer, year: normalizeYear(x.year),
+        name: x.name, issuer: x.issuer, year: normalizeYear(x.year), credentialId: x.credentialId.slice(0, 60),
+        expires: normalizeImportedDate(x.expires).replace(/^Present$/, "").slice(0, 7),
     }));
     convert("awards", award, x => missing("title")(Boolean(x.title)), x => ({
         title: x.title, issuer: x.issuer, date: normalizeImportedDate(x.date).replace(/^Present$/, ""), description: x.description,

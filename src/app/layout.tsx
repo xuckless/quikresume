@@ -1,15 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Geist_Mono, Montserrat } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import { AUTHOR, SITE_DESCRIPTION, SITE_KEYWORDS, SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
-const montserrat = Montserrat({
-    variable: "--font-montserrat",
+const geistSans = Geist({
+    variable: "--font-geist-sans",
     subsets: ["latin"],
-    weight: ["400", "500", "600"],
 });
 
-// Only used for Typst diagnostics (the compile error panel).
+// Numbers, scores and Typst diagnostics.
 const geistMono = Geist_Mono({
     variable: "--font-geist-mono",
     subsets: ["latin"],
@@ -58,9 +57,10 @@ export const metadata: Metadata = {
     icons: {
         icon: [
             { url: "/favicon.ico", sizes: "any" },
-            { url: "/icons/quik-resume.svg", type: "image/svg+xml" },
+            // Switches to the dark monogram with the OS theme (media query inside the SVG).
+            { url: "/icons/favicon.svg", type: "image/svg+xml" },
         ],
-        apple: "/icons/quik-resume.svg",
+        apple: "/icons/apple-touch-icon.png",
     },
     formatDetection: {
         telephone: false,
@@ -68,14 +68,25 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-    themeColor: "#fafafa",
-    colorScheme: "light",
+    themeColor: [
+        { media: "(prefers-color-scheme: light)", color: "#fafafa" },
+        { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+    ],
+    colorScheme: "light dark",
 };
+
+// Runs before first paint: the saved choice (lib/ui/theme-store.ts, "light" | "dark" | "system") or the
+// OS preference decides `data-theme`, so the page never flashes the wrong theme. Static string, no user input.
+const THEME_SCRIPT = `(function(){try{var k="quikresume.theme",c=localStorage.getItem(k);c=c?JSON.parse(c):"system";var d=c==="dark"||(c!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.setAttribute("data-theme",d?"dark":"light")}catch(e){document.documentElement.setAttribute("data-theme","light")}})()`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
     return (
-        <html lang="en">
-            <body className={`${montserrat.variable} ${geistMono.variable} antialiased`}>
+        // data-theme is set by THEME_SCRIPT before hydration, so React must not warn about the mismatch.
+        <html lang="en" suppressHydrationWarning>
+            <head>
+                <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+            </head>
+            <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
                 {children}
             </body>
         </html>

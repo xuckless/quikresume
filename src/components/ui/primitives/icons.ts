@@ -1,6 +1,17 @@
 // Single import point for the icons used across the app, so the set stays curated.
 export {
     ArrowDownWideNarrow,
+    ArrowLeft,
+    ExternalLink,
+    KanbanSquare,
+    MapPin,
+    Moon,
+    Puzzle,
+    Rows3,
+    Sun,
+    Monitor,
+    Palette,
+    ListChecks,
     Award,
     BadgeCheck,
     BarChart3,

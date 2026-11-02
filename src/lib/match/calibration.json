@@ -1,0 +1,25 @@
+{
+  "space": "voyage-4-lite@512|rerank-3-lite",
+  "withRerank": {
+    "a": 2.0698,
+    "c": 23.3872,
+    "b": -11.412
+  },
+  "cosineOnly": {
+    "a": 9.0254,
+    "c": 0,
+    "b": -4.174
+  },
+  "n": 100,
+  "fittedAt": "2026-11-01",
+  "metrics": {
+    "withRerank": {
+      "logloss": 0.243,
+      "auc": 0.957
+    },
+    "cosineOnly": {
+      "logloss": 0.527,
+      "auc": 0.81
+    }
+  }
+}

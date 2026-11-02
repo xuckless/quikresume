@@ -91,6 +91,10 @@ export interface Certification {
     name: string;
     issuer: string;
     year: string;
+    /** Licence / registration / credential number ("" = none). Printed after the issuer. */
+    credentialId: string;
+    /** Expiry, "YYYY" or "YYYY-MM" ("" = none or doesn't expire). */
+    expires: string;
     isSelected: boolean;
     tags: Tag[];
     tagsHash: string | null;

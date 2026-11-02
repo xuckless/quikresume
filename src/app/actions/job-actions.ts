@@ -2,10 +2,10 @@
 
 import { revalidatePath } from "next/cache"
 import { currentUid, requireUid } from "@/lib/db/session";
-import { deleteJobDoc, isProposalStatus, patchJob, readJob, readJobs, readPreferences, sanitizeMuteRule, setJobScore, writePreferences } from "@/lib/db/jobs";
+import { deleteJobDoc, isProposalStatus, patchJob, readJob, readJobs, readPreferences, sanitizeMuteRule, setJobScore, updateJobTracking, writePreferences } from "@/lib/db/jobs";
 import { sameRule } from "@/lib/match/proposals";
 import { clampStr } from "@/lib/validation/limits";
-import type { Caps, JobRecord, MuteRule, Preferences, ProposalStatus } from "@/lib/match/types";
+import { isJobStatus, type Caps, type JobRecord, type JobStatus, type JobTracking, type MuteRule, type Preferences, type ProposalStatus } from "@/lib/match/types";
 
 export async function getJobs(): Promise<JobRecord[]> {
     const uid = await currentUid();
@@ -28,6 +28,25 @@ export async function deleteJob(id: string) {
 export async function renameJob(id: string, title: string) {
     const uid = await requireUid();
     await patchJob(uid, id, { title: clampStr(title, 120) || "Untitled job" });
+    revalidatePath("/dashboard");
+}
+
+/** Tracker column change (board drag or status menu). */
+export async function setJobStatus(id: string, status: JobStatus) {
+    const uid = await requireUid();
+    if (!isJobStatus(status)) throw new Error("Invalid status");
+    const job = await readJob(uid, id);
+    if (!job) throw new Error("Job not found");
+    await updateJobTracking(uid, id, { status }, job);
+    revalidatePath("/dashboard");
+}
+
+/** Notes, applied date, linked variant. */
+export async function updateJobMeta(id: string, patch: Pick<Partial<JobTracking>, "notes" | "appliedAt" | "variantId">) {
+    const uid = await requireUid();
+    const job = await readJob(uid, id);
+    if (!job) throw new Error("Job not found");
+    await updateJobTracking(uid, id, { notes: patch.notes, appliedAt: patch.appliedAt, variantId: patch.variantId }, job);
     revalidatePath("/dashboard");
 }
 

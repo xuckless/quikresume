@@ -136,13 +136,15 @@ export const SECTION_CONFIG: { [K in ResumeListKey]: SectionConfig<K> } = {
         ),
     },
     certifications: {
-        addLabel: "Add certification",
-        create: (): Certification => ({ ...base(), name: "", issuer: "", year: "" }),
+        addLabel: "Add certification or licence",
+        create: (): Certification => ({ ...base(), name: "", issuer: "", year: "", credentialId: "", expires: "" }),
         fields: (x, set, errors) => (
             <div className="grid gap-4 md:grid-cols-3">
-                <Text item={x} set={set} field="name" label="Name" placeholder="AWS Certified Cloud Practitioner" className="md:col-span-2" />
-                <Text item={x} set={set} field="year" label="Year (optional)" placeholder="2025" error={errors.date} />
-                <Text item={x} set={set} field="issuer" label="Issuer (optional)" placeholder="Amazon Web Services" className="md:col-span-3" />
+                <Text item={x} set={set} field="name" label="Name" placeholder="Registered Nurse · AWS Certified Cloud Practitioner" className="md:col-span-2" />
+                <Text item={x} set={set} field="year" label="Year obtained (optional)" placeholder="2025" error={errors.date} />
+                <Text item={x} set={set} field="issuer" label="Issuer or licensing body (optional)" placeholder="College of Nurses of Ontario" className="md:col-span-3" />
+                <Text item={x} set={set} field="credentialId" label="Licence / credential number (optional, printed)" placeholder="RN 1234567" className="md:col-span-2" />
+                <Text item={x} set={set} field="expires" label="Expires (optional)" placeholder="2027-05" error={errors.expires} />
             </div>
         ),
     },

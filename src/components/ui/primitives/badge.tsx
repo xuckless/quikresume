@@ -27,7 +27,7 @@ export function TagChip({ tag, className }: { tag: Tag; className?: string }) {
         <span
             title={label}
             className={cn("inline-flex h-5 max-w-[12rem] items-center truncate rounded-sm px-1.5 text-xs font-medium", className)}
-            style={{ background: `${color}14`, color: `color-mix(in srgb, ${color} 75%, #171717)` }}
+            style={{ background: `${color}14`, color: `color-mix(in srgb, ${color} 75%, var(--fg))` }}
         >
             {tag.display}
         </span>
