@@ -18,7 +18,7 @@ export function createPersistedStore<T>(opts: {
     initial: T;
     serialize?: (v: T) => string;
     deserialize?: (s: string) => T;
-}): Store<T> & { use: () => T } {
+}): Store<T> & { useValue: () => T } {
     const serialize = opts.serialize ?? ((v: T) => JSON.stringify(v));
     const deserialize = opts.deserialize ?? ((s: string) => JSON.parse(s) as T);
     let value: T = opts.initial;
@@ -37,6 +37,7 @@ export function createPersistedStore<T>(opts: {
         } catch { /* ignore */ }
     };
     const get = () => { hydrate(); return value; };
+    const getServerSnapshot = () => opts.initial;
     const set = (next: T | ((prev: T) => T)) => {
         hydrate();
         value = typeof next === "function" ? (next as (p: T) => T)(value) : next;
@@ -44,6 +45,6 @@ export function createPersistedStore<T>(opts: {
         listeners.forEach(l => l());
     };
     const subscribe = (cb: () => void) => { listeners.add(cb); return () => { listeners.delete(cb); }; };
-    const use = () => useSyncExternalStore(subscribe, get, () => opts.initial);
-    return { get, set, subscribe, use };
+    const useValue = () => useSyncExternalStore(subscribe, get, getServerSnapshot);
+    return { get, set, subscribe, useValue };
 }

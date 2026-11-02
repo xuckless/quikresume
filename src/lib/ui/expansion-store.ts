@@ -11,7 +11,7 @@ const store = createPersistedStore<ReadonlySet<string>>({
     deserialize: s => new Set(JSON.parse(s) as string[]),
 });
 
-export const useExpandedIds = () => store.use();
+export const useExpandedIds = () => store.useValue();
 
 export const expansion = {
     toggle(id: string) {
