@@ -91,3 +91,4 @@ public/pdfjs/
 
 # calibration feature cache (scripts/calibration/fit.mjs)
 scripts/calibration/.features.json
+GEMINI.md
