@@ -40,7 +40,7 @@ export function TrackerView({ jobs, onOpen, onAnalyse, onDelete }: {
     onDelete: (job: JobRecord) => void;
 }) {
     const router = useRouter();
-    const layout = layoutStore.use();
+    const layout = layoutStore.useValue();
     const [query, setQuery] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [, startTransition] = useTransition();
@@ -129,7 +129,7 @@ function Board({ jobs, onMove, onOpen }: { jobs: JobRecord[]; onMove: (id: strin
         if (over && typeof over.id === "string") onMove(String(active.id), over.id as JobStatus);
     };
     return (
-        <DndContext sensors={sensors} onDragEnd={end}>
+        <DndContext id="job-tracker-board" sensors={sensors} onDragEnd={end}>
             <div className="grid auto-cols-[minmax(220px,1fr)] grid-flow-col gap-3 overflow-x-auto pb-2">
                 {JOB_STATUSES.map(status => (
                     <Column key={status} status={status} jobs={jobs.filter(j => j.status === status)} onMove={onMove} onOpen={onOpen} />

@@ -5,7 +5,7 @@ import { createPersistedStore } from "./persisted-store";
 /** Whether the right-hand preview pane is open (desktop only). */
 export const previewPaneStore = createPersistedStore<boolean>({ key: "quikresume.previewPane", storage: "local", initial: false });
 
-export const usePreviewPane = () => previewPaneStore.use();
+export const usePreviewPane = () => previewPaneStore.useValue();
 export const setPreviewPane = (open: boolean) => previewPaneStore.set(open);
 export const togglePreviewPane = () => previewPaneStore.set(v => !v);
 
@@ -23,5 +23,5 @@ export const previewPaneWidthStore = createPersistedStore<number>({
     },
 });
 
-export const usePreviewPaneWidth = () => previewPaneWidthStore.use();
+export const usePreviewPaneWidth = () => previewPaneWidthStore.useValue();
 export const setPreviewPaneWidth = (px: number) => previewPaneWidthStore.set(Math.round(px));

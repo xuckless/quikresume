@@ -32,7 +32,7 @@ export function setTheme(choice: ThemeChoice) {
 
 /** Current choice; also keeps `data-theme` following the OS while the choice is "system". */
 export function useTheme(): ThemeChoice {
-    const choice = themeStore.use();
+    const choice = themeStore.useValue();
     useEffect(() => {
         if (choice !== "system") return;
         const mq = window.matchMedia("(prefers-color-scheme: dark)");
