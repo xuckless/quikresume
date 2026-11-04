@@ -389,6 +389,17 @@ each effort over your library and returns outputs + timings, writing nothing.
   related (Java and JavaScript share one). Probe: categories scored 0.60–0.75, non-categories ≤ 0.53.
 - **Selection** (Tailor plan, set cover) uses `coveredByItem`, which also counts a semantic hit with p ≥ `SEMANTIC_COVERS`
   (0.6) that the judge did not reject. Seniority is not scored numerically; JD analysis reports conflicts in `fitNotes`.
+- **Judge band** (`JUDGE_BAND` [0.25, 0.9) in `lib/match/semantic.ts`): only hits inside it go to the LLM judge as hints, so only they get
+  `confirmed` true / false; a hit above it stays `null`. The scorer applies a rejection (0.4·p) below the band's top only (older jobs
+  marked unseen strong hits `false`). Credentials and languages never get more than `BINARY_SEMANTIC_CAP` (0.6) from an unconfirmed
+  embedding match: "Registered Practical Nurse" embeds next to "Registered Nurse". The judge prompt forbids a lower credential
+  satisfying a higher one (diploma ≠ bachelor's, RPN ≠ RN, apprentice ≠ journeyman).
+- **Match eval** (`npm run eval:match`, `test/eval/match.eval.ts`, cases in `test/eval/match-cases.json`; real GLM + Voyage calls,
+  ~2-3 min, never part of `npm test`): hand-labelled requirement coverage across professions with deliberate hard negatives. Tags the
+  résumé, scores on tags alone, then runs `enrichRequirements` (`lib/match/reconcile.ts`, the background pass minus Firestore, with
+  `memoryVecStore`) and scores again; reports precision / recall / F1 (covered = m ≥ 0.5) per stage and tier, hit rate per strength
+  band, and each error with its evidence. `EVAL_CASES=a,b`, `EVAL_RUNS=2` (score stability), `EVAL_EFFORT` (judge effort, default
+  low). Reports go to `test/eval/.results/` (gitignored). Baseline (13 cases, 84 requirements): tags only F1 0.79, full F1 0.98.
 - **Calibration** (`scripts/calibration/fit.mjs`, `node --env-file=.env.local scripts/calibration/fit.mjs [extra.json]`): logistic
   fits `p = σ(a·cos + c·rerank + b)` and cosine-only on labelled pairs (`scripts/calibration/seed.json`, several professions,
   deliberate hard negatives). Features are cached in `scripts/calibration/.features.json` (gitignored). Refit whenever the

@@ -10,6 +10,14 @@
 
 import calibration from "./calibration.json";
 
+/**
+ * Semantic hits with p in [lo, hi) go to the LLM judge as hints (lib/match/evidence.ts reconcileHints); only those
+ * get a verdict (`confirmed` true / false). Hits at or above `hi` are strong enough on their own and stay unjudged.
+ */
+export const JUDGE_BAND: readonly [number, number] = [0.25, 0.9];
+/** Credentials and languages are exact things: an unjudged embedding match alone never counts as more than this. */
+export const BINARY_SEMANTIC_CAP = 0.6;
+
 export interface PlattFit { a: number; c: number; b: number }
 
 export interface Calibration {

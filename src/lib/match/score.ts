@@ -7,7 +7,8 @@
 //   e = 0.95  exact tag (credentials / languages: 1)        via "direct"
 //       0.90  cited by the AI reconcile pass                 via "direct"
 //       0.85  a satisfying tag (degree hierarchy, reconcile) via "related"
-//       p     semantic hit (calibrated; confirmed by the judge -> ≥ 0.9; seen and rejected -> 0.4·p)
+//       p     semantic hit (calibrated; confirmed by the judge -> ≥ 0.9; seen and rejected -> 0.4·p;
+//             credentials / languages without a confirmation: at most BINARY_SEMANTIC_CAP)
 //   times recency 0.5^(age / 4y) for dated work (experience, projects, volunteering).
 // strength m_r = 1 − Π(1 − e) over the top 3 items (noisy-OR: more evidence helps, with diminishing
 // returns); binary kinds use the best e. A literal keyword hit with nothing better counts 0.5.
@@ -34,7 +35,7 @@ import { toTypstDoc } from "@/lib/typst/doc";
 import { literalHit, renderedText } from "@/lib/match/text";
 import { coverageItems, requirementCoverage } from "@/lib/match/coverage";
 import { itemAgeMonths, itemSpan } from "@/lib/match/units";
-import { noisyOr, recencyWeight } from "@/lib/match/semantic";
+import { BINARY_SEMANTIC_CAP, JUDGE_BAND, noisyOr, recencyWeight } from "@/lib/match/semantic";
 import { bulletKey, bulletLines } from "@/lib/sub-items";
 import { itemTitle } from "@/lib/sections";
 import type { EvidenceVia, MatchResult, MatchRow, Requirement, RequirementTier, RowEvidence, SubScores } from "@/lib/match/types";
@@ -160,7 +161,10 @@ export function scoreJob(requirements: Requirement[], data: ResumeData, aliases:
             const it = selected.get(h.itemId);
             if (!it) continue;
             if (h.bullet !== null && it.bullets && !it.bullets.has(h.bullet)) continue;
-            const e = h.confirmed === true ? Math.max(h.p, 0.9) : h.confirmed === false && h.p < 0.85 ? 0.4 * h.p : h.p;
+            // A rejection only exists inside the judge band (older jobs also marked unseen strong hits false: those read as unjudged).
+            const rejected = h.confirmed === false && h.p < JUDGE_BAND[1];
+            let e = h.confirmed === true ? Math.max(h.p, 0.9) : rejected ? 0.4 * h.p : h.p;
+            if (binary && h.confirmed !== true) e = Math.min(e, BINARY_SEMANTIC_CAP);
             offer(h.itemId, it.label, h.confirmed === true ? "direct" : "semantic", e, h.quote);
         }
         const evidence = [...best.values()].sort((a, b) => b.e - a.e);
