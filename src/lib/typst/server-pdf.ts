@@ -36,3 +36,14 @@ export function compileResumePdf(data: ResumeData): { bytes: Uint8Array; fileNam
     }
     return { bytes, fileName: pdfFileName(data.personalInfo) };
 }
+
+/** Page count of the résumé as the browser would print it (SVG compile, no PDF). */
+export function countResumePages(data: ResumeData): number {
+    const doc = toTypstDoc(data);
+    const template = isTemplateId(doc.layout.theme.template) ? doc.layout.theme.template : DEFAULT_TEMPLATE;
+    const c = getCompiler();
+    const res = c.svg({ mainFilePath: path.join(ROOT, "main.typ"), inputs: { resume: JSON.stringify(doc), template } });
+    const svg = (res as { result?: string | null }).result ?? (typeof res === "string" ? res : null);
+    if (!svg) throw new ServerPdfError("The résumé could not be laid out.");
+    return Math.max(1, (svg.match(/class="typst-page"/g) ?? []).length);
+}

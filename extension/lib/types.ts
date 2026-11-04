@@ -55,6 +55,45 @@ export interface TabState {
     /** True while the posting is being saved / analysed. */
     saving: boolean;
     error: string | null;
+    /** Quick tailor run for the saved job (side panel). */
+    tailor?: TailorState | null;
+}
+
+export type TailorSuggestion =
+    | { id: string; kind: "item"; itemId: string; include: boolean; reason: string; source: "ai" | "trim"; label: string }
+    | { id: string; kind: "sub"; itemId: string; key: string; hide: boolean; reason: string; source: "ai" | "trim"; label: string };
+
+export interface TailorSelection { include: Record<string, boolean>; hidden: Record<string, string[]> }
+
+export interface TailorResult {
+    jobId: string;
+    source: { kind: "variant" | "selection"; variantId: string | null; name: string };
+    before: number;
+    after: number;
+    /** Pages after trimming (0 = could not be counted). */
+    pages: number;
+    base: TailorSelection;
+    suggestions: TailorSuggestion[];
+    warning?: string;
+}
+
+export interface TailorState { running: boolean; saving: boolean; result: TailorResult | null; error: string | null }
+
+export interface VariantInfo { id: string; name: string; labels: string[] }
+
+/** The selection `base` with the chosen suggestions applied. */
+export function applySuggestions(base: TailorSelection, chosen: TailorSuggestion[]): TailorSelection {
+    const include = { ...base.include };
+    const hidden: Record<string, string[]> = Object.fromEntries(Object.entries(base.hidden).map(([k, v]) => [k, [...v]]));
+    for (const s of chosen) {
+        if (s.kind === "item") include[s.itemId] = s.include;
+        else {
+            const keys = new Set(hidden[s.itemId] ?? []);
+            if (s.hide) keys.add(s.key); else keys.delete(s.key);
+            hidden[s.itemId] = [...keys];
+        }
+    }
+    return { include, hidden };
 }
 
 export type BgRequest =
@@ -68,6 +107,11 @@ export type BgRequest =
     | { type: "save"; tabId: number }
     | { type: "refresh"; tabId: number }
     | { type: "set-status"; tabId: number; status: JobStatus }
+    | { type: "variants" }
+    | { type: "set-variant"; tabId: number; variantId: string | null }
+    | { type: "tailor"; tabId: number }
+    | { type: "tailor-save"; tabId: number; name: string; selection: TailorSelection }
+    | { type: "tailor-clear"; tabId: number }
     | { type: "connect-page" }
     | { type: "autofill"; tabId: number }
     | { type: "autofill-data"; needPdf: boolean }

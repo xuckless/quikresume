@@ -40,6 +40,8 @@ button, select, input { font: inherit; }
 .btn:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 1px; }
 input, select { height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--fg); }
 input.code { font: 600 16px ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .15em; text-transform: uppercase; width: 100%; }
+input.text { width: 100%; }
+input[type="checkbox"] { height: auto; margin-top: 3px; }
 .score { display: flex; align-items: center; gap: 12px; }
 .ring { position: relative; width: 64px; height: 64px; flex: none; }
 .ring svg { transform: rotate(-90deg); }

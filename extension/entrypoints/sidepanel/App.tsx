@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { JOB_STATUSES, JOB_STATUS_LABEL, type AccountStatus, type BgRequest, type JobStatus, type JobSummary, type TabState } from "../../lib/types";
 import { AutofillCard } from "./AutofillCard";
+import { ResumePicker, TailorCard } from "./TailorCard";
 
 const send = <T,>(m: BgRequest) => chrome.runtime.sendMessage(m) as Promise<T>;
 
@@ -73,7 +74,7 @@ function Connect({ appUrl }: { appUrl: string }) {
     );
 }
 
-function Summary({ s, tabId, appUrl }: { s: JobSummary; tabId: number; appUrl: string }) {
+function Summary({ s, tabId, appUrl, state }: { s: JobSummary; tabId: number; appUrl: string; state: TabState | null }) {
     const running = s.job.match.status === "running";
     // While the AI check runs in the background, re-read the summary every 5 s.
     useEffect(() => {
@@ -112,15 +113,20 @@ function Summary({ s, tabId, appUrl }: { s: JobSummary; tabId: number; appUrl: s
                             </li>
                         ))}
                     </ul>
-                    <a href={jobLink} target="_blank" rel="noreferrer">Tailor your résumé for this job →</a>
+                    <a href={jobLink} target="_blank" rel="noreferrer">Open the full review →</a>
                 </div>
             )}
 
-            <div className="card row between">
+            <TailorCard s={s} tabId={tabId} state={state} />
+
+            <div className="card stack">
+                <ResumePicker s={s} tabId={tabId} />
+                <div className="row between">
                 <label htmlFor="status" className="muted">Tracker status</label>
                 <select id="status" value={s.job.status} onChange={e => void send({ type: "set-status", tabId, status: e.target.value as JobStatus })}>
                     {JOB_STATUSES.map(st => <option key={st} value={st}>{JOB_STATUS_LABEL[st]}</option>)}
                 </select>
+                </div>
             </div>
         </>
     );
@@ -189,7 +195,7 @@ export function App() {
                                 {state?.summary && <div className="subtle">Saved to your Job Tracker.</div>}
                             </div>
                         )}
-                        {state?.summary && <Summary s={state.summary} tabId={tabId} appUrl={appUrl} />}
+                        {state?.summary && <Summary s={state.summary} tabId={tabId} appUrl={appUrl} state={state} />}
                         <AutofillCard tabId={tabId} summary={state?.summary ?? null} state={state} appUrl={appUrl} />
                         <div className="card switch">
                             <span className="muted">Floating button on job pages</span>

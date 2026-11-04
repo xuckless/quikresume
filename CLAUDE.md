@@ -472,7 +472,8 @@ npm run dev`, `npm run build` -> `.output/chrome-mv3`, `npm test` for the jsdom 
 - **API** (`src/app/api/ext/*`, every handler starts with `guardExtension` from `lib/security/ext-guard.ts`: Bearer token,
   per-user rate limit, AI budget for AI routes, no same-origin check (no cookies), CORS only for `chrome-extension://<EXTENSION_IDS>`
   (any extension origin outside production when unset), web-page origins rejected): `pair`, `me`, `signout`, `jobs` (GET `?url=`
-  lookup, POST import), `jobs/[id]` (GET summary, PATCH `{status, variantId}`). Import canonicalises the URL; a known `urlKey`
+  lookup, POST import), `jobs/[id]` (GET summary, PATCH `{status, variantId}`), `variants` (résumé picker), `tailor` (quick tailor,
+  see below), `tailor/save`. Import canonicalises the URL; a known `urlKey`
   refreshes url / location / employment type only; a new posting goes through `analyzeAndSaveJob` (`lib/match/analyze-job.ts`,
   shared with `/api/jobs/analyze`) with `source.kind: "extension"` and a background reconcile against the whole library.
 - **Summary** (`lib/ext/match-summary.ts`): scored server-side with the same `scoreJob` on the job's `variantId` variant, else the
@@ -492,6 +493,12 @@ npm run dev`, `npm run build` -> `.output/chrome-mv3`, `npm test` for the jsdom 
   `matchOption` for selects / radios incl. yes/no and "decline" synonyms), attaches the résumé PDF through `DataTransfer`, sends open
   questions to `POST /api/ext/autofill/answers`, outlines filled fields (solid) and AI drafts (dashed), and reports counts + fields left
   for the user (also stored as `unmapped` on Autofill preferences). Never submits; checkboxes (consent) are never ticked.
+- **Quick tailor** (side panel, `POST /api/ext/tailor {jobId}`): starts from the job's résumé (`resumeForJob`), runs `runTailorPlan`
+  (`lib/match/tailor-run.ts`, shared with `/api/jobs/auto-tailor`), trims with `fitToOnePage` using `countResumePages`
+  (`lib/typst/server-pdf.ts`, native SVG compile, ~20 ms) and returns `diffSuggestions` + before / after scores. The panel ticks
+  suggestions (`applySuggestions` in `extension/lib/types.ts`); `POST /api/ext/tailor/save` stores the result through
+  `createVariantFromPlan({ load: false })` (the working selection is untouched) and links it as the job's `variantId`. The picker
+  ("Résumé for this job") PATCHes `variantId`; changing it drops a stale tailor run.
 - **Autofill preferences** (`/dashboard/autofill`, `meta/autofill`, `lib/autofill/types.ts` `readAutofillPrefs` clamps everything):
   address, salary (min / target / currency / period), notice period, earliest start, work authorised / sponsorship / relocation
   (prefilled from About you when empty), EEO answers (default "Decline to answer"), "how did you hear", saved answers (used word for

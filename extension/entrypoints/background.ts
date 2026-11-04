@@ -4,7 +4,7 @@
 
 import { api, apiBytes, ApiError, appUrl, clearToken, getToken, setToken } from "../lib/api";
 import type { AutofillData } from "../lib/fields";
-import type { AccountStatus, BgRequest, JobSummary, Posting, TabState } from "../lib/types";
+import type { AccountStatus, BgRequest, JobSummary, Posting, TabState, TailorResult, TailorState, VariantInfo } from "../lib/types";
 
 const EMPTY: TabState = { posting: null, summary: null, autofill: null, saving: false, error: null };
 const key = (tabId: number) => `tab:${tabId}`;
@@ -89,7 +89,7 @@ async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Pro
             const same = cur.posting?.url === msg.posting?.url;
             // Leaving the posting for its application form keeps the job (Auto Fill uses it); a new posting replaces it.
             const keep = same || msg.posting === null;
-            const next = await setState(tabId, { posting: msg.posting, summary: keep ? cur.summary : null, error: null, saving: same ? cur.saving : false });
+            const next = await setState(tabId, { posting: msg.posting, summary: keep ? cur.summary : null, tailor: keep ? cur.tailor : null, error: null, saving: same ? cur.saving : false });
             if (msg.posting && !same) void lookup(tabId, msg.posting);
             return next;
         }
@@ -167,6 +167,57 @@ async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Pro
             }
             return null;
         }
+        case "variants":
+            try {
+                return { ok: true, variants: (await api<{ variants: VariantInfo[] }>("/api/ext/variants")).variants };
+            } catch (err) {
+                return { ok: false, error: errorText(err), variants: [] };
+            }
+        case "set-variant": {
+            const s = await getState(msg.tabId);
+            if (!s.summary) return null;
+            try {
+                const res = await api<{ summary: JobSummary }>(`/api/ext/jobs/${s.summary.job.id}`, { method: "PATCH", body: { variantId: msg.variantId } });
+                // A different starting résumé makes an earlier tailor run stale.
+                await setState(msg.tabId, { summary: res.summary, tailor: null });
+            } catch (err) {
+                await setState(msg.tabId, { error: errorText(err) });
+            }
+            return null;
+        }
+        case "tailor": {
+            const s = await getState(msg.tabId);
+            if (!s.summary || s.tailor?.running) return null;
+            const jobId = s.summary.job.id;
+            const idle: TailorState = { running: false, saving: false, result: null, error: null };
+            await setState(msg.tabId, { tailor: { ...idle, running: true } });
+            try {
+                const res = await api<Omit<TailorResult, "jobId">>("/api/ext/tailor", { method: "POST", body: { jobId } });
+                await setState(msg.tabId, { tailor: { ...idle, result: { ...res, jobId } } });
+            } catch (err) {
+                await setState(msg.tabId, { tailor: { ...idle, error: errorText(err) } });
+            }
+            return null;
+        }
+        case "tailor-save": {
+            const s = await getState(msg.tabId);
+            if (!s.summary || !s.tailor?.result) return null;
+            const t = s.tailor;
+            await setState(msg.tabId, { tailor: { ...t, saving: true, error: null } });
+            try {
+                const res = await api<{ summary: JobSummary | null }>("/api/ext/tailor/save", {
+                    method: "POST", body: { jobId: s.summary.job.id, name: msg.name, include: msg.selection.include, hidden: msg.selection.hidden },
+                });
+                await setState(msg.tabId, { summary: res.summary ?? s.summary, tailor: null });
+                return { ok: true };
+            } catch (err) {
+                await setState(msg.tabId, { tailor: { ...t, saving: false, error: errorText(err) } });
+                return { ok: false };
+            }
+        }
+        case "tailor-clear":
+            await setState(msg.tabId, { tailor: null });
+            return null;
         case "autofill": {
             const tabId = msg.tabId;
             runs.set(tabId, { at: Date.now() });
