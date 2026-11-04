@@ -40,7 +40,8 @@ export function MarketingFooter() {
                     </span>
                 </span>
                 <nav className="flex gap-5">
-                    <Link href="#features" className="hover:text-fg">Features</Link>
+                    <Link href="/#features" className="hover:text-fg">Features</Link>
+                    <Link href="/privacy" className="hover:text-fg">Privacy</Link>
                     <Link href="/login" className="hover:text-fg">Log in</Link>
                 </nav>
             </div>

@@ -69,6 +69,8 @@ src/
   lib/db/session.ts                          currentUid() / requireUid(): one auth() per request (React cache)
   app/page.tsx, (auth)/login                 public pages (MarketingHeader/Footer in components/marketing-header.tsx);
                                              page.tsx also emits the WebApplication JSON-LD
+  app/privacy/page.tsx                       privacy policy (Chrome Web Store policy URL; must match what the code does: update it with
+                                             any new processor, permission or stored field). Optional NEXT_PUBLIC_CONTACT_EMAIL
   app/{robots,sitemap}.ts                    /robots.txt (AI crawlers disallowed, /dashboard + /api + /login hidden,
                                              search engines allowed) and /sitemap.xml (public pages only)
   app/opengraph-image.tsx, twitter-image.tsx 1200x630 social card via next/og (Satori: every div with >1 child needs
@@ -765,6 +767,13 @@ editor and `string[]` in Firestore.
   shadows ≤ `shadow-sm`. New UI is built from `components/ui/primitives`.
 - Browser-persisted UI state (preview pane, expanded rows) uses the `createPersistedStore` + `useSyncExternalStore` pattern
   in `lib/ui/persisted-store.ts` (server snapshot = initial) rather than reading storage in effects.
+
+## Account deletion
+
+Profile → Delete account (`DeleteAccountCard`, typed DELETE) calls `deleteAccount` (`user-actions.ts`): extension tokens and codes
+(`deleteAllExtensionAccess`, also clears the verify cache), NextAuth `accounts` with that `userId`, `rate_limits/<policy>__<uid>`, then
+`db.recursiveDelete(users/{uid})` (every subcollection), sign-out to `/?deleted=1`. `ai_usage` counters expire through their TTL.
+A new top-level collection keyed by user must be added here.
 
 ## Gotchas
 

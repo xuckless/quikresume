@@ -5,6 +5,7 @@ import { getUserProfile } from "@/app/actions/user-actions"
 import { toPersonalInfo } from "@/lib/resume-mapper"
 import { ProfileForm } from "@/components/ui/profile-form"
 import { TopBar } from "@/components/ui/primitives/top-bar";
+import { DeleteAccountCard } from "@/components/ui/delete-account";
 
 export default async function ProfilePage() {
     const session = await auth();
@@ -25,6 +26,7 @@ export default async function ProfilePage() {
                         review={profile?.profileReview ?? null}
                         account={{ name: session.user.name ?? "", email: session.user.email ?? "", image: session.user.image ?? null }}
                     />
+                    <DeleteAccountCard />
                 </div>
             </main>
         </>

@@ -1,6 +1,9 @@
 "use server"
 
 import { db } from "@/lib/firestore"
+import { signOut } from "@/auth"
+import { deleteAllExtensionAccess } from "@/lib/ext/tokens";
+import { RATE } from "@/lib/security/rate-limit";
 import { revalidatePath } from "next/cache"
 import { Timestamp } from "firebase-admin/firestore";
 import type { UserProfile } from "@/types/db"
@@ -92,4 +95,26 @@ export async function updateProfileFields(patch: { headline?: string; summary?: 
     await db.collection("users").doc(uid).update(doc);
     revalidatePath("/dashboard")
     revalidatePath("/dashboard/profile")
+}
+
+/**
+ * Permanently deletes the account: users/{uid} with every subcollection (library, jobs, variants, vectors,
+ * meta), the NextAuth Google account link, extension tokens and codes, and rate-limit counters. Daily AI
+ * usage counters (ai_usage) are not linked to anything else and expire through their TTL. `confirmation`
+ * must be "DELETE" (typed by the user). Signs out and returns to the landing page.
+ */
+export async function deleteAccount(confirmation: string): Promise<{ ok: false; error: string }> {
+    const uid = await requireUid();
+    if (confirmation !== "DELETE") return { ok: false, error: 'Type DELETE to confirm.' };
+
+    await deleteAllExtensionAccess(uid);
+    const accounts = await db.collection("accounts").where("userId", "==", uid).get();
+    const batch = db.batch();
+    for (const d of accounts.docs) batch.delete(d.ref);
+    for (const policy of Object.values(RATE)) batch.delete(db.collection("rate_limits").doc(`${policy.name}__${uid}`));
+    await batch.commit();
+    await db.recursiveDelete(db.collection("users").doc(uid));
+
+    await signOut({ redirectTo: "/?deleted=1" });
+    return { ok: false, error: "Signed out." };
 }

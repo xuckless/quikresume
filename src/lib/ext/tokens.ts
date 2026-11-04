@@ -114,3 +114,16 @@ export async function revokeToken(token: string): Promise<void> {
     cache.delete(id);
     await tokens().doc(id).delete().catch(() => {});
 }
+
+/** Account deletion: every token and pending code of the user, plus this instance's verify cache. */
+export async function deleteAllExtensionAccess(uid: string): Promise<void> {
+    for (const [id, v] of cache) if (v.uid === uid) cache.delete(id);
+    for (const col of [tokens(), codes()]) {
+        const snap = await col.where("uid", "==", uid).get();
+        for (let i = 0; i < snap.docs.length; i += 400) {
+            const batch = db.batch();
+            for (const d of snap.docs.slice(i, i + 400)) batch.delete(d.ref);
+            await batch.commit();
+        }
+    }
+}

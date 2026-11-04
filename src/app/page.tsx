@@ -33,8 +33,8 @@ const JSON_LD = {
     featureList: FEATURES.map(f => f.title),
 };
 
-export default async function Home() {
-    const session = await auth();
+export default async function Home({ searchParams }: { searchParams: Promise<{ deleted?: string }> }) {
+    const [session, sp] = await Promise.all([auth(), searchParams]);
     const cta = session ? "/dashboard" : "/login";
 
     return (
@@ -46,6 +46,9 @@ export default async function Home() {
             />
             <MarketingHeader session={session} />
 
+            {sp.deleted === "1" && !session && (
+                <p role="status" className="mx-auto mt-6 w-full max-w-6xl px-6 text-13 text-fg-muted">Your account and everything in it have been deleted.</p>
+            )}
             <section className="mx-auto w-full max-w-6xl px-6 pt-16 pb-16 md:pt-24">
                 <div className="max-w-2xl">
                     <h1 className="text-4xl font-semibold leading-[1.08] tracking-tight md:text-5xl">
