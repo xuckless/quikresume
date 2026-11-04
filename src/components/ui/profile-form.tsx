@@ -1,6 +1,8 @@
 // src/components/ui/profile-form.tsx
 "use client";
 
+import type { ProfileLink } from "@/lib/contact/links";
+import { LinksEditor } from "@/components/ui/links-editor";
 import React, { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -26,6 +28,7 @@ import { PROFILE_ID } from "@/lib/tags/content";
 
 interface ProfileFormProps {
     initial: PersonalInfo;
+    initialLinks: ProfileLink[];
     account: { name: string; email: string; image: string | null };
     linkChecks: LinkChecks;
     review: ItemReview | null;
@@ -33,12 +36,13 @@ interface ProfileFormProps {
 
 type Status = "idle" | "saving" | "saved" | "error";
 
-export function ProfileForm({ initial, account, linkChecks, review }: ProfileFormProps) {
+export function ProfileForm({ initial, initialLinks, account, linkChecks, review }: ProfileFormProps) {
     const router = useRouter();
     const runState = useReviewRunState();
     const [handled, setHandled] = useState<ReadonlySet<string>>(new Set());
     // Local draft seeded once from the server value; never re-synced from props.
     const [info, setInfo] = useState<PersonalInfo>(initial);
+    const [links, setLinks] = useState<ProfileLink[]>(initialLinks);
     const [status, setStatus] = useState<Status>("idle");
     const [error, setError] = useState<string | null>(null);
 
@@ -56,14 +60,16 @@ export function ProfileForm({ initial, account, linkChecks, review }: ProfileFor
         setStatus("saving");
         setError(null);
         try {
-            const result = await updateUserProfile(info);
+            const result = await updateUserProfile(info, links);
             if (!result.success) {
                 setStatus("error");
                 setError(result.error);
                 return;
             }
-            const linksChanged = (["github", "linkedin", "website"] as const).some(k => result.info[k] !== initial[k]) || Object.keys(linkChecks).length === 0;
+            const extraChanged = JSON.stringify((result.links ?? links).map(l => l.url)) !== JSON.stringify(initialLinks.map(l => l.url));
+            const linksChanged = extraChanged || (["github", "linkedin", "website"] as const).some(k => result.info[k] !== initial[k]) || Object.keys(linkChecks).length === 0;
             setInfo(result.info);
+            if (result.links) setLinks(result.links);
             setStatus("saved");
             if (linksChanged) kickLinkCheck(() => router.refresh());
             if (result.info.headline !== initial.headline || result.info.summary !== initial.summary) {
@@ -75,7 +81,7 @@ export function ProfileForm({ initial, account, linkChecks, review }: ProfileFor
         }
     };
 
-    const dirty = JSON.stringify(info) !== JSON.stringify(initial);
+    const dirty = JSON.stringify(info) !== JSON.stringify(initial) || JSON.stringify(links) !== JSON.stringify(initialLinks);
 
     // Coach suggestions apply to the saved headline / summary; accepting one saves it straight away.
     const savedText = { ...info, headline: initial.headline, summary: initial.summary };
@@ -141,6 +147,7 @@ export function ProfileForm({ initial, account, linkChecks, review }: ProfileFor
                         {f("phone", "Phone", "(123) 456-7890", { type: "tel", autoComplete: "tel" })}
                         {f("location", "Location", "Seattle, WA")}
                         {f("website", "Website", "alexmorgan.dev", { inputMode: "url" })}
+                        <div className="md:col-span-2"><LinksEditor value={links} onChange={next => { setLinks(next); if (status === "saved") setStatus("idle"); }} idPrefix="profile-links" checks={linkChecks} /></div>
                         {f("github", "GitHub", "github.com/alexmorgan")}
                         {f("linkedin", "LinkedIn", "linkedin.com/in/alexmorgan")}
                         <Field label="Professional summary" htmlFor="profile-summary" className="md:col-span-2" {...wordCaution(summaryWordCount(info), "your summary")}>

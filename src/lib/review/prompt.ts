@@ -9,7 +9,7 @@ import { REVIEW_FLAGS } from "./types";
 
 const SECTION_NAME: Record<ReviewInput["target"], string> = {
     workExperience: "work experience", education: "education", skills: "skill category", projects: "project",
-    certifications: "certification", awards: "award", volunteering: "volunteering / leadership", publications: "publication",
+    certifications: "certification", awards: "award", volunteering: "volunteering / leadership", custom: "entry of a custom section", publications: "publication",
     languages: "spoken language", profile: "résumé headline and professional summary",
 };
 

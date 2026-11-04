@@ -175,6 +175,7 @@ export function ResumeForm({ resumeData, onChange, variantUsage = {}, tab, initi
             {showProfile && (
                 <PersonalInfoSection
                     value={resumeData.personalInfo} onChange={updatePersonalInfo} linkChecks={linkChecks}
+                    links={resumeData.links ?? []} onLinksChange={links => onChange(prev => ({ ...prev, links }))}
                     focusField={initialOpenId?.startsWith("pi-") ? (initialOpenId.slice(3) as keyof ResumeData["personalInfo"]) : null}
                 />
             )}

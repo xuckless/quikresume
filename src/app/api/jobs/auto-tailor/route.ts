@@ -12,16 +12,9 @@
 
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { chatCompletion, GlmError, textModel } from "@/lib/glm/client";
-import { extractJson, ImportParseError } from "@/lib/import/parsed-resume";
-import { readTagAliases } from "@/lib/db/meta";
-import { patchJob, readJob, readPreferences } from "@/lib/db/jobs";
-import { reconcileLibraryHash, reconcileRequirements } from "@/lib/match/reconcile";
-import { effortFor, maxTokensFor } from "@/lib/glm/effort";
-import { readCandidateContext } from "@/lib/db/characterization";
+import { readJob } from "@/lib/db/jobs";
 import { readResumeBody } from "@/lib/match/resume-body";
-import { buildTailorPlan, mergeAiReview, tailorPromptInput } from "@/lib/match/auto-tailor";
-import { AUTO_TAILOR_SYSTEM_PROMPT, autoTailorUserMessage } from "@/lib/match/prompt";
+import { runTailorPlan } from "@/lib/match/tailor-run";
 import { guardApi } from "@/lib/security/guard";
 import { RATE } from "@/lib/security/rate-limit";
 import { withAiUser } from "@/lib/security/ai-budget";
@@ -45,39 +38,11 @@ export async function POST(req: Request) {
 
     return withAiUser(uid, "tailor", async () => {
         try {
-            const [job, prefs, aliases, candidate] = await Promise.all([readJob(uid, jobId), readPreferences(uid), readTagAliases(uid), readCandidateContext(uid)]);
+            const job = await readJob(uid, jobId);
             if (!job) return fail(404, "Job not found.");
-
-            // The background pass (max effort) already judged this library: reuse its verdicts. Otherwise
-            // (library changed, still running, failed, never run) do a quick inline pass so the plan sees them.
-            const current = job.match.status === "done" && job.match.libraryHash === reconcileLibraryHash(job.requirements, resume, candidate);
-            const reconciled = current
-                ? { requirements: job.requirements, warning: undefined }
-                : await reconcileRequirements(job.requirements, resume, aliases, { timeoutMs: 45_000, retries: 0, candidate, effort: "low" });
-            const requirements = reconciled.requirements;
-            if (!current && !reconciled.warning) await patchJob(uid, job.id, { requirements });
-
-            const plan = buildTailorPlan(requirements, resume, prefs.caps, aliases);
-            const warnings: string[] = reconciled.warning ? [`AI match check skipped: ${reconciled.warning}`] : [];
-            let reviewed = plan;
-            const tailorEffort = effortFor("tailor");
-            try {
-                const result = await chatCompletion(
-                    [
-                        { role: "system", content: AUTO_TAILOR_SYSTEM_PROMPT },
-                        { role: "user", content: autoTailorUserMessage({ job: { title: job.title, company: job.company, summary: job.summary }, ...tailorPromptInput(plan, resume, requirements), candidate }) },
-                    ],
-                    { model: textModel(), json: true, effort: tailorEffort, temperature: 0.2, maxTokens: maxTokensFor(tailorEffort, 8000), timeoutMs: 180_000, retries: 0 },
-                );
-                reviewed = mergeAiReview(plan, resume, extractJson(result.text));
-            } catch (err) {
-                if (err instanceof ImportParseError) console.error("[jobs/auto-tailor] unparseable reply:", err.raw.slice(0, 500));
-                else console.error("[jobs/auto-tailor]", err);
-                warnings.push(`The AI review did not finish (${err instanceof GlmError ? err.message : "unreadable reply"}); showing the tag-based decisions.`);
-            }
-
+            const run = await runTailorPlan(uid, job, resume);
             revalidatePath("/dashboard");
-            return NextResponse.json({ ok: true, plan: reviewed, requirements, warning: warnings.join(" ") || undefined });
+            return NextResponse.json({ ok: true, plan: run.plan, requirements: run.requirements, warning: run.warning });
         } catch (err) {
             console.error("[jobs/auto-tailor] failed:", err);
             return fail(500, "Auto-tailor failed. Please try again.");

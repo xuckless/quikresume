@@ -136,7 +136,8 @@ export async function applyWorkingSelection(input: { items: VariantItems; hidden
  * Saves a selection built in the browser (tailor window) as a new variant and
  * loads it as the working selection. Ids that no longer exist are dropped.
  */
-export async function createVariantFromPlan(input: { name: string; labels?: string[]; items: VariantItems; hidden: VariantHidden; layout?: ResumeLayout }): Promise<{ id: string; missing: number }> {
+/** `load: false` (browser extension) saves the variant without making it the working selection. */
+export async function createVariantFromPlan(input: { name: string; labels?: string[]; items: VariantItems; hidden: VariantHidden; layout?: ResumeLayout; load?: boolean }): Promise<{ id: string; missing: number }> {
     const uid = await requireUid();
     await assertVariantRoom(uid);
     const existing = await listItemIds(uid);
@@ -152,6 +153,10 @@ export async function createVariantFromPlan(input: { name: string; labels?: stri
     const ref = await userCol(uid, "variants").add({
         name: cleanName(input.name) || "Tailored resume", labels: cleanLabels(input.labels), items, hidden, layout, templateId: layout.theme.templateId, createdAt: now, updatedAt: now,
     });
+    if (input.load === false) {
+        revalidate();
+        return { id: ref.id, missing: 0 };
+    }
     const { missing } = await applyVariantSelection(uid, items, hidden);
     await replaceMeta(uid, "layout", { ...layout });
     await db.collection("users").doc(uid).set({ loadedVariantId: ref.id, updatedAt: now }, { merge: true });

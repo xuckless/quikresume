@@ -7,7 +7,8 @@
 //   e = 0.95  exact tag (credentials / languages: 1)        via "direct"
 //       0.90  cited by the AI reconcile pass                 via "direct"
 //       0.85  a satisfying tag (degree hierarchy, reconcile) via "related"
-//       p     semantic hit (calibrated; confirmed by the judge -> ≥ 0.9; seen and rejected -> 0.4·p)
+//       p     semantic hit (calibrated; confirmed by the judge -> ≥ 0.9; seen and rejected -> 0.4·p;
+//             credentials / languages without a confirmation: at most BINARY_SEMANTIC_CAP)
 //   times recency 0.5^(age / 4y) for dated work (experience, projects, volunteering).
 // strength m_r = 1 − Π(1 − e) over the top 3 items (noisy-OR: more evidence helps, with diminishing
 // returns); binary kinds use the best e. A literal keyword hit with nothing better counts 0.5.
@@ -16,7 +17,8 @@
 //   coverage  C = Σ w·m / Σ w,  w = importance (must 1, nice 0.4) × tier (hard 1, soft 0.3)
 //   ats       K = hard requirements' literal presence, by placement (recent role / skills / summary 1, elsewhere 0.6)
 //   years     Y = mean over requirements with yearsMin of min(1, evidenced years / yearsMin)
-//   title     T = best calibrated similarity of the job title to a selected role's title, with recency
+//   title     T = best calibrated similarity of the job title to a selected role's title, with recency,
+//               × the seniority fit when the posting's level is known (lib/match/seniority.ts; alone without titleSim)
 //   education E = coverage of credential requirements
 // score = 100 · Σ W·sub / Σ W over the non-null ones, W = {C .55, K .15, Y .10, T .10, E .10}.
 // Must-have gate: any hard must-have with m < 0.3 caps the score at MUST_GATE_CAP (the knock-out
@@ -24,6 +26,7 @@
 // band = 1.96 · √Var · weight of C, Var = Σ w² m(1−m) / (Σ w)² (each m read as a Bernoulli).
 // gain_r = 100 · (W_C / ΣW) · w_r (1 − m_r) / Σ w: exact, because the score is linear in m_r.
 
+import { candidateLevel, seniorityFit, type Seniority } from "@/lib/match/seniority";
 import type { ResumeData, ResumeListKey } from "@/types/schema";
 import { RESUME_LIST_KEYS } from "@/types/schema";
 import { emptyKindTotals, type KindTotals } from "@/lib/tags/aggregate";
@@ -32,7 +35,7 @@ import { toTypstDoc } from "@/lib/typst/doc";
 import { literalHit, renderedText } from "@/lib/match/text";
 import { coverageItems, requirementCoverage } from "@/lib/match/coverage";
 import { itemAgeMonths, itemSpan } from "@/lib/match/units";
-import { noisyOr, recencyWeight } from "@/lib/match/semantic";
+import { BINARY_SEMANTIC_CAP, JUDGE_BAND, noisyOr, recencyWeight } from "@/lib/match/semantic";
 import { bulletKey, bulletLines } from "@/lib/sub-items";
 import { itemTitle } from "@/lib/sections";
 import type { EvidenceVia, MatchResult, MatchRow, Requirement, RequirementTier, RowEvidence, SubScores } from "@/lib/match/types";
@@ -43,7 +46,7 @@ export const SUB_WEIGHTS = { coverage: 0.55, ats: 0.15, years: 0.1, title: 0.1, 
 export const MUST_GATE_CAP = 70;
 export const MUST_MISSING_BELOW = 0.3;
 const BINARY_KINDS = new Set<Requirement["kind"]>(["credential", "language"]);
-const DATED_WORK = new Set<ResumeListKey>(["workExperience", "projects", "volunteering"]);
+const DATED_WORK = new Set<ResumeListKey>(["workExperience", "projects", "volunteering", "custom"]);
 
 /**
  * Generic engineering practices that postings list as "technical requirements"
@@ -110,10 +113,17 @@ function mergeSpans(spans: [number, number][]): number {
 }
 
 export interface ScoreOptions {
-    /** job.titleSim (lib/match/evidence.ts); absent = no title sub-score. */
+    /** job.titleSim (lib/match/evidence.ts); absent = no title similarity. */
     titleSim?: Record<string, number>;
+    /** job.seniority; with it the title sub-score includes the level fit (lib/match/seniority.ts). */
+    seniority?: Seniority | null;
     now?: Date;
+    /** false = no recency decay (coverage questions: "does the library show this at all?"). Default true. */
+    recency?: boolean;
 }
+
+/** The ScoreOptions a saved job supplies (title similarity + posting level). */
+export const scoreOptionsFor = (job: { titleSim?: Record<string, number>; seniority?: Seniority | null }): ScoreOptions => ({ titleSim: job.titleSim, seniority: job.seniority ?? null });
 
 export function scoreJob(requirements: Requirement[], data: ResumeData, aliases: AliasMap = {}, opts: ScoreOptions = {}): MatchResult {
     const now = opts.now ?? new Date();
@@ -126,7 +136,7 @@ export function scoreJob(requirements: Requirement[], data: ResumeData, aliases:
     const prime = primeText(doc);
     const rec = (id: string) => {
         const it = selected.get(id);
-        return it && DATED_WORK.has(it.section) ? recencyWeight(itemAgeMonths(data, it.section, id, now)) : 1;
+        return it && opts.recency !== false && DATED_WORK.has(it.section) ? recencyWeight(itemAgeMonths(data, it.section, id, now)) : 1;
     };
 
     const rows: MatchRow[] = requirements.map(r => {
@@ -151,7 +161,10 @@ export function scoreJob(requirements: Requirement[], data: ResumeData, aliases:
             const it = selected.get(h.itemId);
             if (!it) continue;
             if (h.bullet !== null && it.bullets && !it.bullets.has(h.bullet)) continue;
-            const e = h.confirmed === true ? Math.max(h.p, 0.9) : h.confirmed === false && h.p < 0.85 ? 0.4 * h.p : h.p;
+            // A rejection only exists inside the judge band (older jobs also marked unseen strong hits false: those read as unjudged).
+            const rejected = h.confirmed === false && h.p < JUDGE_BAND[1];
+            let e = h.confirmed === true ? Math.max(h.p, 0.9) : rejected ? 0.4 * h.p : h.p;
+            if (binary && h.confirmed !== true) e = Math.min(e, BINARY_SEMANTIC_CAP);
             offer(h.itemId, it.label, h.confirmed === true ? "direct" : "semantic", e, h.quote);
         }
         const evidence = [...best.values()].sort((a, b) => b.e - a.e);
@@ -198,6 +211,13 @@ export function scoreJob(requirements: Requirement[], data: ResumeData, aliases:
             T = Math.max(T ?? 0, sim * rec(id));
         }
     }
+    let seniority: MatchResult["seniority"] = null;
+    if (opts.seniority) {
+        const candidate = candidateLevel(data, now);
+        const fit = seniorityFit(opts.seniority, candidate.level);
+        seniority = { job: opts.seniority, candidate, fit };
+        T = T === null ? fit : T * fit;
+    }
 
     const creds = rows.filter(r => r.requirement.kind === "credential");
     const cW = creds.reduce((s, r) => s + w(r), 0);
@@ -238,6 +258,7 @@ export function scoreJob(requirements: Requirement[], data: ResumeData, aliases:
         rows,
         missingMust: missingMustRows.map(r => r.requirement),
         keywordGaps: rows.filter(r => r.strength < MUST_MISSING_BELOW && r.tier === "soft").map(r => r.requirement),
+        seniority,
     };
 }
 

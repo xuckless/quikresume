@@ -1,0 +1,270 @@
+{
+  "about": "Hand-labelled match cases for npm run eval:match. covered = a careful recruiter would say the résumé shows the requirement (directly or clearly implied). Hard negatives are deliberate.",
+  "cases": [
+    {
+      "id": "sw-backend",
+      "title": "Senior Backend Engineer",
+      "resume": {
+        "headline": "Backend engineer",
+        "work": [
+          { "title": "Software Engineer", "company": "Northwind Payments", "start": "2021-03", "end": "Present", "bullets": ["Split a monolith into 5 services behind gRPC, cutting p95 latency 38%", "Ran the services on EKS with Helm charts and Argo CD", "Wrote the PostgreSQL migrations for the ledger"] },
+          { "title": "Web Developer", "company": "Pixel & Pine", "start": "2018-06", "end": "2021-02", "bullets": ["Built React dashboards in TypeScript for retail clients"] }
+        ],
+        "education": [{ "degree": "B.Sc. Computer Science", "institution": "University of Waterloo", "start": "2014-09", "end": "2018-04" }],
+        "skills": [{ "category": "Languages", "items": ["Go", "TypeScript", "SQL"] }]
+      },
+      "requirements": [
+        { "name": "Go", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Microservices", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Kubernetes", "kind": "tool-platform", "importance": "must", "covered": true },
+        { "name": "PostgreSQL", "kind": "tool-platform", "importance": "must", "covered": true },
+        { "name": "Amazon Web Services", "kind": "tool-platform", "importance": "nice", "covered": true },
+        { "name": "Java", "kind": "technical-skill", "importance": "nice", "covered": false },
+        { "name": "Kafka", "kind": "tool-platform", "importance": "nice", "covered": false },
+        { "name": "Bachelor's Degree", "kind": "credential", "importance": "must", "covered": true }
+      ]
+    },
+    {
+      "id": "sw-frontend-negatives",
+      "title": "Frontend Engineer",
+      "resume": {
+        "headline": "Frontend developer",
+        "work": [
+          { "title": "Frontend Developer", "company": "Brightside", "start": "2022-01", "end": "Present", "bullets": ["Built the checkout in Vue 3 and Pinia", "Cut bundle size 40% with code splitting in Vite", "Wrote Cypress end-to-end tests"] }
+        ],
+        "education": [{ "degree": "Diploma, Web Development", "institution": "Humber College", "start": "2019-09", "end": "2021-12" }],
+        "skills": [{ "category": "Frontend", "items": ["JavaScript", "Vue.js", "CSS", "Cypress"] }]
+      },
+      "requirements": [
+        { "name": "JavaScript", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "React", "kind": "technical-skill", "importance": "must", "covered": false },
+        { "name": "Java", "kind": "technical-skill", "importance": "nice", "covered": false },
+        { "name": "End-to-End Testing", "kind": "methodology", "importance": "nice", "covered": true },
+        { "name": "Web Performance Optimization", "kind": "technical-skill", "importance": "nice", "covered": true },
+        { "name": "Bachelor's Degree", "kind": "credential", "importance": "must", "covered": false }
+      ]
+    },
+    {
+      "id": "data-analyst",
+      "title": "Data Analyst",
+      "resume": {
+        "headline": "Analyst",
+        "work": [
+          { "title": "Business Analyst", "company": "Maple Grocers", "start": "2021-05", "end": "Present", "bullets": ["Built weekly sales dashboards in Tableau for 40 stores", "Wrote SQL against Snowflake to find shrink by department", "Ran A/B tests on flyer layouts and reported lift"] }
+        ],
+        "education": [{ "degree": "B.A. Economics", "institution": "McGill University", "start": "2017-09", "end": "2021-04" }],
+        "skills": [{ "category": "Tools", "items": ["SQL", "Tableau", "Excel", "Python (pandas)"] }]
+      },
+      "requirements": [
+        { "name": "SQL", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Data Visualization", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Power BI", "kind": "tool-platform", "importance": "nice", "covered": false },
+        { "name": "A/B Testing", "kind": "methodology", "importance": "nice", "covered": true },
+        { "name": "Python", "kind": "technical-skill", "importance": "nice", "covered": true },
+        { "name": "Statistics", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Machine Learning", "kind": "technical-skill", "importance": "nice", "covered": false }
+      ]
+    },
+    {
+      "id": "rn-icu",
+      "title": "Registered Nurse, ICU",
+      "resume": {
+        "headline": "Critical care nurse",
+        "work": [
+          { "title": "Registered Nurse", "company": "St. Brigid's Hospital, ICU", "start": "2020-01", "end": "Present", "bullets": ["Cared for 2 ventilated patients per shift", "Titrated vasoactive drips and documented in Epic", "Precepted new graduate nurses"] }
+        ],
+        "education": [{ "degree": "BScN", "institution": "McMaster University", "start": "2015-09", "end": "2019-05" }],
+        "certs": [{ "name": "Registered Nurse", "issuer": "College of Nurses of Ontario", "year": "2019" }, { "name": "ACLS", "issuer": "Heart and Stroke Foundation", "year": "2022" }]
+      },
+      "requirements": [
+        { "name": "Registered Nurse", "kind": "credential", "importance": "must", "covered": true },
+        { "name": "Critical Care", "kind": "domain", "importance": "must", "covered": true },
+        { "name": "Advanced Cardiovascular Life Support", "kind": "credential", "importance": "must", "covered": true },
+        { "name": "Basic Life Support", "kind": "credential", "importance": "must", "covered": false },
+        { "name": "Ventilator Management", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "EHR Software", "kind": "tool-platform", "importance": "must", "covered": true },
+        { "name": "Pediatric Advanced Life Support", "kind": "credential", "importance": "nice", "covered": false },
+        { "name": "Mentoring", "kind": "soft-skill", "importance": "nice", "covered": true }
+      ]
+    },
+    {
+      "id": "lpn-not-rn",
+      "title": "Registered Nurse, Medicine",
+      "resume": {
+        "headline": "Practical nurse",
+        "work": [
+          { "title": "Registered Practical Nurse", "company": "Lakeshore LTC", "start": "2019-03", "end": "Present", "bullets": ["Administered medications to 25 residents", "Completed wound care and skin assessments"] }
+        ],
+        "education": [{ "degree": "Practical Nursing Diploma", "institution": "Mohawk College", "start": "2017-09", "end": "2019-02" }],
+        "certs": [{ "name": "Registered Practical Nurse (RPN)", "issuer": "College of Nurses of Ontario", "year": "2019" }]
+      },
+      "requirements": [
+        { "name": "Registered Nurse", "kind": "credential", "importance": "must", "covered": false },
+        { "name": "Bachelor of Science in Nursing", "kind": "credential", "importance": "must", "covered": false },
+        { "name": "Medication Administration", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Wound Care", "kind": "technical-skill", "importance": "nice", "covered": true },
+        { "name": "Acute Care", "kind": "domain", "importance": "nice", "covered": false }
+      ]
+    },
+    {
+      "id": "teacher",
+      "title": "Grade 4 Teacher",
+      "resume": {
+        "headline": "Elementary teacher",
+        "work": [
+          { "title": "Grade 3 Teacher", "company": "Riverside Public School", "start": "2019-09", "end": "Present", "bullets": ["Planned and taught all subjects for a class of 27", "Wrote IEPs with the resource teacher for 4 students", "Ran a weekly coding club with Scratch"] }
+        ],
+        "education": [{ "degree": "Bachelor of Education", "institution": "Western University", "start": "2017-09", "end": "2019-04" }],
+        "certs": [{ "name": "Ontario Certified Teacher (OCT)", "issuer": "Ontario College of Teachers", "year": "2019" }]
+      },
+      "requirements": [
+        { "name": "Teaching Certificate", "kind": "credential", "importance": "must", "covered": true },
+        { "name": "Lesson Planning", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Individualized Education Program", "kind": "methodology", "importance": "must", "covered": true },
+        { "name": "Classroom Management", "kind": "methodology", "importance": "must", "covered": true },
+        { "name": "French", "kind": "language", "importance": "nice", "covered": false },
+        { "name": "Special Education Qualification", "kind": "credential", "importance": "nice", "covered": false }
+      ]
+    },
+    {
+      "id": "accountant",
+      "title": "Senior Accountant",
+      "resume": {
+        "headline": "CPA",
+        "work": [
+          { "title": "Staff Accountant", "company": "Prairie Foods", "start": "2020-08", "end": "Present", "bullets": ["Closed the books monthly for 3 entities", "Reconciled 40 balance sheet accounts", "Prepared consolidated statements under IFRS"] }
+        ],
+        "education": [{ "degree": "Bachelor of Commerce, Accounting", "institution": "University of Calgary", "start": "2016-09", "end": "2020-04" }],
+        "certs": [{ "name": "Chartered Professional Accountant", "issuer": "CPA Alberta", "year": "2022" }],
+        "skills": [{ "category": "Tools", "items": ["Excel", "QuickBooks"] }]
+      },
+      "requirements": [
+        { "name": "CPA", "kind": "credential", "importance": "must", "covered": true },
+        { "name": "Month-End Close", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Account Reconciliation", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Financial Reporting", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "SAP", "kind": "tool-platform", "importance": "nice", "covered": false },
+        { "name": "Accounting Software", "kind": "tool-platform", "importance": "must", "covered": true },
+        { "name": "US GAAP", "kind": "methodology", "importance": "nice", "covered": false }
+      ]
+    },
+    {
+      "id": "electrician",
+      "title": "Industrial Electrician",
+      "resume": {
+        "headline": "Journeyman electrician",
+        "work": [
+          { "title": "Electrician", "company": "Volt Line Electric", "start": "2019-04", "end": "Present", "bullets": ["Installed and wired 600V motor control centres", "Troubleshot faults with multimeters and megohmmeters", "Programmed Allen-Bradley PLCs for a conveyor line"] }
+        ],
+        "education": [{ "degree": "Electrician Program", "institution": "NAIT", "start": "2015-09", "end": "2019-03" }],
+        "certs": [{ "name": "Journeyman Electrician (Red Seal)", "issuer": "Alberta AIT", "year": "2019" }]
+      },
+      "requirements": [
+        { "name": "Journeyman Electrician", "kind": "credential", "importance": "must", "covered": true },
+        { "name": "Motor Controls", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "PLC", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Troubleshooting", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Variable Frequency Drives", "kind": "technical-skill", "importance": "nice", "covered": false },
+        { "name": "Master Electrician", "kind": "credential", "importance": "nice", "covered": false },
+        { "name": "Hazardous Locations", "kind": "domain", "importance": "nice", "covered": false }
+      ]
+    },
+    {
+      "id": "marketing",
+      "title": "Digital Marketing Manager",
+      "resume": {
+        "headline": "Growth marketer",
+        "work": [
+          { "title": "Marketing Specialist", "company": "Trailhead Gear", "start": "2021-02", "end": "Present", "bullets": ["Ran Google Ads and Meta campaigns with a $40K monthly budget", "Grew organic traffic 70% through keyword research and on-page fixes", "Built email nurture flows in Klaviyo"] }
+        ],
+        "education": [{ "degree": "BBA, Marketing", "institution": "Ryerson University", "start": "2016-09", "end": "2020-04" }]
+      },
+      "requirements": [
+        { "name": "Pay-Per-Click Advertising", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Search Engine Optimization", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Email Marketing", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "HubSpot", "kind": "tool-platform", "importance": "nice", "covered": false },
+        { "name": "Team Leadership", "kind": "soft-skill", "importance": "must", "covered": false },
+        { "name": "Bachelor's Degree", "kind": "credential", "importance": "must", "covered": true }
+      ]
+    },
+    {
+      "id": "ux",
+      "title": "Product Designer",
+      "resume": {
+        "headline": "Product designer",
+        "work": [
+          { "title": "UX Designer", "company": "Fable Health", "start": "2020-06", "end": "Present", "bullets": ["Ran 30 moderated usability sessions for the patient app", "Designed the onboarding flow in Figma and built its component library", "Partnered with engineers on accessible color and type tokens"] }
+        ],
+        "education": [{ "degree": "BDes, Interaction Design", "institution": "OCAD University", "start": "2016-09", "end": "2020-04" }]
+      },
+      "requirements": [
+        { "name": "Figma", "kind": "tool-platform", "importance": "must", "covered": true },
+        { "name": "Usability Testing", "kind": "methodology", "importance": "must", "covered": true },
+        { "name": "Design Systems", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Accessibility", "kind": "technical-skill", "importance": "nice", "covered": true },
+        { "name": "Motion Design", "kind": "technical-skill", "importance": "nice", "covered": false },
+        { "name": "Healthcare", "kind": "domain", "importance": "nice", "covered": true }
+      ]
+    },
+    {
+      "id": "pharmacist",
+      "title": "Community Pharmacist",
+      "resume": {
+        "headline": "Pharmacist",
+        "work": [
+          { "title": "Pharmacist", "company": "Shoppers Drug Mart", "start": "2018-07", "end": "Present", "bullets": ["Verified 300 prescriptions a day", "Gave flu and COVID-19 vaccinations", "Ran medication reviews for patients on 5+ drugs"] }
+        ],
+        "education": [{ "degree": "PharmD", "institution": "University of Toronto", "start": "2014-09", "end": "2018-06" }],
+        "certs": [{ "name": "Licensed Pharmacist", "issuer": "Ontario College of Pharmacists", "year": "2018" }]
+      },
+      "requirements": [
+        { "name": "Pharmacist License", "kind": "credential", "importance": "must", "covered": true },
+        { "name": "Doctor of Pharmacy", "kind": "credential", "importance": "must", "covered": true },
+        { "name": "Immunization", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Medication Therapy Management", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Compounding", "kind": "technical-skill", "importance": "nice", "covered": false },
+        { "name": "Spanish", "kind": "language", "importance": "nice", "covered": false }
+      ]
+    },
+    {
+      "id": "ml-engineer",
+      "title": "Machine Learning Engineer",
+      "resume": {
+        "headline": "ML engineer",
+        "work": [
+          { "title": "Data Scientist", "company": "Lumen Retail", "start": "2021-01", "end": "Present", "bullets": ["Trained gradient-boosted demand forecasts in XGBoost", "Served models behind a FastAPI service on GCP", "Fine-tuned a BERT classifier for support tickets"] }
+        ],
+        "education": [{ "degree": "M.Sc. Statistics", "institution": "University of British Columbia", "start": "2018-09", "end": "2020-12" }],
+        "skills": [{ "category": "ML", "items": ["Python", "PyTorch", "scikit-learn", "XGBoost"] }]
+      },
+      "requirements": [
+        { "name": "Python", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Deep Learning", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Natural Language Processing", "kind": "technical-skill", "importance": "nice", "covered": true },
+        { "name": "Google Cloud Platform", "kind": "tool-platform", "importance": "nice", "covered": true },
+        { "name": "Computer Vision", "kind": "technical-skill", "importance": "nice", "covered": false },
+        { "name": "Master's Degree", "kind": "credential", "importance": "nice", "covered": true },
+        { "name": "Kubernetes", "kind": "tool-platform", "importance": "nice", "covered": false }
+      ]
+    },
+    {
+      "id": "retail-manager",
+      "title": "Store Manager",
+      "resume": {
+        "headline": "Retail leader",
+        "work": [
+          { "title": "Assistant Store Manager", "company": "Northern Outfitters", "start": "2020-03", "end": "Present", "bullets": ["Scheduled and coached a team of 18", "Hit 112% of the annual sales plan", "Cut inventory shrink 30% with weekly cycle counts"] }
+        ],
+        "education": [{ "degree": "Diploma, Business Administration", "institution": "Seneca College", "start": "2016-09", "end": "2018-04" }]
+      },
+      "requirements": [
+        { "name": "Team Leadership", "kind": "soft-skill", "importance": "must", "covered": true },
+        { "name": "Inventory Management", "kind": "technical-skill", "importance": "must", "covered": true },
+        { "name": "Sales", "kind": "domain", "importance": "must", "covered": true },
+        { "name": "P&L Management", "kind": "technical-skill", "importance": "nice", "covered": false },
+        { "name": "Visual Merchandising", "kind": "technical-skill", "importance": "nice", "covered": false }
+      ]
+    }
+  ]
+}

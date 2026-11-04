@@ -49,7 +49,9 @@ Required env (`.env.local`): `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRE
 `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (escaped `\n` newlines are unescaped in code),
 `GLM_API_KEY` (import, tags, Job Match, reviews, About you). Optional: `GITHUB_TOKEN` (raises the GitHub API limit for link checks), `GLM_BASE_URL` (default `https://api.z.ai/api/paas/v4`),
 `GLM_MODEL` (vision, default `glm-4.6v`), `GLM_TEXT_MODEL` (tags / JD analysis / proposals, default `glm-5.3-flash`),
-`EXTENSION_IDS` (comma-separated Chrome extension ids allowed by CORS on `/api/ext/*`), `NEXT_PUBLIC_EXTENSION_URL` (Web Store link
+`TURNSTILE_SECRET_KEY` + `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (Cloudflare Turnstile for the signed-out /start funnel; without them guest AI
+is refused in production and allowed in dev), `GUEST_DAILY_TOKEN_BUDGET` / `GUEST_DAILY_CALL_BUDGET` (per visitor, 120K / 20) and
+`GUEST_POOL_TOKEN_BUDGET` / `GUEST_POOL_CALL_BUDGET` (all guests together, 4M / 1500), `EXTENSION_IDS` (comma-separated Chrome extension ids allowed by CORS on `/api/ext/*`), `NEXT_PUBLIC_EXTENSION_URL` (Web Store link
 on `/dashboard/extension`), `GLM_EFFORT_RECONCILE` / `GLM_EFFORT_REVIEW` / `GLM_EFFORT_TAILOR` (`low | high | max`, see Reasoning effort),
 `AI_DAILY_TOKEN_BUDGET` / `AI_DAILY_CALL_BUDGET` (per-user daily AI budget, see Security). `VOYAGE_API_KEY` (semantic matching;
 without it Job Match runs on tags only), optional `VOYAGE_EMBED_MODEL` (default `voyage-4-lite`), `VOYAGE_RERANK_MODEL`
@@ -67,6 +69,8 @@ src/
   lib/db/session.ts                          currentUid() / requireUid(): one auth() per request (React cache)
   app/page.tsx, (auth)/login                 public pages (MarketingHeader/Footer in components/marketing-header.tsx);
                                              page.tsx also emits the WebApplication JSON-LD
+  app/privacy/page.tsx                       privacy policy (Chrome Web Store policy URL; must match what the code does: update it with
+                                             any new processor, permission or stored field). Contact = SITE_CONTACT_EMAIL (lib/site.ts, env override)
   app/{robots,sitemap}.ts                    /robots.txt (AI crawlers disallowed, /dashboard + /api + /login hidden,
                                              search engines allowed) and /sitemap.xml (public pages only)
   app/opengraph-image.tsx, twitter-image.tsx 1200x630 social card via next/og (Satori: every div with >1 child needs
@@ -112,7 +116,9 @@ src/
   components/ui/contact-field.tsx            ContactInput: normalise on blur, format issue, red broken-link mark
   components/ui/about/about-form.tsx         About you steps (Core / Targeting / Your story / Follow-ups)
   components/ui/review/{score-badge,review-panel}.tsx   coach score badge / review with Accept / Dismiss
-  components/marketing-hero-mock.tsx         static landing-page product sketch
+  components/landing/landing-demo.tsx        interactive landing demo: profession samples (lib/demo/samples.ts), item toggles, an HTML
+                                             approximation of the 4 templates (no Typst on the landing page), live scoreJob + "What would raise it"
+  app/start/page.tsx, components/start/*     signed-out onboarding (see Guest funnel)
   components/ui/resume-import.tsx            multi-file upload (PDF -> page images) + combined review step
   components/ui/variant-toolbar.tsx          Save as / Load / Update variant on the library view
   components/ui/variants-page.tsx            /dashboard/variants: search, labels, rename, duplicate, delete, load
@@ -170,7 +176,7 @@ public/pdfjs/pdf.worker.min.mjs              gitignored, filled by scripts/copy-
 ## Data flow
 
 1. `dashboard/page.tsx` (RSC) fetches profile + `experience`, `education`, `skills`, `projects`,
-   `certifications`, `awards`, `volunteering`, `publications`, `languages` in parallel and builds
+   `certifications`, `awards`, `volunteering`, `publications`, `languages`, `custom` in parallel and builds
    `initialResumeData` with `toResumeData`.
 2. `DashboardClient` reads the view from `?view=editor|preview|import|jobs` (no param = library; the removed `insights` maps to `jobs`;
    `?view=jobs&job=<id>` opens one job's Match page, `jobHref()`) and
@@ -239,6 +245,15 @@ One global working layout in `meta/layout`; variants snapshot it.
   everything optional; end without start is an error; end before start is an error (same month is fine); a start or single
   date after the current month is an error; future end dates are allowed; certification year must be `YYYY`, not future.
   Errors show inline, disable Save & Exit ("Fix N dates" jumps to the first), and the import review flags them.
+
+## Custom sections
+
+`custom` is a 10th list section (`CustomEntry` in `types/schema.ts`, collection `custom`, `custom-actions.ts`): each entry names its
+own printed `section` heading ("Clinical Rotations", "Teaching", "References"…) and has title / subtitle / dates / bullets with
+per-bullet hiding, like volunteering. `toTypstDoc` groups selected entries by heading (case-insensitive, first spelling wins, in
+order of first appearance) and every template prints each group as its own section at the `"custom"` position of the section order
+(the per-section "Printed heading" override is hidden for it). Import routes any unrecognised résumé section there. Bodies and guest
+drafts from clients that predate it (no `custom` key) are filled with `[]` (`withAllSections` in `lib/match/resume-body.ts`).
 
 ## Sub-item selection
 
@@ -376,6 +391,17 @@ each effort over your library and returns outputs + timings, writing nothing.
   related (Java and JavaScript share one). Probe: categories scored 0.60–0.75, non-categories ≤ 0.53.
 - **Selection** (Tailor plan, set cover) uses `coveredByItem`, which also counts a semantic hit with p ≥ `SEMANTIC_COVERS`
   (0.6) that the judge did not reject. Seniority is not scored numerically; JD analysis reports conflicts in `fitNotes`.
+- **Judge band** (`JUDGE_BAND` [0.25, 0.9) in `lib/match/semantic.ts`): only hits inside it go to the LLM judge as hints, so only they get
+  `confirmed` true / false; a hit above it stays `null`. The scorer applies a rejection (0.4·p) below the band's top only (older jobs
+  marked unseen strong hits `false`). Credentials and languages never get more than `BINARY_SEMANTIC_CAP` (0.6) from an unconfirmed
+  embedding match: "Registered Practical Nurse" embeds next to "Registered Nurse". The judge prompt forbids a lower credential
+  satisfying a higher one (diploma ≠ bachelor's, RPN ≠ RN, apprentice ≠ journeyman).
+- **Match eval** (`npm run eval:match`, `test/eval/match.eval.ts`, cases in `test/eval/match-cases.json`; real GLM + Voyage calls,
+  ~2-3 min, never part of `npm test`): hand-labelled requirement coverage across professions with deliberate hard negatives. Tags the
+  résumé, scores on tags alone, then runs `enrichRequirements` (`lib/match/reconcile.ts`, the background pass minus Firestore, with
+  `memoryVecStore`) and scores again; reports precision / recall / F1 (covered = m ≥ 0.5) per stage and tier, hit rate per strength
+  band, and each error with its evidence. `EVAL_CASES=a,b`, `EVAL_RUNS=2` (score stability), `EVAL_EFFORT` (judge effort, default
+  low). Reports go to `test/eval/.results/` (gitignored). Baseline (13 cases, 84 requirements): tags only F1 0.79, full F1 0.98.
 - **Calibration** (`scripts/calibration/fit.mjs`, `node --env-file=.env.local scripts/calibration/fit.mjs [extra.json]`): logistic
   fits `p = σ(a·cos + c·rerank + b)` and cosine-only on labelled pairs (`scripts/calibration/seed.json`, several professions,
   deliberate hard negatives). Features are cached in `scripts/calibration/.features.json` (gitignored). Refit whenever the
@@ -396,9 +422,17 @@ each effort over your library and returns outputs + timings, writing nothing.
   `band` = ±95% from Σw²m(1−m); `row.gain` = exact points for fully evidencing that requirement. `missingMust` / `keywordGaps`
   use m < 0.3. UI: `components/ui/job-match/match-breakdown.tsx` (headline ± band + must-haves, sub-score bars, "What would
   raise it", evidence table with Direct / Related / Semantic / Keyword only).
-- **Recommendation** (`lib/match/recommend.ts`): greedy weighted set cover (must = 3, nice = 1, a requirement
-  saturates after 2 carriers) under per-section caps (`DEFAULT_CAPS`, user-editable in `meta/preferences`);
-  matching skill categories always in; education never excluded. Produces include/exclude proposals.
+- **Recommendation** (`lib/match/recommend.ts`): greedy maximisation of Σ w·m (must = 3, nice = 1; m = noisy-OR of the chosen
+  items' evidence, the scorer's own per-item `e` from one `scoreJob` over the whole library with every item on) under per-section
+  caps (`DEFAULT_CAPS`, user-editable in `meta/preferences`); a pick must add ≥ `MIN_GAIN`, so a weak second carrier of a strong
+  requirement loses to an item that covers something new. "Covers" / `uncovered` use evidence ≥ 0.5 *without* recency decay
+  (`scoreJob(..., { recency: false })`): an old role still proves a skill, recency only ranks carriers. Matching skill categories
+  always in; education never excluded. Produces include/exclude proposals.
+- **Seniority** (`lib/match/seniority.ts`): JD analysis returns `seniority` (intern / entry / mid / senior / lead / executive, stored
+  on the job); `candidateLevel` = years of selected non-internship work (overlaps merged; < 0.5 intern, < 2 entry, < 5 mid, else
+  senior) lifted by the latest title (Senior / Lead / Manager / Director…). `seniorityFit` (1 same; under 0.75 / 0.45 / 0.25; over
+  0.95 / 0.8 / 0.65) multiplies the title sub-score (or is it, without `titleSim`); `match.seniority` is shown under the sub-score
+  bars. Callers with a saved job pass `scoreOptionsFor(job)`.
 - `POST /api/jobs/proposals`: deterministic include/exclude + text-model `rewrite-bullet | add-skill | gap`
   proposals, muted rules filtered, statuses preserved by id, stored on the job. "Ignore similar" writes a
   `{kind, tag | itemId}` rule to `users/{uid}/meta/preferences.mutedProposals`.
@@ -468,7 +502,8 @@ npm run dev`, `npm run build` -> `.output/chrome-mv3`, `npm test` for the jsdom 
 - **API** (`src/app/api/ext/*`, every handler starts with `guardExtension` from `lib/security/ext-guard.ts`: Bearer token,
   per-user rate limit, AI budget for AI routes, no same-origin check (no cookies), CORS only for `chrome-extension://<EXTENSION_IDS>`
   (any extension origin outside production when unset), web-page origins rejected): `pair`, `me`, `signout`, `jobs` (GET `?url=`
-  lookup, POST import), `jobs/[id]` (GET summary, PATCH `{status, variantId}`). Import canonicalises the URL; a known `urlKey`
+  lookup, POST import), `jobs/[id]` (GET summary, PATCH `{status, variantId}`), `variants` (résumé picker), `tailor` (quick tailor,
+  see below), `tailor/save`. Import canonicalises the URL; a known `urlKey`
   refreshes url / location / employment type only; a new posting goes through `analyzeAndSaveJob` (`lib/match/analyze-job.ts`,
   shared with `/api/jobs/analyze`) with `source.kind: "extension"` and a background reconcile against the whole library.
 - **Summary** (`lib/ext/match-summary.ts`): scored server-side with the same `scoreJob` on the job's `variantId` variant, else the
@@ -488,6 +523,12 @@ npm run dev`, `npm run build` -> `.output/chrome-mv3`, `npm test` for the jsdom 
   `matchOption` for selects / radios incl. yes/no and "decline" synonyms), attaches the résumé PDF through `DataTransfer`, sends open
   questions to `POST /api/ext/autofill/answers`, outlines filled fields (solid) and AI drafts (dashed), and reports counts + fields left
   for the user (also stored as `unmapped` on Autofill preferences). Never submits; checkboxes (consent) are never ticked.
+- **Quick tailor** (side panel, `POST /api/ext/tailor {jobId}`): starts from the job's résumé (`resumeForJob`), runs `runTailorPlan`
+  (`lib/match/tailor-run.ts`, shared with `/api/jobs/auto-tailor`), trims with `fitToOnePage` using `countResumePages`
+  (`lib/typst/server-pdf.ts`, native SVG compile, ~20 ms) and returns `diffSuggestions` + before / after scores. The panel ticks
+  suggestions (`applySuggestions` in `extension/lib/types.ts`); `POST /api/ext/tailor/save` stores the result through
+  `createVariantFromPlan({ load: false })` (the working selection is untouched) and links it as the job's `variantId`. The picker
+  ("Résumé for this job") PATCHes `variantId`; changing it drops a stale tailor run.
 - **Autofill preferences** (`/dashboard/autofill`, `meta/autofill`, `lib/autofill/types.ts` `readAutofillPrefs` clamps everything):
   address, salary (min / target / currency / period), notice period, earliest start, work authorised / sponsorship / relocation
   (prefilled from About you when empty), EEO answers (default "Decline to answer"), "how did you hear", saved answers (used word for
@@ -498,6 +539,24 @@ npm run dev`, `npm run build` -> `.output/chrome-mv3`, `npm test` for the jsdom 
   `POST /api/ext/autofill/unmapped`, `GET /api/ext/resume/pdf?jobId=` (`lib/typst/server-pdf.ts`: native
   `@myriaddreamin/typst-ts-node-compiler` 0.7.0, same templates + fonts; `serverExternalPackages` + `outputFileTracingIncludes` in
   `next.config.ts`).
+
+## Guest funnel (/start)
+
+`/start` (public; signed-in visitors are sent to `?view=import`) runs `StartFlow`: import (`POST /api/guest/import`, the /api/import
+contract + `turnstile`) or a sample from `lib/demo/samples.ts` -> field + target role -> template (the real `ResumePreview`, so `/start`
+gets the dashboard's eval-enabled CSP plus Turnstile's script / frame / connect origins) -> paste a job (`POST /api/guest/match`: JD
+analysis + tagging the draft in parallel, low effort, no candidate brief, no reconcile, no embeddings) -> teaser (score, must-haves,
+blurred rows) -> Google sign-in (`signInFromStartAction`, back to `?view=jobs`).
+
+- **Nothing server-side** until sign-in: the draft lives in `localStorage["quikresume.guestDraft"]` (`lib/guest/draft-store.ts`).
+  `<GuestClaim>` in the dashboard layout calls `claimGuestDraft` once: an uploaded résumé is saved through `saveResumeData` only when the
+  library is empty (profile fields only fill blanks), the matched job is created from its stored requirements (clamped; no second
+  analysis), then the store is cleared and a notice links to the job. Samples are never claimed into the library.
+- **Guard** (`lib/security/guest-guard.ts`, `guardGuest`): same-origin, GLM configured, per-visitor durable rate limit (`RATE.guestImport`
+  4/h, `guestMatch` 6/h, keyed by `guest-<sha256(AUTH_SECRET|ip)>`, never the raw IP), Turnstile (`lib/security/turnstile.ts`), then the
+  guest AI budget: `withAiUser(guestId, task, fn, { budget: GUEST_BUDGET, pool: GUEST_POOL })`; `chatCompletion` checks both and
+  `recordAiUsage` records both (`ai_usage/guest-pool_<day>` is the global guest pool).
+- The teaser is a keyword-level first read (tags only); the full review after sign-in adds the reconcile pass and semantic matching.
 
 ## About you (characterization)
 
@@ -556,6 +615,13 @@ current, proposed, reason }], dismissed[], reviewHash, briefHash, reviewedAt }` 
   HEAD (GET fallback on 403 / 405 / 501) over `node:http(s)` with a DNS `lookup` guard refusing private / loopback / link-local /
   CGNAT addresses on every hop, ports 80 / 443, ≤ 3 redirects, 5 s timeout. Results on `users/{uid}.linkChecks` (24 h cache per URL,
   10 s throttle). Only `not-found` (404 / 410 / no such domain) shows the red mark, and only while the field still holds that URL.
+
+- **Extra links** (`lib/contact/links.ts`, `ResumeData.links`, `users/{uid}.links`, ≤ 6 `{label, url}`): portfolio, ORCID, Behance…
+  Edited with `LinksEditor` in the editor's personal info card and on the Profile page (`updateUserProfile(info, links)`; omitted =
+  unchanged), normalised like the website field and de-duplicated by URL. Printed after LinkedIn / GitHub / website as
+  "Label: url" (a bare URL when unlabelled) in every template (`header.links`). Import fills them (`links` in the JSON shape,
+  unioned by `mergeLinks`); the link check stores their results on `linkChecks.extra` (`brokenExtraLink`); Autofill uses a
+  "Portfolio"-labelled link for portfolio fields and the first link when there is no website.
 
 ## Resume import
 
@@ -640,6 +706,7 @@ ResumeData --toTypstDoc()--> TypstResumeDoc (JSON) --sys.inputs.resume--> main.t
 | `awards[]` | `{ title, issuer, date, description }` |
 | `certifications[]` | `{ name, issuer, year }` |
 | `languages[]` | `{ language, proficiency }` |
+| `custom[]` | `{ heading, entries: [{ title, organization, date, bullets[] }] }`: one group per heading, printed at the `"custom"` slot of `order` |
 | `layout` | `{ order: sectionKey[], page: { margin (mm), size (pt), leading (em) }, sections: { <key>: { above, below, gap, indent } } }` |
 
 Every list entry also carries `space_after` (pt), `break_before`, `keep` (entries are unbreakable unless `keep` is false).
@@ -647,7 +714,7 @@ Every list entry also carries `space_after` (pt), `break_before`, `keep` (entrie
 ## Data model (Firestore)
 
 `users/{uid}`: `firstName, lastName, headline, professionalEmail, phoneNumber, location, github, linkedIn,
-website, bio, profileTags, profileContentHash, profileTagsHash, profileReview, linkChecks, linkChecksAt, loadedVariantId, updatedAt`
+website, bio, links, profileTags, profileContentHash, profileTagsHash, profileReview, linkChecks, linkChecksAt, loadedVariantId, updatedAt`
 (+ NextAuth adapter fields such as `email`, `image`).
 
 Subcollections, each item doc has `isSelected`, `tags`, `contentHash`, `tagsHash`, `review`, `createdAt`, `updatedAt`:
@@ -662,6 +729,7 @@ Subcollections, each item doc has `isSelected`, `tags`, `contentHash`, `tagsHash
 | `awards` | `title, issuer, date, description` |
 | `volunteering` | `role, organization, startDate, endDate, isActive, description: string[], hidden: string[]` |
 | `publications` | `title, venue, date, link, authors` |
+| `custom` | `section, title, subtitle, startDate, endDate, isActive, description: string[], hidden: string[]` (entries of user-named sections; ordered by `createdAt`) |
 | `languages` | `language, proficiency` |
 | `variants` | `name, labels: string[], items: {experience: string[], …}, hidden: {itemId: string[]}, layout: ResumeLayout \| null, templateId` (pointers only) |
 | `jobs` | `title, company, source, jdText, summary, requirements[] ({name, display, kind, importance, yearsMin, satisfiedBy[], evidence[], reason}), match ({status, runningUntil, checkedAt, libraryHash, warning}), proposals[], proposalsAt, lastScore, fitNotes[], status, appliedAt, notes, variantId, url, urlKey, location, employmentType` |
@@ -699,6 +767,13 @@ editor and `string[]` in Firestore.
   shadows ≤ `shadow-sm`. New UI is built from `components/ui/primitives`.
 - Browser-persisted UI state (preview pane, expanded rows) uses the `createPersistedStore` + `useSyncExternalStore` pattern
   in `lib/ui/persisted-store.ts` (server snapshot = initial) rather than reading storage in effects.
+
+## Account deletion
+
+Profile → Delete account (`DeleteAccountCard`, typed DELETE) calls `deleteAccount` (`user-actions.ts`): extension tokens and codes
+(`deleteAllExtensionAccess`, also clears the verify cache), NextAuth `accounts` with that `userId`, `rate_limits/<policy>__<uid>`, then
+`db.recursiveDelete(users/{uid})` (every subcollection), sign-out to `/?deleted=1`. `ai_usage` counters expire through their TTL.
+A new top-level collection keyed by user must be added here.
 
 ## Gotchas
 

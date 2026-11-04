@@ -11,18 +11,20 @@ const isDev = process.env.NODE_ENV !== "production";
 // 'wasm-unsafe-eval' (without it the preview and the PDF download die with "Refused to evaluate a
 // string as JavaScript"). Public pages keep the strict policy. Dev needs 'unsafe-eval' everywhere
 // for React Refresh.
-const buildCsp = (scriptSrc: string) => [
+const TURNSTILE = "https://challenges.cloudflare.com";
+
+const buildCsp = (scriptSrc: string, extra: { frame?: string; connect?: string } = {}) => [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https://lh3.googleusercontent.com",
     "font-src 'self' data:",
-    "connect-src 'self' blob: data:",
+    `connect-src 'self' blob: data:${extra.connect ? ` ${extra.connect}` : ""}`,
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
     "media-src 'self' blob: data:",
     "frame-ancestors 'none'",
-    "frame-src 'none'",
+    `frame-src ${extra.frame ?? "'none'"}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -32,6 +34,8 @@ const buildCsp = (scriptSrc: string) => [
 
 const publicCsp = buildCsp(`'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`);
 const appCsp = buildCsp("'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:");
+// /start (signed-out funnel): the Typst preview like the dashboard, plus Cloudflare Turnstile.
+const startCsp = buildCsp(`'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: ${TURNSTILE}`, { frame: TURNSTILE, connect: TURNSTILE });
 
 const securityHeaders = [
     { key: "Content-Security-Policy", value: publicCsp },
@@ -76,6 +80,7 @@ const nextConfig: NextConfig = {
                     { key: "Cache-Control", value: "private, no-store" },
                 ],
             },
+            { source: "/start", headers: [{ key: "Content-Security-Policy", value: startCsp }, { key: "Cache-Control", value: "private, no-store" }] },
             { source: "/api/:path*", headers: [{ key: "Cache-Control", value: "private, no-store" }] },
         ];
     },

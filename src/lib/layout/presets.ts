@@ -9,7 +9,7 @@ import { DEFAULT_THEME, normalizeTheme } from "./theme";
 
 /** The ledger template's original order. */
 export const DEFAULT_SECTION_ORDER: SectionId[] = [
-    "summary", "education", "skills", "projects", "workExperience", "volunteering", "publications", "awards", "certifications", "languages",
+    "summary", "education", "skills", "projects", "workExperience", "volunteering", "publications", "awards", "certifications", "languages", "custom",
 ];
 
 export const SECTION_IDS: ReadonlySet<SectionId> = new Set(DEFAULT_SECTION_ORDER);
@@ -19,7 +19,7 @@ export const SECTION_IDS: ReadonlySet<SectionId> = new Set(DEFAULT_SECTION_ORDER
  * the per-item overrides; skills, certifications and languages print as one
  * grid / line and the summary as a paragraph.
  */
-export const ENTRY_SECTIONS: ReadonlySet<SectionId> = new Set(["workExperience", "education", "projects", "volunteering", "publications", "awards"]);
+export const ENTRY_SECTIONS: ReadonlySet<SectionId> = new Set(["workExperience", "education", "projects", "volunteering", "publications", "awards", "custom"]);
 
 export const PAGE_PRESETS: Record<Exclude<Preset, "custom">, Omit<PageSettings, "preset">> = {
     compact: { marginMm: 12, fontPt: 10, leadingEm: 0.45 },

@@ -79,7 +79,7 @@ export function SectionLayoutControls({ layout, id, onChange }: { layout: Resume
         });
     return (
         <div className="space-y-3 rounded-lg border border-border bg-surface-muted/50 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            {id !== "custom" && <div className="flex flex-wrap items-center justify-between gap-2">
                 <label htmlFor={`layout-${id}-heading`} className="text-13 font-medium text-fg-muted">Printed heading</label>
                 <Input
                     id={`layout-${id}-heading`}
@@ -89,7 +89,7 @@ export function SectionLayoutControls({ layout, id, onChange }: { layout: Resume
                     placeholder="Template default"
                     onChange={e => setHeading(e.target.value)}
                 />
-            </div>
+            </div>}
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-13 font-medium text-fg-muted">Section spacing</p>
                 <Segmented value={sp.preset} onChange={setPreset} options={PRESET_OPTIONS} />

@@ -31,7 +31,8 @@ export async function GET(req: Request) {
         ok: true,
         profile: {
             firstName: p.firstName, lastName: p.lastName, email: p.email, phone: p.phone, location: p.location,
-            linkedin: p.linkedin, github: p.github, website: p.website, headline: p.headline,
+            linkedin: p.linkedin, github: p.github, website: p.website || (resume.links[0]?.url ?? ""), headline: p.headline,
+            portfolio: resume.links.find(l => /portfolio/i.test(l.label))?.url ?? "",
             currentTitle: latestJob?.title ?? "", currentCompany: latestJob?.endDate === "Present" ? latestJob.company : "",
             school: latestEdu?.institution ?? "", degree: latestEdu?.degree ?? "",
             graduation: latestEdu?.endDate && latestEdu.endDate !== "Present" ? latestEdu.endDate.slice(0, 7) : "",

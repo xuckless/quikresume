@@ -7,6 +7,7 @@ import { getProjects } from "@/app/actions/project-actions"
 import { getCertifications } from "@/app/actions/certification-actions"
 import { getAwards } from "@/app/actions/award-actions"
 import { getVolunteering } from "@/app/actions/volunteering-actions"
+import { getCustomEntries } from "@/app/actions/custom-actions"
 import { getPublications } from "@/app/actions/publication-actions"
 import { getLanguages } from "@/app/actions/language-actions"
 import { getUserProfile } from "@/app/actions/user-actions"
@@ -32,7 +33,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         redirect("/login");
     }
 
-    const [sp, about, profile, experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages, variants, loadedVariantId, jobs, preferences, tagAliases, layout] =
+    const [sp, about, profile, experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages, variants, loadedVariantId, jobs, preferences, tagAliases, layout, custom] =
         await Promise.all([
             searchParams,
             getCharacterizationSummary(),
@@ -52,6 +53,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             getPreferences(),
             getTagAliases(),
             getLayout(),
+            getCustomEntries(),
         ]);
 
     // First run: send new users to the "About you" questionnaire (skippable). Only from the Library landing
@@ -72,6 +74,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         volunteering,
         publications,
         languages,
+        custom,
         layout,
     });
 
@@ -87,6 +90,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             volunteering={volunteering}
             publications={publications}
             languages={languages}
+            custom={custom}
             variants={variants}
             variantUsage={variantUsage(variants)}
             loadedVariantId={loadedVariantId}

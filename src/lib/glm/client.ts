@@ -100,7 +100,8 @@ export async function chatCompletion(messages: GlmMessage[], opts: GlmOptions = 
     const ctx = aiContext();
     if (ctx) {
         try {
-            await assertAiBudget(ctx.uid);
+            await assertAiBudget(ctx.uid, ctx.budget);
+            if (ctx.pool) await assertAiBudget(ctx.pool.uid, ctx.pool.budget);
         } catch (err) {
             if (err instanceof AiBudgetError) throw new GlmError(err.message, 429);
             throw err;

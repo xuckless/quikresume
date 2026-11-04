@@ -5,6 +5,7 @@
 // importing several resumes builds one richer library instead of duplicates.
 // Personal info fills empty fields unless `replacePersonal` is set.
 
+import { mergeLinks, type ProfileLink } from "@/lib/contact/links";
 import type { PersonalInfo, ResumeData, ResumeListKey } from "@/types/schema";
 import { RESUME_LIST_KEYS } from "@/types/schema";
 import { toBullets } from "@/lib/typst/doc";
@@ -13,6 +14,8 @@ import { canon, findMatch } from "./match";
 export interface ImportSelection {
     personalInfo: PersonalInfo | null;
     replacePersonal: boolean;
+    /** Extra header links from the file: unioned with the existing ones by URL. */
+    links?: ProfileLink[];
     items: Partial<{ [K in ResumeListKey]: ResumeData[K] }>;
 }
 
@@ -86,6 +89,7 @@ export function mergeItem<K extends ResumeListKey>(
         case "awards": fillFields(["issuer", "date", "description"]); break;
         case "publications": fillFields(["venue", "date", "link", "authors"]); break;
         case "languages": fillFields(["proficiency"]); break;
+        case "custom": next.description = unionBullets(e.description, i.description); fillFields(["subtitle", "startDate", "endDate"]); break;
     }
     const changed = Object.keys(next).some(k => next[k] !== e[k]);
     return { item: (changed ? next : e) as unknown as ResumeData[K][number], changed };
@@ -141,6 +145,7 @@ export function mergeImport(base: ResumeData, sel: ImportSelection): MergeResult
         }
         data.personalInfo = merged;
     }
+    if (sel.links?.length) data.links = mergeLinks(base.links ?? [], sel.links);
 
     return { data, added, updated, unchanged, updatedIds };
 }
@@ -168,7 +173,7 @@ export function combineParsedFiles(files: ParsedFile[], empty: ResumeData): Comb
         const items: ImportSelection["items"] = {};
         for (const key of RESUME_LIST_KEYS) if (f.data[key].length) (items[key] as unknown[]) = f.data[key];
         const before = new Set(RESUME_LIST_KEYS.flatMap(key => (data[key] as { id: string }[]).map(it => it.id)));
-        data = mergeImport(data, { personalInfo: f.data.personalInfo, replacePersonal: false, items }).data;
+        data = mergeImport(data, { personalInfo: f.data.personalInfo, replacePersonal: false, links: f.data.links, items }).data;
         for (const key of RESUME_LIST_KEYS) {
             for (const it of data[key] as { id: string }[]) if (!before.has(it.id)) sourceById[it.id] = f.fileName;
         }

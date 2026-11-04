@@ -42,7 +42,7 @@ export interface TypstLayout {
 }
 
 export type TypstSectionKey =
-    | "summary" | "education" | "skills" | "projects" | "experience" | "volunteering" | "publications" | "awards" | "certifications" | "languages";
+    | "summary" | "education" | "skills" | "projects" | "experience" | "volunteering" | "publications" | "awards" | "certifications" | "languages" | "custom";
 
 /** Editor section id -> template key. */
 export const TYPST_SECTION_KEY: Record<SectionId, TypstSectionKey> = {
@@ -56,9 +56,12 @@ export const TYPST_SECTION_KEY: Record<SectionId, TypstSectionKey> = {
     volunteering: "volunteering",
     publications: "publications",
     languages: "languages",
+    custom: "custom",
 };
 
 export interface TypstHeader {
+    /** Extra links after linkedin / github / website; label "" = print the URL. */
+    links: { label: string; url: string }[];
     name: string;
     tagline: string;
     location: string;
@@ -145,6 +148,8 @@ export interface TypstResumeDoc {
     awards: WithLayout<TypstAward>[];
     certifications: WithLayout<TypstCertification>[];
     languages: WithLayout<TypstLanguage>[];
+    /** User-named sections, one group per heading (in the order the headings first appear), printed at the "custom" slot. */
+    custom: { heading: string; entries: WithLayout<TypstVolunteering>[] }[];
     layout: TypstLayout;
 }
 
@@ -199,6 +204,7 @@ export function toTypstDoc(data: ResumeData): TypstResumeDoc {
     };
     return {
         header: {
+            links: (data.links ?? []).map(l => ({ label: s(l.label), url: s(l.url) })),
             name: [s(p.firstName), s(p.lastName)].filter(Boolean).join(" "),
             tagline: s(p.headline),
             location: s(p.location),
@@ -269,8 +275,23 @@ export function toTypstDoc(data: ResumeData): TypstResumeDoc {
             ...lay(c.id),
         })),
         languages: pick("languages").map(l => ({ language: s(l.language), proficiency: s(l.proficiency), ...lay(l.id) })),
+        custom: groupCustom(pick("custom").map(c => ({
+            heading: s(c.section).trim() || "Other",
+            entry: { title: s(c.title), organization: s(c.subtitle), date: formatDateRange(c.startDate, c.endDate), bullets: shownBullets(c.description, c.hidden), ...lay(c.id) },
+        }))),
         layout: typstLayout(layout),
     };
+}
+
+function groupCustom(rows: { heading: string; entry: WithLayout<TypstVolunteering> }[]): TypstResumeDoc["custom"] {
+    const groups: TypstResumeDoc["custom"] = [];
+    for (const r of rows) {
+        const key = r.heading.toLowerCase();
+        const g = groups.find(x => x.heading.toLowerCase() === key);
+        if (g) g.entries.push(r.entry);
+        else groups.push({ heading: r.heading, entries: [r.entry] });
+    }
+    return groups;
 }
 
 /** "First_Last_Resume.pdf" with unsafe characters stripped; "Resume.pdf" if no name. */

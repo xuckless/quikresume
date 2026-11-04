@@ -1,5 +1,6 @@
 "use server"
 
+import { normalizeLinks } from "@/lib/contact/links";
 import { auth } from "@/auth"
 import { db } from "@/lib/firestore"
 import { revalidatePath } from "next/cache"
@@ -139,6 +140,7 @@ export async function saveResumeData(input: ResumeData, opts: SaveOptions = {}):
 
     writes.push(batch => batch.set(userRef, {
         ...personalInfoToUserDoc(data.personalInfo),
+        links: normalizeLinks(data.links ?? []).links,
         ...profileFields(),
         updatedAt: now,
     }, { merge: true }));
@@ -238,6 +240,22 @@ export async function saveResumeData(input: ResumeData, opts: SaveOptions = {}):
             isSelected: vol.isSelected ?? true,
             description: toBullets(vol.description),
             hidden: pruneHidden(vol.hidden, bulletEntries(toBullets(vol.description))),
+        }), { merge: true }));
+    }
+
+    for (const c of data.custom) {
+        const ref = docFor("custom", c.id);
+        writes.push(batch => batch.set(ref, withMeta(c.id, {
+            ...tagFields("custom", c),
+            section: c.section.trim().slice(0, 60) || PLACEHOLDER.customSection,
+            title: c.title.trim() || PLACEHOLDER.customEntry,
+            subtitle: orNull(c.subtitle),
+            startDate: toTimestamp(c.startDate),
+            endDate: c.endDate === PRESENT ? null : toTimestamp(c.endDate),
+            isActive: c.endDate === PRESENT,
+            isSelected: c.isSelected ?? true,
+            description: toBullets(c.description),
+            hidden: pruneHidden(c.hidden, bulletEntries(toBullets(c.description))),
         }), { merge: true }));
     }
 

@@ -12,7 +12,7 @@ import type { ResumeData } from "@/types/schema";
 import type { ResumeVariant } from "@/types/db";
 import { JOB_STATUS_LABEL, JOB_STATUSES, type JobRecord, type JobStatus, type MuteRule, type Preferences, type Proposal, type Requirement, type ResumeSource } from "@/lib/match/types";
 import type { AliasMap } from "@/lib/tags/normalize";
-import { requirementTier, scoreJob, uncoveredRequirements } from "@/lib/match/score";
+import { requirementTier, scoreJob, scoreOptionsFor, uncoveredRequirements } from "@/lib/match/score";
 import { muteRuleFor } from "@/lib/match/proposals";
 import { applyTags, allInputs, tagContext } from "@/lib/tags/content";
 import { kindMeta } from "@/lib/tags/types";
@@ -211,7 +211,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
         source.kind === "upload" && externalResume ? externalResume.data
         : variant ? applyVariant(resumeData, variant.items, variant.hidden)
         : resumeData;
-    const match = scoreJob(job.requirements, resume, aliases, { titleSim: job.titleSim });
+    const match = scoreJob(job.requirements, resume, aliases, scoreOptionsFor(job));
     const { pages, error: pageError } = useResumePageCount(resume);
     const reqDisplay = (name: string) => job.requirements.find(r => r.name === name)?.display ?? name;
 
@@ -457,7 +457,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                             <div className="grid gap-6 @3xl:grid-cols-2">
                                 <section aria-label="Score breakdown" className="space-y-2">
                                     <h3 className="text-13 font-medium text-fg">Breakdown</h3>
-                                    <SubScoreBars subScores={match.subScores} />
+                                    <SubScoreBars subScores={match.subScores} seniority={match.seniority} />
                                 </section>
                                 <section aria-label="What would raise the score" className="space-y-2">
                                     <h3 className="text-13 font-medium text-fg">What would raise it</h3>

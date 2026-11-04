@@ -71,7 +71,7 @@ export interface TailorSelection {
 
 export type TrimStep = { kind: "bullet"; id: string; key: string } | { kind: "item"; id: string };
 
-const BULLET_SECTIONS = new Set<ResumeListKey>(["workExperience", "projects", "volunteering"]);
+const BULLET_SECTIONS = new Set<ResumeListKey>(["workExperience", "projects", "volunteering", "custom"]);
 const MAX_PROMPT_BULLETS = 10;
 const MAX_BULLET_CHARS = 240;
 

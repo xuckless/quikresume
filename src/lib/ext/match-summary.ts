@@ -9,7 +9,7 @@ import { loadResumeData } from "@/lib/db/load-resume";
 import { readVariant } from "@/lib/db/variants";
 import { readTagAliases } from "@/lib/db/meta";
 import { applyVariant } from "@/lib/variants";
-import { scoreJob } from "@/lib/match/score";
+import { scoreJob, scoreOptionsFor } from "@/lib/match/score";
 import { readMatch } from "@/lib/db/jobs";
 import type { JobRecord } from "@/lib/match/types";
 import type { ResumeData } from "@/types/schema";
@@ -29,7 +29,7 @@ export async function resumeForJob(uid: string, variantId: string | null): Promi
 
 export async function jobSummary(uid: string, job: JobRecord) {
     const [{ resume, source }, aliases] = await Promise.all([resumeForJob(uid, job.variantId), readTagAliases(uid)]);
-    const m = scoreJob(job.requirements, resume, aliases, { titleSim: job.titleSim });
+    const m = scoreJob(job.requirements, resume, aliases, scoreOptionsFor(job));
     return {
         job: {
             id: job.id, title: job.title, company: job.company, status: job.status, url: job.url, location: job.location,

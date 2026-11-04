@@ -24,7 +24,7 @@
 #let rule = rgb("#cfd3e5")
 
 // ---------- Layout defaults ----------
-#let default-order = ("summary", "education", "skills", "projects", "experience", "volunteering", "publications", "awards", "certifications", "languages")
+#let default-order = ("summary", "education", "skills", "projects", "experience", "volunteering", "publications", "awards", "certifications", "languages", "custom")
 #let default-page = (margin: 16, size: 10.5, leading: 0.55)
 #let default-sp = (above: 4, below: 6, gap: 6, indent: 0)
 #let default-item = (space_after: 0, break_before: false, keep: true)
@@ -108,6 +108,9 @@
   if opt(h.github) { links.push(link(as-url(h.github))[#url-label(h.github)]) }
   if opt(h.linkedin) { links.push(link(as-url(h.linkedin))[#url-label(h.linkedin)]) }
   if opt(h.website) { links.push(link(as-url(h.website))[#url-label(h.website)]) }
+  for l in h.at("links", default: ()) {
+    if opt(l.url) { links.push(link(as-url(l.url))[#if opt(l.label) [#l.label: #url-label(l.url)] else { url-label(l.url) }]) }
+  }
   let contact-lines = ()
   if opt(line1) { contact-lines.push(line1) }
   if line2 != none { contact-lines.push(line2) }
@@ -234,6 +237,11 @@
       let (title, body) = sections.at(key)
       let title = heading-for(data, key, title)
       section(title, body(sp(key)), sp: sp(key), accent-deep: deep)
+    } else if key == "custom" {
+      // User-named sections: one section per heading, entries styled like volunteering.
+      for g in data.at("custom", default: ()) {
+        section(g.heading, volunteering(g.entries, sp(key)), sp: sp(key), accent-deep: deep)
+      }
     }
   }
 }

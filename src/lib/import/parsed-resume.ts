@@ -3,6 +3,7 @@
 // the envelope never fails, each list item is validated on its own, and
 // anything unusable is reported in `warnings` instead of failing the import.
 
+import { normalizeLinks, readLinks } from "@/lib/contact/links";
 import { z } from "zod";
 import type { ResumeData, ResumeListKey } from "@/types/schema";
 import { emptyPersonalInfo, emptyResumeData } from "@/types/schema";
@@ -79,12 +80,14 @@ const award = z.object({ title: str, issuer: str.catch(""), date: z.unknown(), d
 const volunteering = z.object({ role: str, organization: str, startDate: z.unknown(), endDate: z.unknown(), bullets: strList.catch([]) });
 const publication = z.object({ title: str, venue: str.catch(""), date: z.unknown(), link: str.catch(""), authors: str.catch("") });
 const language = z.object({ language: str, proficiency: str.catch("") });
+const custom = z.object({ section: str.catch(""), title: str, subtitle: str.catch(""), startDate: z.unknown(), endDate: z.unknown(), bullets: strList.catch([]) });
 
 const list = z.array(z.unknown()).transform(l => l.slice(0, LIMITS.itemsPerSection)).catch([]);
 const envelope = z.object({
     personalInfo: personal.catch({}),
     workExperience: list, education: list, skills: list, projects: list, certifications: list,
-    awards: list, volunteering: list, publications: list, languages: list,
+    awards: list, volunteering: list, publications: list, languages: list, custom: list,
+    links: z.unknown().catch([]),
 });
 
 // ---------- Conversion ----------
@@ -104,7 +107,7 @@ const firstText = (x: unknown): string => {
 const LABELS: Record<ResumeListKey, string> = {
     workExperience: "work experience", education: "education", skills: "skill category", projects: "project",
     certifications: "certification", awards: "award", volunteering: "volunteering", publications: "publication",
-    languages: "language",
+    languages: "language", custom: "entry",
 };
 
 export function parseModelOutput(text: string): ParsedImport {
@@ -124,6 +127,7 @@ export function parseModelOutput(text: string): ParsedImport {
     // Same normalisation as a save (phone format, full link URLs); what can't be fixed is reported.
     const contact = normalizeContact(info);
     data.personalInfo = contact.info;
+    data.links = normalizeLinks(readLinks(env.links)).links;
     if (contact.issues.email?.level === "error") warnings.push(`The email address "${contact.issues.email.value}" looks invalid; fix it before saving.`);
     if (contact.issues.phone?.level === "warning") warnings.push(`Check the phone number "${contact.issues.phone.value}".`);
 
@@ -180,6 +184,9 @@ export function parseModelOutput(text: string): ParsedImport {
     }));
     convert("languages", language, x => missing("language name")(Boolean(x.language)), x => ({
         language: x.language, proficiency: x.proficiency,
+    }));
+    convert("custom", custom, x => missing("title")(Boolean(x.title)), x => ({
+        section: x.section.slice(0, 60) || "Other", title: x.title, subtitle: x.subtitle, ...normalizeDateRange(x.startDate, x.endDate), description: x.bullets.join("\n"),
     }));
 
     return { data: clampResumeData(data), warnings };

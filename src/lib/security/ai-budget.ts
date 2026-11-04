@@ -12,17 +12,23 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db } from "@/lib/firestore";
 
+export interface AiBudget { tokensPerDay: number; callsPerDay: number }
+
 export interface AiContext {
     uid: string;
     /** Short label for the usage breakdown ("import", "review", ...). */
     task: string;
+    /** Budget for `uid`; absent = the signed-in user default (aiBudget()). */
+    budget?: AiBudget;
+    /** A shared pool every call also counts against (all guests together), with its own budget. */
+    pool?: { uid: string; budget: AiBudget };
 }
 
 const storage = new AsyncLocalStorage<AiContext>();
 
 /** Runs `fn` with the AI budget bound to `uid`; every chatCompletion inside counts against it. */
-export function withAiUser<T>(uid: string, task: string, fn: () => Promise<T>): Promise<T> {
-    return storage.run({ uid, task }, fn);
+export function withAiUser<T>(uid: string, task: string, fn: () => Promise<T>, extra: Pick<AiContext, "budget" | "pool"> = {}): Promise<T> {
+    return storage.run({ uid, task, ...extra }, fn);
 }
 
 export const aiContext = (): AiContext | undefined => storage.getStore();
@@ -32,7 +38,7 @@ const envInt = (name: string, fallback: number) => {
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 };
 
-export function aiBudget() {
+export function aiBudget(): AiBudget {
     return { tokensPerDay: envInt("AI_DAILY_TOKEN_BUDGET", 2_000_000), callsPerDay: envInt("AI_DAILY_CALL_BUDGET", 400) };
 }
 
@@ -64,8 +70,7 @@ export async function readAiUsage(uid: string): Promise<AiUsage> {
 }
 
 /** Throws AiBudgetError when the user's day is spent. A store failure lets the call through. */
-export async function assertAiBudget(uid: string): Promise<void> {
-    const budget = aiBudget();
+export async function assertAiBudget(uid: string, budget: AiBudget = aiBudget()): Promise<void> {
     let usage: AiUsage;
     try {
         usage = await readAiUsage(uid);
@@ -80,6 +85,7 @@ export async function assertAiBudget(uid: string): Promise<void> {
 
 /** Adds one call and its tokens to the day's counters. Never throws. */
 export async function recordAiUsage(ctx: AiContext, tokens: number, model: string): Promise<void> {
+    if (ctx.pool) await recordAiUsage({ uid: ctx.pool.uid, task: ctx.task }, tokens, model);
     const key = `${ctx.uid}_${dayKey()}`;
     const hit = cache.get(key);
     if (hit) hit.usage = { calls: hit.usage.calls + 1, tokens: hit.usage.tokens + tokens };

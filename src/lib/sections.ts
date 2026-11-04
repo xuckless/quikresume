@@ -8,7 +8,7 @@ import { formatDateRange, formatMonthYear } from "@/lib/dates";
 
 export type CollectionName =
     | "experience" | "education" | "skills" | "projects" | "certifications"
-    | "awards" | "volunteering" | "publications" | "languages";
+    | "awards" | "volunteering" | "publications" | "languages" | "custom";
 
 export const SECTION_COLLECTION: Record<ResumeListKey, CollectionName> = {
     workExperience: "experience",
@@ -20,6 +20,7 @@ export const SECTION_COLLECTION: Record<ResumeListKey, CollectionName> = {
     volunteering: "volunteering",
     publications: "publications",
     languages: "languages",
+    custom: "custom",
 };
 
 export const COLLECTION_SECTION: Record<CollectionName, ResumeListKey> = {
@@ -32,6 +33,7 @@ export const COLLECTION_SECTION: Record<CollectionName, ResumeListKey> = {
     volunteering: "volunteering",
     publications: "publications",
     languages: "languages",
+    custom: "custom",
 };
 
 export const COLLECTION_NAMES = Object.keys(COLLECTION_SECTION) as CollectionName[];
@@ -46,6 +48,7 @@ export const SECTION_LABEL: Record<ResumeListKey, string> = {
     volunteering: "Volunteering & Leadership",
     publications: "Publications",
     languages: "Languages",
+    custom: "Custom sections",
 };
 
 /** What saveResumeData writes for empty required fields. Import matching treats these as empty. */
@@ -61,6 +64,8 @@ export const PLACEHOLDER = {
     organization: "Unknown Organization",
     publication: "Untitled Publication",
     language: "Unknown Language",
+    customEntry: "Untitled Entry",
+    customSection: "Other",
 } as const;
 
 export interface ItemLabel { title: string; subtitle: string; meta: string }
@@ -77,6 +82,7 @@ export function itemLabel<K extends ResumeListKey>(key: K, item: ResumeData[K][n
         case "volunteering": { const x = item as ResumeData["volunteering"][number]; return { title: x.role, subtitle: x.organization, meta: formatDateRange(x.startDate, x.endDate) }; }
         case "publications": { const x = item as ResumeData["publications"][number]; return { title: x.title, subtitle: [x.authors, x.venue].filter(Boolean).join(" · "), meta: formatMonthYear(x.date) }; }
         case "languages": { const x = item as ResumeData["languages"][number]; return { title: x.language, subtitle: x.proficiency, meta: "" }; }
+        case "custom": { const x = item as ResumeData["custom"][number]; return { title: x.title, subtitle: [x.subtitle, x.section].filter(Boolean).join(" · "), meta: formatDateRange(x.startDate, x.endDate) }; }
     }
     return { title: "", subtitle: "", meta: "" };
 }

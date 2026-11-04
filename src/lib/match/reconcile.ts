@@ -27,7 +27,7 @@ import { RECONCILE_SYSTEM_PROMPT, reconcileUserMessage, type ProposalPromptItem,
 import { cleanModelText } from "@/lib/security/prompt";
 import type { Requirement } from "@/lib/match/types";
 import type { CandidatePromptContext } from "@/lib/about/types";
-import { reconcileHints, semanticEvidence } from "@/lib/match/evidence";
+import { reconcileHints, semanticEvidence, type VecStore } from "@/lib/match/evidence";
 
 const MAX_TAGS = 400;
 const MAX_ITEMS = 120;
@@ -157,6 +157,56 @@ export async function reconcileRequirements(
     return { requirements: out, changed };
 }
 
+export interface EnrichResult {
+    requirements: Requirement[];
+    titleSim: Record<string, number>;
+    /** The judge's failure (requirements then carry the semantic hits unjudged). */
+    warning?: string;
+    semanticWarning?: string;
+}
+
+/**
+ * Semantic evidence (embeddings + reranker) -> LLM judge with the uncertain candidates as hints ->
+ * O*NET category satisfiers. Shared by the background job and scripts (match eval, which passes a
+ * memory vector store). Throws only on unexpected errors; model / Voyage failures come back as warnings.
+ */
+export async function enrichRequirements(
+    uid: string,
+    job: { title: string; requirements: Requirement[] },
+    resume: ResumeData,
+    aliases: AliasMap,
+    candidate: CandidatePromptContext | null,
+    timeoutMs: number,
+    opts: { store?: VecStore; effort?: Effort } = {},
+): Promise<EnrichResult> {
+    const started = Date.now();
+    // Semantic pass first (embeddings + reranker, seconds): its uncertain candidates become hints for the
+    // LLM judge, and its hits are stored on the requirements whatever the judge does.
+    const sem = await semanticEvidence(uid, job.requirements, resume, job.title, { store: opts.store });
+    const withSemantic = job.requirements.map(r => ({ ...r, semantic: sem.byRequirement.get(r.name) ?? r.semantic ?? [] }));
+    const rec = await reconcileRequirements(withSemantic, resume, aliases, {
+        candidate, timeoutMs: Math.max(10_000, timeoutMs - (Date.now() - started)), retries: 0, hints: reconcileHints(withSemantic, sem), effort: opts.effort,
+    });
+    const judged = rec.warning ? withSemantic : rec.requirements;
+    const hinted = reconcileHints(withSemantic, sem);
+    // Cited by the judge = confirmed. Shown to it as a hint and not cited = rejected. Anything else stays
+    // unjudged (null): no verdict, or a hit above the judge band that it was never asked about.
+    const requirements = judged.map(r => {
+        // O*NET category match: named products count as satisfying tags (coverage "related").
+        const tax = sem.taxonomy.get(r.name);
+        const satisfiedBy = tax ? [...new Set([...r.satisfiedBy, ...tax.satisfiers])].slice(0, 12) : r.satisfiedBy;
+        const reason = r.reason || (tax ? `Counts as ${tax.category.toLowerCase()} (O*NET).` : "");
+        return {
+            ...r, satisfiedBy, reason,
+            semantic: r.semantic.map(h => ({
+                ...h,
+                confirmed: rec.warning ? null : r.evidence.includes(h.itemId) ? true : (hinted[r.display] ?? []).some(x => x.id === h.itemId) ? false : null,
+            })),
+        };
+    });
+    return { requirements, titleSim: sem.titleSim, warning: rec.warning ?? undefined, semanticWarning: sem.warning };
+}
+
 /**
  * Background pass for a saved job (scheduled with `after()`; the job is already marked running).
  * Writes the verdicts plus the final match state; never throws. `update()` underneath, so a job
@@ -171,32 +221,12 @@ export async function runReconcileJob(
     timeoutMs: number,
 ): Promise<void> {
     const libraryHash = reconcileLibraryHash(job.requirements, resume, candidate);
-    const started = Date.now();
     try {
-        // Semantic pass first (embeddings + reranker, seconds): its uncertain candidates become hints for the
-        // LLM judge, and its hits are stored on the requirements whatever the judge does.
-        const sem = await semanticEvidence(uid, job.requirements, resume, job.title);
-        const withSemantic = job.requirements.map(r => ({ ...r, semantic: sem.byRequirement.get(r.name) ?? r.semantic ?? [] }));
-        const rec = await reconcileRequirements(withSemantic, resume, aliases, {
-            candidate, timeoutMs: Math.max(10_000, timeoutMs - (Date.now() - started)), retries: 0, hints: reconcileHints(withSemantic, sem),
-        });
-        const judged = rec.warning ? withSemantic : rec.requirements;
-        // The judge saw these items: cited = confirmed, not cited = rejected. Without a verdict they stay unjudged (null).
-        const final = judged.map(r => {
-            // O*NET category match: named products count as satisfying tags (coverage "related").
-            const tax = sem.taxonomy.get(r.name);
-            const satisfiedBy = tax ? [...new Set([...r.satisfiedBy, ...tax.satisfiers])].slice(0, 12) : r.satisfiedBy;
-            const reason = r.reason || (tax ? `Counts as ${tax.category.toLowerCase()} (O*NET).` : "");
-            return {
-                ...r, satisfiedBy, reason,
-                semantic: r.semantic.map(h => ({ ...h, confirmed: rec.warning ? null : r.evidence.includes(h.itemId) })),
-            };
-        });
-        const warning = rec.warning ?? undefined;
-        await finishJobMatch(uid, job.id, warning
-            ? { requirements: final, titleSim: sem.titleSim, libraryHash, warning }
-            : { requirements: final, titleSim: sem.titleSim, libraryHash });
-        if (sem.warning) console.warn("[reconcile] semantic:", sem.warning);
+        const r = await enrichRequirements(uid, job, resume, aliases, candidate, timeoutMs);
+        await finishJobMatch(uid, job.id, r.warning
+            ? { requirements: r.requirements, titleSim: r.titleSim, libraryHash, warning: r.warning }
+            : { requirements: r.requirements, titleSim: r.titleSim, libraryHash });
+        if (r.semanticWarning) console.warn("[reconcile] semantic:", r.semanticWarning);
     } catch (err) {
         if ((err as { code?: number })?.code === 5) return; // job deleted meanwhile
         console.error("[reconcile] background run failed:", err);

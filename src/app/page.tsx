@@ -2,16 +2,19 @@ import React from "react";
 import Link from "next/link";
 import { auth } from "@/auth";
 import { MarketingFooter, MarketingHeader } from "@/components/marketing-header";
-import { MarketingHeroMock } from "@/components/marketing-hero-mock";
+import { LandingDemo } from "@/components/landing/landing-demo";
+import { Upload } from "@/components/ui/primitives/icons";
 import { AUTHOR, SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 
 const PRIMARY = "inline-flex h-10 items-center justify-center rounded-md bg-accent px-4 text-sm font-medium text-accent-fg transition-colors hover:bg-accent-hover";
 const SECONDARY = "inline-flex h-10 items-center justify-center rounded-md border border-border bg-surface px-4 text-sm font-medium text-fg transition-colors hover:bg-surface-hover";
 
 const FEATURES = [
-    { title: "One library, many résumés", body: "Keep every role, project and skill in one place. Toggle what each application should show; nothing is retyped." },
-    { title: "Real PDF, compiled in your browser", body: "Typst renders a crisp, ATS-readable PDF on the fly. Live preview as you edit, one page or two, your call." },
-    { title: "Job Match", body: "Paste a job description. See which must-haves you cover, which keywords are missing, and get concrete rewrite suggestions." },
+    { title: "One library, many résumés", body: "Keep every role, licence, project and skill in one place. Switch on what each application should show; nothing is retyped." },
+    { title: "Match that reads like a recruiter", body: "Paste a posting. See must-haves, the line on your résumé that proves each one, years against what they ask, and exactly what would raise your score." },
+    { title: "Real PDFs, four templates", body: "Typst renders a crisp, ATS-readable PDF in your browser. Ledger, Classic, Modern or Compact, with your accent, fonts and paper size." },
+    { title: "Job Tracker and browser extension", body: "Save jobs from LinkedIn, Indeed, Glassdoor, Greenhouse, Workday and more in one click, see your match on the posting, and fill applications with Auto Fill." },
+    { title: "Built for every field", body: "Nurses, accountants, teachers, electricians and engineers: licences, degrees and trade tickets count the way a hiring manager counts them." },
     { title: "Import in seconds", body: "Drop in an old PDF or Word résumé and it is read straight into your library, duplicates merged." },
 ];
 
@@ -30,8 +33,8 @@ const JSON_LD = {
     featureList: FEATURES.map(f => f.title),
 };
 
-export default async function Home() {
-    const session = await auth();
+export default async function Home({ searchParams }: { searchParams: Promise<{ deleted?: string }> }) {
+    const [session, sp] = await Promise.all([auth(), searchParams]);
     const cta = session ? "/dashboard" : "/login";
 
     return (
@@ -43,24 +46,42 @@ export default async function Home() {
             />
             <MarketingHeader session={session} />
 
-            <section className="mx-auto w-full max-w-6xl px-6 py-20 md:py-28">
+            {sp.deleted === "1" && !session && (
+                <p role="status" className="mx-auto mt-6 w-full max-w-6xl px-6 text-13 text-fg-muted">Your account and everything in it have been deleted.</p>
+            )}
+            <section className="mx-auto w-full max-w-6xl px-6 pt-16 pb-16 md:pt-24">
                 <div className="max-w-2xl">
                     <h1 className="text-4xl font-semibold leading-[1.08] tracking-tight md:text-5xl">
                         A résumé for every application, from one library.
                     </h1>
                     <p className="mt-5 max-w-xl text-base text-fg-muted md:text-lg">
-                        Keep your whole professional history in one place, switch items on and off per job, and download a real PDF in a click.
+                        Keep your whole history in one place, switch items on and off per job, see how well you match before you apply, and download a real PDF.
                     </p>
-                    <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                        <Link href={cta} className={PRIMARY}>{session ? "Go to dashboard" : "Get started"}</Link>
-                        {!session && <Link href="/login" className={SECONDARY}>Log in</Link>}
-                    </div>
                 </div>
-                <MarketingHeroMock />
+
+                {!session ? (
+                    <Link
+                        href="/start"
+                        className="group mt-10 flex flex-col gap-4 rounded-lg border border-border bg-accent-subtle p-6 transition-colors hover:border-accent sm:flex-row sm:items-center sm:justify-between md:p-8"
+                    >
+                        <span className="flex items-start gap-4">
+                            <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-fg"><Upload className="size-5" aria-hidden /></span>
+                            <span>
+                                <span className="block text-xl font-semibold tracking-tight text-fg md:text-2xl">Start by importing your résumé</span>
+                                <span className="mt-1 block text-fg-muted">Drop in a PDF or Word file, pick a template, paste a job, and see your match score. No account needed to try.</span>
+                            </span>
+                        </span>
+                        <span className={PRIMARY + " shrink-0"}>Import my résumé</span>
+                    </Link>
+                ) : (
+                    <div className="mt-8"><Link href="/dashboard" className={PRIMARY}>Go to dashboard</Link></div>
+                )}
+
+                <LandingDemo />
             </section>
 
             <section id="features" className="border-t border-border bg-surface">
-                <div className="mx-auto grid w-full max-w-6xl gap-x-12 gap-y-10 px-6 py-16 md:grid-cols-2 md:py-20">
+                <div className="mx-auto grid w-full max-w-6xl gap-x-12 gap-y-10 px-6 py-16 md:grid-cols-3 md:py-20">
                     {FEATURES.map(f => (
                         <div key={f.title} className="border-t border-border pt-5">
                             <h2 className="text-lg font-semibold tracking-tight">{f.title}</h2>
@@ -75,7 +96,10 @@ export default async function Home() {
                     <h2 className="text-2xl font-semibold tracking-tight">Ready when you are.</h2>
                     <p className="mt-1 text-fg-muted">Sign in with Google. Nothing to install.</p>
                 </div>
-                <Link href={cta} className={PRIMARY}>{session ? "Open dashboard" : "Create your library"}</Link>
+                <div className="flex gap-3">
+                    {!session && <Link href="/start" className={SECONDARY}>Try without an account</Link>}
+                    <Link href={cta} className={PRIMARY}>{session ? "Open dashboard" : "Create your library"}</Link>
+                </div>
             </section>
 
             <MarketingFooter />

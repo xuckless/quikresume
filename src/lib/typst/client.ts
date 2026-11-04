@@ -89,9 +89,15 @@ async function init(): Promise<TypstInstance> {
         ...templateIds.map(id => fetchText(TEMPLATES[id].file)),
     ]);
 
-    await typst.addSource(MAIN_FILE, main);
-    await Promise.all(TYPST_LIBS.map((path, i) => typst.addSource(path, libSources[i])));
-    await Promise.all(templateIds.map((id, i) => typst.addSource(`/templates/${id}.typ`, templateSources[i])));
+    // One addSource at a time, never Promise.all: typst.ts builds its compiler lazily on the first call, and
+    // that lazy init is not safe to run concurrently (parallel calls crash the engine). Fetching above is fine
+    // in parallel; only registering with the compiler has to be sequential.
+    const sources: [string, string][] = [
+        [MAIN_FILE, main],
+        ...TYPST_LIBS.map((path, i): [string, string] => [path, libSources[i]]),
+        ...templateIds.map((id, i): [string, string] => [`/templates/${id}.typ`, templateSources[i]]),
+    ];
+    for (const [path, source] of sources) await typst.addSource(path, source);
 
     return typst;
 }

@@ -11,7 +11,8 @@
     "lint": "eslint",
     "postinstall": "node scripts/copy-typst-wasm.mjs && node scripts/copy-pdfjs-worker.mjs",
     "typst:sample": "typst compile --root public/typst --font-path public/typst/fonts --ignore-system-fonts public/typst/main.typ .typst-out/sample.pdf",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval:match": "node --env-file=.env.local node_modules/vitest/vitest.mjs run --config vitest.eval.config.ts"
   },
   "dependencies": {
     "@auth/firebase-adapter": "^2.11.1",
@@ -36,12 +37,14 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/jsdom": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "jsdom": "^30.1.3",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^3.2.7"

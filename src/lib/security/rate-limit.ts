@@ -50,6 +50,9 @@ export const RATE = {
     extPair: { name: "ext-pair", limit: 10, windowMs: HOUR },
     /** Extension reads (lookups, match summaries, status changes). */
     extRead: { name: "ext-read", limit: 600, windowMs: HOUR },
+    /** Signed-out /start funnel, per visitor (IP hash). */
+    guestImport: { name: "guest-import", limit: 4, windowMs: HOUR },
+    guestMatch: { name: "guest-match", limit: 6, windowMs: HOUR },
     /** Auto Fill AI answers (one call per form page). */
     autofill: { name: "autofill", limit: 40, windowMs: HOUR },
     /** Save & Exit (runs the tagger). */

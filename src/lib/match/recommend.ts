@@ -1,23 +1,27 @@
 // src/lib/match/recommend.ts
-// Greedy weighted set cover: which library items best cover a job's
-// requirements under per-section caps. Deterministic; the LLM only adds
-// wording later. Pure.
+// Which library items best cover a job's requirements under per-section caps: greedy maximisation of the
+// scorer's own strength (lib/match/score.ts). Deterministic; the LLM only adds wording later. Pure.
 
 import type { ResumeData, ResumeListKey } from "@/types/schema";
 import { RESUME_LIST_KEYS } from "@/types/schema";
 import { itemRecency } from "@/lib/sections";
 import type { Caps, Proposal, Requirement } from "@/lib/match/types";
-import { coverageItems, coveredByItem, satisfierIndex } from "@/lib/match/coverage";
+import { coverageItems } from "@/lib/match/coverage";
+import { scoreJob } from "@/lib/match/score";
 
 const REQ_WEIGHT = { must: 3, nice: 1 } as const;
-/** A requirement is "saturated" after this many carriers (matches the scoring curve). */
-const NEED = 2;
+/** Evidence at or above this counts as "covers" (proposal reasons, `covered`). */
+const COVERS = 0.5;
+/** Smallest weighted strength gain worth a slot (≈ a third of a nice requirement going 0 -> 0.85). */
+const MIN_GAIN = 0.25;
 
 interface Candidate {
     key: ResumeListKey;
     id: string;
     label: string;
-    /** Requirement keys this item covers (exact tag, satisfying tag or cited evidence). */
+    /** Requirement key -> evidence 0..1 this item gives (the scorer's own per-item evidence, recency included). */
+    evidence: Map<string, number>;
+    /** Requirement keys this item shows (evidence ≥ COVERS before recency decay: an older role still proves the skill). */
     tagNames: Set<string>;
     recency: string;
     selected: boolean;
@@ -29,36 +33,60 @@ export interface Recommendation {
     chosen: Set<string>;
     include: Proposal[];
     exclude: Proposal[];
-    /** Requirement keys with at least one chosen carrier. */
+    /** Requirement keys whose chosen carriers reach COVERS strength. */
     covered: Set<string>;
     uncovered: Requirement[];
 }
 
-export function recommendSelection(requirements: Requirement[], data: ResumeData, caps: Caps): Recommendation {
+/**
+ * Per-item evidence for every requirement, from scoreJob on the whole library (every item on, nothing
+ * hidden), so selection and score agree on what counts: exact / related tags, reconcile citations,
+ * semantic hits, recency.
+ */
+function libraryEvidence(requirements: Requirement[], data: ResumeData, now?: Date, recency = true): Map<string, Map<string, number>> {
+    const all: ResumeData = { ...data };
+    for (const key of RESUME_LIST_KEYS) {
+        (all[key] as unknown[]) = (data[key] as { isSelected: boolean }[]).map(it => ({ ...it, isSelected: true, ...("hidden" in it ? { hidden: [] } : {}) }));
+    }
+    const byItem = new Map<string, Map<string, number>>();
+    for (const row of scoreJob(requirements, all, {}, { now, recency }).rows) {
+        for (const ev of row.evidence) {
+            if (!ev.itemId || ev.itemId === "profile") continue;
+            const m = byItem.get(ev.itemId) ?? new Map<string, number>();
+            m.set(row.requirement.name, Math.max(m.get(row.requirement.name) ?? 0, ev.e));
+            byItem.set(ev.itemId, m);
+        }
+    }
+    return byItem;
+}
+
+/**
+ * Greedy maximisation of Σ w_r · m_r, m_r = noisy-OR of the chosen items' evidence for r (the scorer's
+ * strength), under per-section caps. The objective is monotone submodular, so greedy is within (1 − 1/e)
+ * of the best selection; a weak extra carrier of an already strong requirement adds almost nothing.
+ */
+export function recommendSelection(requirements: Requirement[], data: ResumeData, caps: Caps, opts: { now?: Date } = {}): Recommendation {
     const reqByName = new Map(requirements.map(r => [r.name, r]));
-    const need = new Map<string, number>(requirements.map(r => [r.name, NEED]));
+    const miss = new Map<string, number>(requirements.map(r => [r.name, 1]));
     const gainOf = (c: Candidate) => {
         let g = 0;
-        for (const t of c.tagNames) {
-            const n = need.get(t);
-            if (n && n > 0) g += REQ_WEIGHT[reqByName.get(t)!.importance];
+        for (const [name, e] of c.evidence) {
+            const r = reqByName.get(name);
+            if (r) g += REQ_WEIGHT[r.importance] * (miss.get(name) ?? 0) * e;
         }
         return g;
     };
 
-    const units = coverageItems(data, false);
-    const inventory = new Set<string>();
-    for (const u of units) for (const t of u.tags) inventory.add(t.name);
-    const index = satisfierIndex(requirements, inventory);
-    const unitById = new Map(units.map(u => [u.carrier.id, u]));
-
+    const evidence = libraryEvidence(requirements, data, opts.now);
+    const shown = libraryEvidence(requirements, data, opts.now, false);
+    const units = new Map(coverageItems(data, false).map(u => [u.carrier.id, u]));
     const candidates: Candidate[] = [];
     for (const key of RESUME_LIST_KEYS) {
         for (const item of data[key] as ResumeData[ResumeListKey][number][]) {
-            const unit = unitById.get(item.id);
+            const ev = evidence.get(item.id) ?? new Map<string, number>();
             const c: Candidate = {
-                key, id: item.id, label: unit?.carrier.label ?? "Untitled",
-                tagNames: unit ? coveredByItem(unit, requirements, index) : new Set(),
+                key, id: item.id, label: units.get(item.id)?.carrier.label ?? "Untitled", evidence: ev,
+                tagNames: new Set([...(shown.get(item.id) ?? [])].filter(([, e]) => e >= COVERS).map(([n]) => n)),
                 recency: itemRecency(key, item), selected: item.isSelected, initialGain: 0,
             };
             c.initialGain = gainOf(c);
@@ -72,34 +100,26 @@ export function recommendSelection(requirements: Requirement[], data: ResumeData
     const take = (c: Candidate) => {
         chosen.add(c.id);
         count[c.key] = (count[c.key] ?? 0) + 1;
-        for (const t of c.tagNames) {
-            const n = need.get(t);
-            if (n && n > 0) need.set(t, n - 1);
-        }
+        for (const [name, e] of c.evidence) if (miss.has(name)) miss.set(name, miss.get(name)! * (1 - e));
     };
 
-    // Greedy loop.
+    // Greedy loop: best marginal gain; ties -> newer, then already selected.
     for (;;) {
         let best: Candidate | null = null;
-        let bestGain = 0;
-        let bestDistinct = 0;
+        let bestGain = MIN_GAIN;
         for (const c of candidates) {
             if (chosen.has(c.id) || !underCap(c.key)) continue;
             const g = gainOf(c);
-            if (g <= 0) continue;
-            const distinct = [...c.tagNames].filter(t => (need.get(t) ?? 0) > 0).length;
-            const better =
-                g > bestGain ||
-                (g === bestGain && (distinct > bestDistinct ||
-                    (distinct === bestDistinct && best !== null && (c.recency > best.recency || (c.recency === best.recency && c.selected && !best.selected)))));
-            if (better) { best = c; bestGain = g; bestDistinct = distinct; }
+            const better = g > bestGain + 1e-9 ||
+                (best !== null && Math.abs(g - bestGain) <= 1e-9 && (c.recency > best.recency || (c.recency === best.recency && c.selected && !best.selected)));
+            if (better) { best = c; bestGain = g; }
         }
         if (!best) break;
         take(best);
     }
 
     // Every skills category that carries at least one requirement is included (uncapped, cheap on space).
-    for (const c of candidates) if (c.key === "skills" && !chosen.has(c.id) && c.initialGain > 0) take(c);
+    for (const c of candidates) if (c.key === "skills" && !chosen.has(c.id) && c.tagNames.size > 0) take(c);
 
     // A resume needs an education entry: keep the most recent one if none was picked.
     const education = candidates.filter(c => c.key === "education");
@@ -109,7 +129,7 @@ export function recommendSelection(requirements: Requirement[], data: ResumeData
     }
 
     const covered = new Set<string>();
-    for (const c of candidates) if (chosen.has(c.id)) c.tagNames.forEach(t => { if (reqByName.has(t)) covered.add(t); });
+    for (const c of candidates) if (chosen.has(c.id)) c.tagNames.forEach(t => covered.add(t));
     const uncovered = requirements.filter(r => !covered.has(r.name));
 
     const reqLabel = (names: string[]) => names.map(n => reqByName.get(n)?.display ?? n);
@@ -124,10 +144,10 @@ export function recommendSelection(requirements: Requirement[], data: ResumeData
             });
         } else if (!chosen.has(c.id) && c.selected && c.key !== "education" && caps[c.key] !== null) {
             const over = (count[c.key] ?? 0) >= (caps[c.key] as number);
-            if (c.initialGain === 0 || over) {
+            if (c.tagNames.size === 0 || over) {
                 exclude.push({
                     id: `exclude-${c.id}`, kind: "exclude", section: c.key, itemId: c.id, itemLabel: c.label, tags: reqs,
-                    reason: c.initialGain === 0
+                    reason: c.tagNames.size === 0
                         ? "Matches none of the job's requirements; dropping it makes room."
                         : `Over the ${caps[c.key]}-item limit for this section; other items cover its keywords (${reqLabel(reqs).join(", ")}).`,
                     status: "open",

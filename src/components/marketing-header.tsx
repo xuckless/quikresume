@@ -20,7 +20,7 @@ export function MarketingHeader({ session, backHome = false }: { session: Sessio
                     ) : (
                         <>
                             <Link href="/login" className={`${BTN} hidden text-fg-muted hover:bg-surface-hover hover:text-fg sm:inline-flex`}>Log in</Link>
-                            <Link href="/login" className={`${BTN} bg-accent text-accent-fg hover:bg-accent-hover`}>Get started</Link>
+                            <Link href="/start" className={`${BTN} bg-accent text-accent-fg hover:bg-accent-hover`}>Get started</Link>
                         </>
                     )}
                 </nav>
@@ -40,7 +40,8 @@ export function MarketingFooter() {
                     </span>
                 </span>
                 <nav className="flex gap-5">
-                    <Link href="#features" className="hover:text-fg">Features</Link>
+                    <Link href="/#features" className="hover:text-fg">Features</Link>
+                    <Link href="/privacy" className="hover:text-fg">Privacy</Link>
                     <Link href="/login" className="hover:text-fg">Log in</Link>
                 </nav>
             </div>

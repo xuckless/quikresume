@@ -5,6 +5,9 @@ export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://quikresume
 
 export const SITE_NAME = "quikResume";
 
+/** Privacy / data requests (privacy page). Override per deployment with NEXT_PUBLIC_CONTACT_EMAIL. */
+export const SITE_CONTACT_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL || "xuckless@gmail.com";
+
 export const SITE_TAGLINE = "A résumé for every application, from one library";
 
 export const SITE_DESCRIPTION =

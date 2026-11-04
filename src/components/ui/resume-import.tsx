@@ -221,7 +221,7 @@ function ReviewStep({ result, current, onConfirm, onRestart }: ReviewStepProps) 
             const picked = (data[key] as ResumeData[typeof key][number][]).filter(it => checked[it.id]);
             if (picked.length) (items[key] as unknown[]) = picked;
         }
-        onConfirm({ personalInfo: applyPersonal ? data.personalInfo : null, replacePersonal, items });
+        onConfirm({ personalInfo: applyPersonal ? data.personalInfo : null, replacePersonal, links: applyPersonal ? data.links : [], items });
     };
 
     const warningCount = warnings.reduce((n, w) => n + w.warnings.length, 0);

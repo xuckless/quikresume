@@ -18,7 +18,7 @@ import { userCol } from "@/lib/db/user-collection";
 import { decodeVec, embed, encodeVec, isVoyageConfigured, rerank, VECTOR_SPACE, VoyageError } from "@/lib/embed/voyage";
 import { kindMeta } from "@/lib/tags/types";
 import { libraryUnits, type MatchUnit } from "@/lib/match/units";
-import { cslsMatrix, dot, probability, requirementQuery, rerankQuery } from "@/lib/match/semantic";
+import { cslsMatrix, dot, JUDGE_BAND, probability, requirementQuery, rerankQuery } from "@/lib/match/semantic";
 import type { Requirement, SemanticHit } from "@/lib/match/types";
 import { aggregateTags } from "@/lib/tags/aggregate";
 import { requirementCategories, taxonomySatisfiers, type TaxonomyMatch } from "@/lib/match/taxonomy";
@@ -41,18 +41,40 @@ export interface SemanticResult {
     warning?: string;
 }
 
-interface VecDoc { space: string; hash: string; units: { k: string; v: string }[] }
+export interface VecDoc { space: string; hash: string; units: { k: string; v: string }[] }
+
+/** Where unit vectors are cached: users/{uid}/vecs in the app, memory in scripts / evals. */
+export interface VecStore {
+    load(ids: string[]): Promise<(VecDoc | undefined)[]>;
+    save(docs: { id: string; doc: VecDoc }[]): Promise<void>;
+}
+
+export function firestoreVecStore(uid: string): VecStore {
+    const col = userCol(uid, "vecs");
+    return {
+        load: async ids => (ids.length ? (await col.firestore.getAll(...ids.map(id => col.doc(id)))).map(s => s.data() as VecDoc | undefined) : []),
+        save: async docs => {
+            if (!docs.length) return;
+            const batch = col.firestore.batch();
+            for (const { id, doc } of docs) batch.set(col.doc(id), doc);
+            await batch.commit();
+        },
+    };
+}
+
+export function memoryVecStore(): VecStore {
+    const m = new Map<string, VecDoc>();
+    return { load: async ids => ids.map(id => m.get(id)), save: async docs => { for (const { id, doc } of docs) m.set(id, doc); } };
+}
 const HEAD = "\u0000head";
 const unitKey = (u: MatchUnit) => u.bulletKey ?? HEAD;
 
 /** Unit vectors for the whole library, embedding only items whose content (or the model) changed. */
-async function libraryVectors(uid: string, library: ResumeData): Promise<{ units: MatchUnit[]; vecs: Float32Array[] }> {
+async function libraryVectors(store: VecStore, library: ResumeData): Promise<{ units: MatchUnit[]; vecs: Float32Array[] }> {
     const items = libraryUnits(library).filter(i => i.units.length > 0);
-    const col = userCol(uid, "vecs");
-    const snaps = items.length ? await col.firestore.getAll(...items.map(i => col.doc(i.id))) : [];
+    const docs = await store.load(items.map(i => i.id));
     const cached = new Map<string, Map<string, Float32Array>>();
-    snaps.forEach((s, idx) => {
-        const d = s.data() as VecDoc | undefined;
+    docs.forEach((d, idx) => {
         const item = items[idx];
         if (!d || d.space !== VECTOR_SPACE || d.hash !== item.hash) return;
         const m = new Map<string, Float32Array>();
@@ -65,14 +87,14 @@ async function libraryVectors(uid: string, library: ResumeData): Promise<{ units
         const texts = stale.flatMap(i => i.units.map(u => u.text));
         const vecs = await embed(texts, "document", { maxWaitMs: 25_000 });
         let k = 0;
-        const batch = col.firestore.batch();
+        const out: { id: string; doc: VecDoc }[] = [];
         for (const item of stale) {
             const m = new Map<string, Float32Array>();
             for (const u of item.units) m.set(unitKey(u), vecs[k++]);
             cached.set(item.id, m);
-            batch.set(col.doc(item.id), { space: VECTOR_SPACE, hash: item.hash, units: [...m].map(([key, v]) => ({ k: key, v: encodeVec(v) })) } satisfies VecDoc);
+            out.push({ id: item.id, doc: { space: VECTOR_SPACE, hash: item.hash, units: [...m].map(([key, v]) => ({ k: key, v: encodeVec(v) })) } });
         }
-        await batch.commit();
+        await store.save(out);
     }
 
     const units: MatchUnit[] = [];
@@ -84,12 +106,12 @@ async function libraryVectors(uid: string, library: ResumeData): Promise<{ units
     return { units, vecs };
 }
 
-export async function semanticEvidence(uid: string, requirements: Requirement[], library: ResumeData, jobTitle: string): Promise<SemanticResult> {
+export async function semanticEvidence(uid: string, requirements: Requirement[], library: ResumeData, jobTitle: string, opts: { store?: VecStore } = {}): Promise<SemanticResult> {
     const empty: SemanticResult = { byRequirement: new Map(), titleSim: {}, taxonomy: new Map(), reranked: 0 };
     if (!isVoyageConfigured()) return { ...empty, warning: "Semantic matching is off (VOYAGE_API_KEY missing)." };
     if (requirements.length === 0) return empty;
     try {
-        const { units, vecs } = await libraryVectors(uid, library);
+        const { units, vecs } = await libraryVectors(opts.store ?? firestoreVecStore(uid), library);
         if (units.length === 0) return empty;
         const queries = requirements.map(r => requirementQuery(r.display, kindMeta(r.kind).label));
         const title = jobTitle.trim();
@@ -174,7 +196,7 @@ export async function semanticEvidence(uid: string, requirements: Requirement[],
 export function reconcileHints(requirements: Requirement[], sem: SemanticResult): Record<string, { id: string; p: number }[]> {
     const out: Record<string, { id: string; p: number }[]> = {};
     for (const r of requirements) {
-        const hits = (sem.byRequirement.get(r.name) ?? []).filter(h => h.p >= 0.25 && h.p < 0.9).slice(0, 4);
+        const hits = (sem.byRequirement.get(r.name) ?? []).filter(h => h.p >= JUDGE_BAND[0] && h.p < JUDGE_BAND[1]).slice(0, 4);
         if (hits.length) out[r.display] = hits.map(h => ({ id: h.itemId, p: h.p }));
     }
     return out;

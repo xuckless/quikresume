@@ -117,6 +117,8 @@ export function sameItem(key: ResumeListKey, a: AnyItem, b: AnyItem): boolean {
             return canon(x.category) === canon(y.category);
         case "languages":
             return canon(x.language) !== "" && canon(x.language) === canon(y.language);
+        case "custom":
+            return canon(x.section) === canon(y.section) && similar(canon(x.title), canon(y.title)) && compatible(canonOrg(x.subtitle), canonOrg(y.subtitle), true);
     }
     return false;
 }
