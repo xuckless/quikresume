@@ -49,7 +49,9 @@ Required env (`.env.local`): `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRE
 `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (escaped `\n` newlines are unescaped in code),
 `GLM_API_KEY` (import, tags, Job Match, reviews, About you). Optional: `GITHUB_TOKEN` (raises the GitHub API limit for link checks), `GLM_BASE_URL` (default `https://api.z.ai/api/paas/v4`),
 `GLM_MODEL` (vision, default `glm-4.6v`), `GLM_TEXT_MODEL` (tags / JD analysis / proposals, default `glm-5.3-flash`),
-`EXTENSION_IDS` (comma-separated Chrome extension ids allowed by CORS on `/api/ext/*`), `NEXT_PUBLIC_EXTENSION_URL` (Web Store link
+`TURNSTILE_SECRET_KEY` + `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (Cloudflare Turnstile for the signed-out /start funnel; without them guest AI
+is refused in production and allowed in dev), `GUEST_DAILY_TOKEN_BUDGET` / `GUEST_DAILY_CALL_BUDGET` (per visitor, 120K / 20) and
+`GUEST_POOL_TOKEN_BUDGET` / `GUEST_POOL_CALL_BUDGET` (all guests together, 4M / 1500), `EXTENSION_IDS` (comma-separated Chrome extension ids allowed by CORS on `/api/ext/*`), `NEXT_PUBLIC_EXTENSION_URL` (Web Store link
 on `/dashboard/extension`), `GLM_EFFORT_RECONCILE` / `GLM_EFFORT_REVIEW` / `GLM_EFFORT_TAILOR` (`low | high | max`, see Reasoning effort),
 `AI_DAILY_TOKEN_BUDGET` / `AI_DAILY_CALL_BUDGET` (per-user daily AI budget, see Security). `VOYAGE_API_KEY` (semantic matching;
 without it Job Match runs on tags only), optional `VOYAGE_EMBED_MODEL` (default `voyage-4-lite`), `VOYAGE_RERANK_MODEL`
@@ -112,7 +114,9 @@ src/
   components/ui/contact-field.tsx            ContactInput: normalise on blur, format issue, red broken-link mark
   components/ui/about/about-form.tsx         About you steps (Core / Targeting / Your story / Follow-ups)
   components/ui/review/{score-badge,review-panel}.tsx   coach score badge / review with Accept / Dismiss
-  components/marketing-hero-mock.tsx         static landing-page product sketch
+  components/landing/landing-demo.tsx        interactive landing demo: profession samples (lib/demo/samples.ts), item toggles, an HTML
+                                             approximation of the 4 templates (no Typst on the landing page), live scoreJob + "What would raise it"
+  app/start/page.tsx, components/start/*     signed-out onboarding (see Guest funnel)
   components/ui/resume-import.tsx            multi-file upload (PDF -> page images) + combined review step
   components/ui/variant-toolbar.tsx          Save as / Load / Update variant on the library view
   components/ui/variants-page.tsx            /dashboard/variants: search, labels, rename, duplicate, delete, load
@@ -498,6 +502,24 @@ npm run dev`, `npm run build` -> `.output/chrome-mv3`, `npm test` for the jsdom 
   `POST /api/ext/autofill/unmapped`, `GET /api/ext/resume/pdf?jobId=` (`lib/typst/server-pdf.ts`: native
   `@myriaddreamin/typst-ts-node-compiler` 0.7.0, same templates + fonts; `serverExternalPackages` + `outputFileTracingIncludes` in
   `next.config.ts`).
+
+## Guest funnel (/start)
+
+`/start` (public; signed-in visitors are sent to `?view=import`) runs `StartFlow`: import (`POST /api/guest/import`, the /api/import
+contract + `turnstile`) or a sample from `lib/demo/samples.ts` -> field + target role -> template (the real `ResumePreview`, so `/start`
+gets the dashboard's eval-enabled CSP plus Turnstile's script / frame / connect origins) -> paste a job (`POST /api/guest/match`: JD
+analysis + tagging the draft in parallel, low effort, no candidate brief, no reconcile, no embeddings) -> teaser (score, must-haves,
+blurred rows) -> Google sign-in (`signInFromStartAction`, back to `?view=jobs`).
+
+- **Nothing server-side** until sign-in: the draft lives in `localStorage["quikresume.guestDraft"]` (`lib/guest/draft-store.ts`).
+  `<GuestClaim>` in the dashboard layout calls `claimGuestDraft` once: an uploaded résumé is saved through `saveResumeData` only when the
+  library is empty (profile fields only fill blanks), the matched job is created from its stored requirements (clamped; no second
+  analysis), then the store is cleared and a notice links to the job. Samples are never claimed into the library.
+- **Guard** (`lib/security/guest-guard.ts`, `guardGuest`): same-origin, GLM configured, per-visitor durable rate limit (`RATE.guestImport`
+  4/h, `guestMatch` 6/h, keyed by `guest-<sha256(AUTH_SECRET|ip)>`, never the raw IP), Turnstile (`lib/security/turnstile.ts`), then the
+  guest AI budget: `withAiUser(guestId, task, fn, { budget: GUEST_BUDGET, pool: GUEST_POOL })`; `chatCompletion` checks both and
+  `recordAiUsage` records both (`ai_usage/guest-pool_<day>` is the global guest pool).
+- The teaser is a keyword-level first read (tags only); the full review after sign-in adds the reconcile pass and semantic matching.
 
 ## About you (characterization)
 

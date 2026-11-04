@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { signOutAction } from "@/app/actions/auth-actions";
 import { AppShell } from "@/components/shell/app-shell";
+import { GuestClaim } from "@/components/start/guest-claim";
 
 // Nothing behind sign-in should be indexed (robots.txt disallows it too).
 export const metadata: Metadata = {
@@ -20,6 +21,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             user={{ name: session.user.name ?? "", email: session.user.email ?? "", image: session.user.image ?? null }}
             signOutAction={signOutAction}
         >
+            <GuestClaim />
             {children}
         </AppShell>
     );
