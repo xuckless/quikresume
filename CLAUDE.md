@@ -595,6 +595,13 @@ current, proposed, reason }], dismissed[], reviewHash, briefHash, reviewedAt }` 
   CGNAT addresses on every hop, ports 80 / 443, ≤ 3 redirects, 5 s timeout. Results on `users/{uid}.linkChecks` (24 h cache per URL,
   10 s throttle). Only `not-found` (404 / 410 / no such domain) shows the red mark, and only while the field still holds that URL.
 
+- **Extra links** (`lib/contact/links.ts`, `ResumeData.links`, `users/{uid}.links`, ≤ 6 `{label, url}`): portfolio, ORCID, Behance…
+  Edited with `LinksEditor` in the editor's personal info card and on the Profile page (`updateUserProfile(info, links)`; omitted =
+  unchanged), normalised like the website field and de-duplicated by URL. Printed after LinkedIn / GitHub / website as
+  "Label: url" (a bare URL when unlabelled) in every template (`header.links`). Import fills them (`links` in the JSON shape,
+  unioned by `mergeLinks`); the link check stores their results on `linkChecks.extra` (`brokenExtraLink`); Autofill uses a
+  "Portfolio"-labelled link for portfolio fields and the first link when there is no website.
+
 ## Resume import
 
 ```
@@ -686,7 +693,7 @@ Every list entry also carries `space_after` (pt), `break_before`, `keep` (entrie
 ## Data model (Firestore)
 
 `users/{uid}`: `firstName, lastName, headline, professionalEmail, phoneNumber, location, github, linkedIn,
-website, bio, profileTags, profileContentHash, profileTagsHash, profileReview, linkChecks, linkChecksAt, loadedVariantId, updatedAt`
+website, bio, links, profileTags, profileContentHash, profileTagsHash, profileReview, linkChecks, linkChecksAt, loadedVariantId, updatedAt`
 (+ NextAuth adapter fields such as `email`, `image`).
 
 Subcollections, each item doc has `isSelected`, `tags`, `contentHash`, `tagsHash`, `review`, `createdAt`, `updatedAt`:

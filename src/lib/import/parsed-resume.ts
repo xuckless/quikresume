@@ -3,6 +3,7 @@
 // the envelope never fails, each list item is validated on its own, and
 // anything unusable is reported in `warnings` instead of failing the import.
 
+import { normalizeLinks, readLinks } from "@/lib/contact/links";
 import { z } from "zod";
 import type { ResumeData, ResumeListKey } from "@/types/schema";
 import { emptyPersonalInfo, emptyResumeData } from "@/types/schema";
@@ -86,6 +87,7 @@ const envelope = z.object({
     personalInfo: personal.catch({}),
     workExperience: list, education: list, skills: list, projects: list, certifications: list,
     awards: list, volunteering: list, publications: list, languages: list, custom: list,
+    links: z.unknown().catch([]),
 });
 
 // ---------- Conversion ----------
@@ -125,6 +127,7 @@ export function parseModelOutput(text: string): ParsedImport {
     // Same normalisation as a save (phone format, full link URLs); what can't be fixed is reported.
     const contact = normalizeContact(info);
     data.personalInfo = contact.info;
+    data.links = normalizeLinks(readLinks(env.links)).links;
     if (contact.issues.email?.level === "error") warnings.push(`The email address "${contact.issues.email.value}" looks invalid; fix it before saving.`);
     if (contact.issues.phone?.level === "warning") warnings.push(`Check the phone number "${contact.issues.phone.value}".`);
 

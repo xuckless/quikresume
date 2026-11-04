@@ -12,6 +12,7 @@
 // last extracted tags and `tagsHash` the content hash they were extracted
 // from; when it differs from the current content hash the item is "stale".
 
+import type { ProfileLink } from "@/lib/contact/links";
 import type { Tag } from "@/lib/tags/types";
 import type { ResumeLayout } from "@/lib/layout/types";
 import { defaultLayout } from "@/lib/layout/presets";
@@ -176,6 +177,8 @@ export interface ResumeData {
     /** Tags extracted from the headline + summary (kept outside PersonalInfo, which is a flat string map). */
     profileTags: Tag[];
     profileTagsHash: string | null;
+    /** Extra header links (portfolio, ORCID, Behance...), printed after LinkedIn / GitHub / website. */
+    links: ProfileLink[];
     workExperience: WorkExperience[];
     education: Education[];
     skills: SkillCategory[];
@@ -191,7 +194,7 @@ export interface ResumeData {
 }
 
 /** The list-valued keys of ResumeData. */
-export type ResumeListKey = Exclude<keyof ResumeData, "personalInfo" | "profileTags" | "profileTagsHash" | "layout">;
+export type ResumeListKey = Exclude<keyof ResumeData, "personalInfo" | "profileTags" | "profileTagsHash" | "links" | "layout">;
 
 export const RESUME_LIST_KEYS: ResumeListKey[] = [
     "workExperience",
@@ -226,6 +229,7 @@ export function emptyResumeData(): ResumeData {
         personalInfo: emptyPersonalInfo(),
         profileTags: [],
         profileTagsHash: null,
+        links: [],
         workExperience: [],
         education: [],
         skills: [],

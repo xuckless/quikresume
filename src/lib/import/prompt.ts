@@ -10,6 +10,7 @@ export const RESUME_JSON_SHAPE = `{
     "firstName": "", "lastName": "", "headline": "", "email": "", "phone": "", "location": "",
     "github": "", "linkedin": "", "website": "", "summary": ""
   },
+  "links": [{ "label": "", "url": "" }],
   "workExperience": [{ "title": "", "company": "", "startDate": "", "endDate": "", "bullets": [""] }],
   "education": [{ "degree": "", "institution": "", "startDate": "", "endDate": "", "gpa": "", "minor": "", "details": "" }],
   "skills": [{ "category": "", "items": [""] }],
@@ -33,7 +34,7 @@ Content rules:
 - Copy the candidate's wording. Never invent, embellish, or summarise facts that are not in the resume.
 - Dates: use "YYYY-MM-DD" when the day is known, otherwise "YYYY-MM", otherwise "YYYY". Use "Present" for current roles/studies. Use "" when unknown. Never put a date range in a single field.
 - Bullets: one array element per bullet point or achievement, without the leading bullet character.
-- personalInfo.headline is the one-line tagline directly under the name (e.g. a title or degree line), if any. personalInfo.summary is the Summary / Objective / Profile paragraph. Keep github/linkedin/website as the URLs or handles shown.
+- personalInfo.headline is the one-line tagline directly under the name (e.g. a title or degree line), if any. personalInfo.summary is the Summary / Objective / Profile paragraph. Keep github/linkedin/website as the URLs or handles shown. Any other links in the header or contact area (portfolio, Behance, Dribbble, ORCID, Google Scholar, personal blog...) go in "links" with a short label ("Portfolio", "ORCID").
 - skills: if the resume already groups skills under headings, keep those headings as categories. If it lists skills flat, group them yourself into 3-6 sensible categories such as "Languages", "Frameworks & Libraries", "Tools & Platforms", "Databases", "Cloud & DevOps", "Soft Skills". Each item is a single skill string.
 - Section routing:
   - Work / Professional Experience / Internships -> workExperience

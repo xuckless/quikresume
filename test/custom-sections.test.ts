@@ -16,7 +16,8 @@ describe("custom sections", () => {
         expect(toTypstDoc(d).layout.order).toContain("custom");
     });
     it("bodies from older clients without `custom` are accepted", () => {
-        const { custom: _, ...old } = emptyResumeData();
+        const old: Partial<ReturnType<typeof emptyResumeData>> = emptyResumeData();
+        delete old.custom;
         expect(readResumeBody(old)?.custom).toEqual([]);
     });
     it("import routes unknown sections to custom", () => {

@@ -10,7 +10,7 @@
 
 export type FieldKey =
     | "firstName" | "lastName" | "fullName" | "email" | "phone" | "location" | "street" | "street2" | "city" | "region"
-    | "postalCode" | "country" | "linkedin" | "github" | "website" | "currentTitle" | "currentCompany" | "school" | "degree"
+    | "postalCode" | "country" | "linkedin" | "github" | "website" | "portfolio" | "currentTitle" | "currentCompany" | "school" | "degree"
     | "graduation" | "yearsExperience" | "salary" | "noticePeriod" | "startDate" | "workAuthorized" | "needsSponsorship"
     | "relocate" | "gender" | "pronouns" | "ethnicity" | "veteran" | "disability" | "lgbtq" | "howDidYouHear" | "resume"
     | "coverLetter";
@@ -33,7 +33,9 @@ export interface FormField {
 export interface AutofillData {
     profile: {
         firstName: string; lastName: string; email: string; phone: string; location: string; linkedin: string; github: string;
-        website: string; headline: string; currentTitle: string; currentCompany: string; school: string; degree: string;
+        website: string; headline: string;
+        /** Link labelled "Portfolio" (else empty; older servers omit it). */
+        portfolio?: string; currentTitle: string; currentCompany: string; school: string; degree: string;
         graduation: string; yearsExperience: number | null;
     };
     prefs: {
@@ -160,7 +162,8 @@ const RULES: [FieldKey, RegExp][] = [
     ["phone", /\b(phone|mobile|cell|telephone)\b|\btel\b/],
     ["linkedin", /linked ?in/],
     ["github", /\bgit ?hub\b/],
-    ["website", /\b(website|portfolio|personal (site|url)|blog)\b|\burl\b/],
+    ["portfolio", /\bportfolio\b/],
+    ["website", /\b(website|personal (site|url)|blog)\b|\burl\b/],
     ["street2", /\b(address ?(line)? ?2|apartment|apt|suite|unit)\b|address-line2/],
     ["street", /\b(street|address ?(line)? ?1?|mailing address)\b|address-line1/],
     ["postalCode", /\b(zip|postal|post ?code)\b/],
@@ -191,7 +194,7 @@ const RULES: [FieldKey, RegExp][] = [
 
 const FACT_KEYS = new Set<FieldKey>([
     "firstName", "lastName", "fullName", "email", "phone", "location", "street", "street2", "city", "region", "postalCode", "country",
-    "linkedin", "github", "website", "currentTitle", "currentCompany", "school", "degree", "graduation", "salary",
+    "linkedin", "github", "website", "portfolio", "currentTitle", "currentCompany", "school", "degree", "graduation", "salary",
 ]);
 
 /** A deterministic key, "question" for open questions the AI should draft, or null to leave alone. */
@@ -241,6 +244,7 @@ export function valueFor(key: FieldKey, d: AutofillData): string {
         case "linkedin": return p.linkedin;
         case "github": return p.github;
         case "website": return p.website;
+        case "portfolio": return p.portfolio || p.website;
         case "currentTitle": return p.currentTitle;
         case "currentCompany": return p.currentCompany;
         case "school": return p.school;

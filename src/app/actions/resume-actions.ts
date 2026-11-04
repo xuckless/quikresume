@@ -1,5 +1,6 @@
 "use server"
 
+import { normalizeLinks } from "@/lib/contact/links";
 import { auth } from "@/auth"
 import { db } from "@/lib/firestore"
 import { revalidatePath } from "next/cache"
@@ -139,6 +140,7 @@ export async function saveResumeData(input: ResumeData, opts: SaveOptions = {}):
 
     writes.push(batch => batch.set(userRef, {
         ...personalInfoToUserDoc(data.personalInfo),
+        links: normalizeLinks(data.links ?? []).links,
         ...profileFields(),
         updatedAt: now,
     }, { merge: true }));

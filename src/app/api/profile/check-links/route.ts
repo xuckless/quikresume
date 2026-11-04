@@ -12,6 +12,7 @@ import { db } from "@/lib/firestore";
 import { LINK_FIELDS, normalizeGitHub, normalizeLinkedIn, normalizeWebsite, type LinkField } from "@/lib/contact/normalize";
 import { LINK_DOC_FIELD, readLinkChecks, type LinkCheck } from "@/lib/contact/types";
 import { checkGitHub, checkWebsite } from "@/lib/contact/link-check";
+import { normalizeLinks, readLinks } from "@/lib/contact/links";
 import { guardApi } from "@/lib/security/guard";
 import { RATE } from "@/lib/security/rate-limit";
 
@@ -67,8 +68,19 @@ export async function POST(req: Request) {
         results[field] = cached ?? { url: r.value, ...(await checkWebsite(r.value)), checkedAt: at };
     }));
 
-    const patch: Record<string, unknown> = { linkChecksAt: Timestamp.fromDate(now) };
+    // Extra header links: same guarded HEAD as the website, cached per URL.
+    const prevExtra = new Map((previous.extra ?? []).map(c => [c.url, c]));
+    const extra: LinkCheck[] = [];
+    await Promise.all(normalizeLinks(readLinks(data.links)).links.map(async (l, i) => {
+        const r = normalizeWebsite(l.url);
+        if (r.level !== "ok") return;
+        extra[i] = fresh(prevExtra.get(r.value), r.value) ?? { url: r.value, ...(await checkWebsite(r.value)), checkedAt: now.toISOString() };
+    }));
+    const extraList = extra.filter(Boolean);
+
+    const patch: Record<string, unknown> = { linkChecksAt: Timestamp.fromDate(now), "linkChecks.extra": extraList };
     let changed = false;
+    if (JSON.stringify(extraList.map(c => [c.url, c.status])) !== JSON.stringify((previous.extra ?? []).map(c => [c.url, c.status]))) changed = true;
     for (const field of LINK_FIELDS) {
         const next = results[field] ?? null;
         const prev = previous[field];
@@ -82,6 +94,6 @@ export async function POST(req: Request) {
         revalidatePath("/dashboard");
         revalidatePath("/dashboard/profile");
     }
-    const linkChecks = Object.fromEntries(LINK_FIELDS.flatMap(f => (results[f] ? [[f, results[f]]] : [])));
+    const linkChecks = { ...Object.fromEntries(LINK_FIELDS.flatMap(f => (results[f] ? [[f, results[f]]] : []))), extra: extraList };
     return NextResponse.json({ ok: true, changed, linkChecks });
 }

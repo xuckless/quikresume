@@ -108,6 +108,9 @@
   if opt(h.github) { links.push(link(as-url(h.github))[#url-label(h.github)]) }
   if opt(h.linkedin) { links.push(link(as-url(h.linkedin))[#url-label(h.linkedin)]) }
   if opt(h.website) { links.push(link(as-url(h.website))[#url-label(h.website)]) }
+  for l in h.at("links", default: ()) {
+    if opt(l.url) { links.push(link(as-url(l.url))[#if opt(l.label) [#l.label: #url-label(l.url)] else { url-label(l.url) }]) }
+  }
   let contact-lines = ()
   if opt(line1) { contact-lines.push(line1) }
   if line2 != none { contact-lines.push(line2) }

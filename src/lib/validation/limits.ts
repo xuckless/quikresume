@@ -3,6 +3,7 @@
 // and on every résumé body a route receives. Pure and isomorphic. Firestore caps a document at
 // 1 MiB and the model prompts are token-priced, so nothing unbounded may reach either.
 
+import { readLinks } from "@/lib/contact/links";
 import { RESUME_LIST_KEYS, type PersonalInfo, type ResumeData, type ResumeListKey } from "@/types/schema";
 import { stripHiddenChars } from "@/lib/security/prompt";
 
@@ -93,6 +94,7 @@ function clampItem(item: Item): Item {
 export function clampResumeData(data: ResumeData): ResumeData {
     const next = { ...data, personalInfo: clampPersonalInfo(data.personalInfo) } as ResumeData;
     next.profileTags = Array.isArray(data.profileTags) ? data.profileTags.slice(0, LIMITS.tagsPerItem) : [];
+    next.links = readLinks(data.links);
     for (const key of RESUME_LIST_KEYS) {
         const list = Array.isArray(data[key]) ? (data[key] as Item[]) : [];
         (next[key] as Item[]) = list.slice(0, LIMITS.itemsPerSection).filter(it => it && typeof it === "object").map(clampItem);

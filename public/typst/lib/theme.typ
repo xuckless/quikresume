@@ -42,6 +42,9 @@
     let v = h.at(key, default: "")
     if opt(v) { out.push(link(as-url(v))[#url-label(v)]) }
   }
+  for l in h.at("links", default: ()) {
+    if opt(l.url) { out.push(link(as-url(l.url))[#if opt(l.label) [#l.label: #url-label(l.url)] else { url-label(l.url) }]) }
+  }
   out
 }
 

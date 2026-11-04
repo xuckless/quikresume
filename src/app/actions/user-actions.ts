@@ -13,6 +13,7 @@ import { readReview } from "@/lib/review/types";
 import { currentUid, requireUid } from "@/lib/db/session";
 import { readUserDoc } from "@/lib/db/user-collection";
 import { clampPersonalInfo, clampStr, LIMITS } from "@/lib/validation/limits";
+import { normalizeLinks, readLinks, type ProfileLink } from "@/lib/contact/links";
 
 const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
 
@@ -40,6 +41,7 @@ export async function getUserProfile(): Promise<UserProfile | null> {
         website: str(data.website),
         bio: str(data.bio),
         profileTags: readTags(data.profileTags),
+        links: readLinks(data.links),
         profileTagsHash: str(data.profileTagsHash),
         linkChecks: readLinkChecks(data.linkChecks),
         profileReview: readReview(data.profileReview),
@@ -47,24 +49,27 @@ export async function getUserProfile(): Promise<UserProfile | null> {
 }
 
 export type ProfileSaveResult =
-    | { success: true; info: PersonalInfo }
+    | { success: true; info: PersonalInfo; links?: ProfileLink[] }
     | { success: false; error: string; field: "email" };
 
 /**
  * Profile page save. Writes the same fields as saveResumeData's personal-info block, normalised
  * (phone format, full link URLs). A malformed email is refused and nothing is written.
  */
-export async function updateUserProfile(input: PersonalInfo): Promise<ProfileSaveResult> {
+/** `links` omitted = leave the stored extra links alone. */
+export async function updateUserProfile(input: PersonalInfo, linksInput?: ProfileLink[]): Promise<ProfileSaveResult> {
     const uid = await requireUid();
 
     const capped = clampPersonalInfo(input);
     const blocking = contactBlocking(capped);
     if (blocking) return { success: false, error: blocking.message, field: "email" };
     const { info } = normalizeContact(capped);
+    const links = linksInput === undefined ? undefined : normalizeLinks(readLinks(linksInput)).links;
 
     try {
         await db.collection("users").doc(uid).set({
             ...personalInfoToUserDoc(info),
+            ...(links ? { links } : {}),
             updatedAt: Timestamp.now(),
         }, { merge: true });
     } catch (error: unknown) {
@@ -74,7 +79,7 @@ export async function updateUserProfile(input: PersonalInfo): Promise<ProfileSav
 
     revalidatePath("/dashboard")
     revalidatePath("/dashboard/profile")
-    return { success: true, info };
+    return { success: true, info, links };
 }
 
 /** Accepting a coach suggestion on the headline or summary (Profile page, Library). */

@@ -1,5 +1,7 @@
 "use client";
 
+import type { ProfileLink } from "@/lib/contact/links";
+import { LinksEditor } from "@/components/ui/links-editor";
 import React, { useRef, useState } from "react";
 import Link from "next/link";
 import type { PersonalInfo } from "@/types/schema";
@@ -16,8 +18,11 @@ import { ReviewPanel } from "@/components/ui/review/review-panel";
 import { dismissReviewSuggestion } from "@/app/actions/review-actions";
 import { PROFILE_ID } from "@/lib/tags/content";
 
-export function PersonalInfoSection({ value, onChange, linkChecks, focusField }: {
+export function PersonalInfoSection({ value, onChange, linkChecks, focusField, links, onLinksChange }: {
     value: PersonalInfo;
+    /** Extra header links (ResumeData.links). */
+    links: ProfileLink[];
+    onLinksChange: (next: ProfileLink[]) => void;
     onChange: (field: keyof PersonalInfo, v: string) => void;
     linkChecks?: LinkChecks;
     /** Field to scroll to and focus on mount ("Fix email"). */
@@ -57,6 +62,7 @@ export function PersonalInfoSection({ value, onChange, linkChecks, focusField }:
                 {f("website", "Website", "alexmorgan.dev")}
                 {f("github", "GitHub", "github.com/alexmorgan")}
                 {f("linkedin", "LinkedIn", "linkedin.com/in/alexmorgan")}
+                <div className="md:col-span-2"><LinksEditor value={links} onChange={onLinksChange} idPrefix="pi-links" checks={linkChecks} /></div>
             </CardBody>
         </Card>
     );

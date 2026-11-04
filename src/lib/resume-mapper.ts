@@ -69,6 +69,7 @@ export function toResumeData(src: ResumeSources): ResumeData {
         },
         profileTags: p?.profileTags ?? [],
         profileTagsHash: p?.profileTagsHash ?? null,
+        links: p?.links ?? [],
         workExperience: src.experiences.map(e => ({
             id: e.id,
             title: e.position,

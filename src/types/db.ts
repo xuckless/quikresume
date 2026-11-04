@@ -3,6 +3,7 @@
 // (Timestamps already converted to ISO strings). Kept out of the "use server"
 // modules so client code and pure mappers can import the types freely.
 
+import type { ProfileLink } from "@/lib/contact/links";
 import type { Tag } from "@/lib/tags/types";
 import type { ResumeLayout } from "@/lib/layout/types";
 import type { VariantHidden, VariantItems } from "@/lib/variants";
@@ -23,6 +24,7 @@ export interface TagFields {
 export interface UserProfile {
     id: string;
     profileTags?: Tag[];
+    links?: ProfileLink[];
     profileTagsHash?: string | null;
     firstName?: string | null;
     lastName?: string | null;

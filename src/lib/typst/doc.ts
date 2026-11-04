@@ -60,6 +60,8 @@ export const TYPST_SECTION_KEY: Record<SectionId, TypstSectionKey> = {
 };
 
 export interface TypstHeader {
+    /** Extra links after linkedin / github / website; label "" = print the URL. */
+    links: { label: string; url: string }[];
     name: string;
     tagline: string;
     location: string;
@@ -202,6 +204,7 @@ export function toTypstDoc(data: ResumeData): TypstResumeDoc {
     };
     return {
         header: {
+            links: (data.links ?? []).map(l => ({ label: s(l.label), url: s(l.url) })),
             name: [s(p.firstName), s(p.lastName)].filter(Boolean).join(" "),
             tagline: s(p.headline),
             location: s(p.location),

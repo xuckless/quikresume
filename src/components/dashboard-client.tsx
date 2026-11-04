@@ -306,7 +306,8 @@ function DashboardClientInner({
                 return;
             }
             const before = initialResumeData.personalInfo;
-            if ((["github", "linkedin", "website"] as const).some(k => draft.personalInfo[k] !== before[k])) kickLinkCheck(() => router.refresh());
+            const extraChanged = JSON.stringify((draft.links ?? []).map(l => l.url)) !== JSON.stringify((initialResumeData.links ?? []).map(l => l.url));
+            if (extraChanged || (["github", "linkedin", "website"] as const).some(k => draft.personalInfo[k] !== before[k])) kickLinkCheck(() => router.refresh());
             setDraft(null);
             setPendingDeletes([]);
             kickReviews({ onDone: r => { if (r.reviewed > 0) refresh(); } });

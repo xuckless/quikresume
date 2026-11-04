@@ -20,6 +20,7 @@ export default async function ProfilePage() {
                 <div className="mx-auto max-w-5xl">
                     <ProfileForm
                         initial={initial}
+                        initialLinks={profile?.links ?? []}
                         linkChecks={profile?.linkChecks ?? {}}
                         review={profile?.profileReview ?? null}
                         account={{ name: session.user.name ?? "", email: session.user.email ?? "", image: session.user.image ?? null }}
