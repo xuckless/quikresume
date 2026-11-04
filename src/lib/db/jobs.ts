@@ -1,6 +1,7 @@
 // src/lib/db/jobs.ts
 // Server-only Firestore helpers for users/{uid}/jobs and Job Match preferences.
 
+import { isSeniority } from "@/lib/match/seniority";
 import "server-only";
 import { Timestamp, type DocumentData } from "firebase-admin/firestore";
 import { isoOf, strArray, strOf, userCol, userDoc } from "@/lib/db/user-collection";
@@ -142,6 +143,7 @@ function mapJob(id: string, d: DocumentData): JobRecord {
         fitNotes: strArray(d.fitNotes),
         match: readMatch(d.match),
         titleSim: readTitleSim(d.titleSim),
+        seniority: isSeniority(d.seniority) ? d.seniority : null,
         status: isJobStatus(d.status) ? d.status : "saved",
         appliedAt: typeof d.appliedAt === "string" ? d.appliedAt : null,
         notes: strOf(d.notes),
@@ -157,7 +159,7 @@ function mapJob(id: string, d: DocumentData): JobRecord {
 
 /** Fields the job list needs. `jdText` (up to 30k chars per job) stays on the server; nothing in the UI shows it. */
 const LIST_FIELDS = [
-    "title", "company", "source", "summary", "requirements", "proposals", "proposalsAt", "lastScore", "fitNotes", "match", "titleSim",
+    "title", "company", "source", "summary", "requirements", "proposals", "proposalsAt", "lastScore", "fitNotes", "match", "titleSim", "seniority",
     "status", "appliedAt", "notes", "variantId", "url", "urlKey", "location", "employmentType", "createdAt", "updatedAt",
 ];
 

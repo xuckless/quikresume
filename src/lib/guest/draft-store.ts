@@ -8,12 +8,14 @@ import { createPersistedStore } from "@/lib/ui/persisted-store";
 import { withAllSections } from "@/lib/match/resume-body";
 import type { ResumeData } from "@/types/schema";
 import type { Requirement } from "@/lib/match/types";
+import type { Seniority } from "@/lib/match/seniority";
 
 export interface GuestJob {
     title: string;
     company: string;
     jdText: string;
     requirements: Requirement[];
+    seniority?: Seniority | null;
 }
 
 export interface GuestDraft {

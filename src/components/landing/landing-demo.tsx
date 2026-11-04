@@ -97,7 +97,7 @@ export function LandingDemo() {
     for (const key of RESUME_LIST_KEYS) {
         (resume[key] as unknown[]) = (sample.resume[key] as { id: string; isSelected: boolean }[]).map(it => ({ ...it, isSelected: overrides[it.id] ?? it.isSelected }));
     }
-    const match = scoreJob(sample.job.requirements, resume, {}, { now: new Date(2026, 10, 1) });
+    const match = scoreJob(sample.job.requirements, resume, {}, { now: new Date(2026, 10, 1), seniority: sample.job.seniority });
 
     return (
         <div className="mt-14 rounded-lg border border-border bg-surface p-4 md:p-6">

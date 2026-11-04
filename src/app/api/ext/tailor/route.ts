@@ -8,7 +8,7 @@ import { readJob } from "@/lib/db/jobs";
 import { resumeForJob } from "@/lib/ext/match-summary";
 import { runTailorPlan } from "@/lib/match/tailor-run";
 import { applySelection, diffSuggestions, fitToOnePage, planSelection, selectionOf } from "@/lib/match/auto-tailor";
-import { scoreJob } from "@/lib/match/score";
+import { scoreJob, scoreOptionsFor } from "@/lib/match/score";
 import { itemTitle } from "@/lib/sections";
 import { countResumePages } from "@/lib/typst/server-pdf";
 import { withAiUser } from "@/lib/security/ai-budget";
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
                 fitted = { selection: planned, trim: { items: [], keys: {} }, pages: 0 };
             }
             const suggestions = diffSuggestions(run.plan, fitted.selection, base, fitted.trim);
-            const score = (r: ResumeData) => scoreJob(run.requirements, r, run.aliases, { titleSim: job.titleSim }).score;
+            const score = (r: ResumeData) => scoreJob(run.requirements, r, run.aliases, scoreOptionsFor(job)).score;
             const labels: Record<string, string> = {};
             for (const key of RESUME_LIST_KEYS) for (const it of resume[key]) labels[it.id] = itemTitle(key, it as never);
             return extJson(req, {

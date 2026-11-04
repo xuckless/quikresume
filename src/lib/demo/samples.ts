@@ -7,6 +7,7 @@ import { emptyResumeData, type ResumeData } from "@/types/schema";
 import { makeTag } from "@/lib/tags/normalize";
 import type { TagKind } from "@/lib/tags/types";
 import type { Requirement } from "@/lib/match/types";
+import type { Seniority } from "@/lib/match/seniority";
 
 export type DemoProfession = "software" | "nursing" | "accounting" | "electrician";
 
@@ -14,7 +15,7 @@ export interface DemoSample {
     id: DemoProfession;
     label: string;
     resume: ResumeData;
-    job: { title: string; company: string; requirements: Requirement[] };
+    job: { title: string; company: string; seniority: Seniority; requirements: Requirement[] };
 }
 
 type T = [string, TagKind];
@@ -68,7 +69,7 @@ function software(): DemoSample {
     ];
     return {
         id: "software", label: "Software", resume: d,
-        job: { title: "Senior Backend Engineer", company: "Lumen Health", requirements: [
+        job: { title: "Senior Backend Engineer", company: "Lumen Health", seniority: "senior", requirements: [
             req("Go", "technical-skill", "must", 3), req("Kubernetes", "tool-platform"), req("PostgreSQL", "tool-platform"), req("Microservices", "technical-skill"),
             req("Amazon Web Services", "tool-platform"), req("Bachelor's Degree", "credential"), req("Terraform", "tool-platform", "nice"), req("Leadership", "soft-skill", "nice"),
             req("Kafka", "tool-platform", "nice"), req("Healthcare", "domain", "nice"),
@@ -99,7 +100,7 @@ function nursing(): DemoSample {
     d.skills = [skills("rn", "Clinical", ["Patient Assessment", "Ventilator Management", "IV Therapy", "Wound Care"])];
     return {
         id: "nursing", label: "Nursing", resume: d,
-        job: { title: "Registered Nurse, Cardiac ICU", company: "Northshore Health", requirements: [
+        job: { title: "Registered Nurse, Cardiac ICU", company: "Northshore Health", seniority: "mid", requirements: [
             req("Registered Nurse", "credential"), req("Bachelor of Science in Nursing", "credential"), req("Critical Care", "domain", "must", 2), req("Advanced Cardiovascular Life Support", "credential"),
             req("Basic Life Support", "credential"), req("Epic", "tool-platform"), req("Patient Assessment", "technical-skill"), req("Cardiac Care", "domain", "nice"),
             req("Mentoring", "soft-skill", "nice"), req("French", "language", "nice"),
@@ -125,7 +126,7 @@ function accounting(): DemoSample {
     d.skills = [skills("ac", "Tools", ["Microsoft Excel", "NetSuite", "QuickBooks", "Power BI"])];
     return {
         id: "accounting", label: "Accounting", resume: d,
-        job: { title: "Accounting Manager", company: "Glacier Outdoor", requirements: [
+        job: { title: "Accounting Manager", company: "Glacier Outdoor", seniority: "lead", requirements: [
             req("CPA", "credential"), req("Month-End Close", "technical-skill"), req("Financial Reporting", "technical-skill", "must", 5), req("IFRS", "methodology"),
             req("NetSuite", "tool-platform", "nice"), req("Microsoft Excel", "tool-platform"), req("Team Leadership", "soft-skill"), req("Bachelor's Degree", "credential"),
             req("Audit", "technical-skill", "nice"), req("Power BI", "tool-platform", "nice"),
@@ -154,7 +155,7 @@ function electrician(): DemoSample {
     d.skills = [skills("el", "Trade", ["Canadian Electrical Code", "Conduit Bending", "Motor Controls", "Fire Alarm Systems"])];
     return {
         id: "electrician", label: "Electrician", resume: d,
-        job: { title: "Industrial Electrician", company: "Northern Pulp", requirements: [
+        job: { title: "Industrial Electrician", company: "Northern Pulp", seniority: "senior", requirements: [
             req("Journeyman Electrician", "credential"), req("Red Seal", "credential"), req("Motor Controls", "technical-skill"), req("PLC", "technical-skill"),
             req("Troubleshooting", "technical-skill"), req("Industrial Maintenance", "domain", "must", 3), req("Canadian Electrical Code", "methodology"),
             req("Working at Heights", "credential", "nice"), req("Variable Frequency Drives", "technical-skill", "nice"), req("Leadership", "soft-skill", "nice"),

@@ -3,6 +3,7 @@
 // visitor's draft résumé -> skill tags, in parallel. No reconcile pass, no embeddings, nothing stored.
 // The browser scores it with the same pure scoreJob the dashboard uses.
 
+import { isSeniority } from "@/lib/match/seniority";
 import { NextResponse } from "next/server";
 import { chatCompletion, GlmError, glmErrorStatus, textModel } from "@/lib/glm/client";
 import { extractJson, ImportParseError } from "@/lib/import/parsed-resume";
@@ -52,6 +53,7 @@ export async function POST(req: Request) {
                 title: cleanModelText(String(json.title ?? ""), 120) || "This job",
                 company: cleanModelText(String(json.company ?? ""), 120),
                 requirements,
+                seniority: isSeniority(json.seniority) ? json.seniority : null,
                 tagsById: tags?.tagsById ?? {},
             });
         } catch (err) {

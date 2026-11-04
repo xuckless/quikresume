@@ -5,6 +5,7 @@
 // must-have count, sub-score bars, "what would move the score" gains, and per-requirement evidence.
 // Useful marks only: bars and text, no decorative charts.
 
+import { SENIORITY_LABEL, SENIORITY_LEVELS } from "@/lib/match/seniority";
 import React from "react";
 import type { EvidenceVia, MatchResult, MatchRow, SubScores } from "@/lib/match/types";
 import { MUST_GATE_CAP, SUB_WEIGHTS } from "@/lib/match/score";
@@ -16,7 +17,7 @@ const SUB_LABEL: Record<keyof SubScores, { label: string; hint: string }> = {
     coverage: { label: "Requirements", hint: "How well your résumé evidences each requirement, by meaning, weighted by importance." },
     ats: { label: "ATS keywords", hint: "Hard requirements printed literally, counting more in your summary, skills and latest role." },
     years: { label: "Years", hint: "Dated experience behind each requirement vs the years the posting asks for." },
-    title: { label: "Job title", hint: "How close your recent titles are to this one." },
+    title: { label: "Title & level", hint: "How close your recent titles are to this one, and whether your level matches the one the posting asks for." },
     education: { label: "Credentials", hint: "Degrees, licences and certifications the posting asks for." },
 };
 
@@ -47,9 +48,10 @@ export function ScoreHeadline({ match }: { match: MatchResult }) {
     );
 }
 
-export function SubScoreBars({ subScores }: { subScores: SubScores }) {
+export function SubScoreBars({ subScores, seniority = null }: { subScores: SubScores; seniority?: MatchResult["seniority"] }) {
     const keys = (Object.keys(SUB_LABEL) as (keyof SubScores)[]).filter(k => subScores[k] !== null);
     return (
+        <div className="grid gap-2">
         <dl className="grid gap-2">
             {keys.map(k => {
                 const v = subScores[k] ?? 0;
@@ -64,6 +66,17 @@ export function SubScoreBars({ subScores }: { subScores: SubScores }) {
                 );
             })}
         </dl>
+        {seniority && (
+            <p className="text-xs text-fg-muted">
+                Level: the posting asks for <span className="text-fg">{SENIORITY_LABEL[seniority.job].toLowerCase()}</span>; your selected work reads as{" "}
+                <span className="text-fg">{SENIORITY_LABEL[seniority.candidate.level].toLowerCase()}</span>
+                {" "}({seniority.candidate.years} yrs{seniority.candidate.fromTitle ? `, “${seniority.candidate.fromTitle}”` : ""}).
+                {seniority.fit < 0.8 && (SENIORITY_LEVELS.indexOf(seniority.candidate.level) < SENIORITY_LEVELS.indexOf(seniority.job)
+                    ? <> A stretch at this level: make your scope and impact obvious in the summary.</>
+                    : <> You may read as over-qualified: say why this role in your summary.</>)}
+            </p>
+        )}
+        </div>
     );
 }
 

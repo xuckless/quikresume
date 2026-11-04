@@ -16,6 +16,7 @@ import { readJson } from "@/lib/ui/fetch-json";
 import { signInFromStartAction } from "@/app/actions/auth-actions";
 import type { ResumeTheme } from "@/lib/layout/theme";
 import type { Requirement } from "@/lib/match/types";
+import type { Seniority } from "@/lib/match/seniority";
 import type { ResumeData } from "@/types/schema";
 import { cn } from "@/lib/cn";
 import { Button, Card, CardBody, Field, Input, NoticeBanner, Textarea } from "@/components/ui/primitives";
@@ -94,11 +95,11 @@ export function StartFlow() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ jdText, resume: draft.resume, field: draft.field, turnstile: (await turnstile.current?.take()) ?? "" }),
             });
-            const json = await readJson<{ title: string; company: string; requirements: Requirement[]; tagsById: Record<string, ResumeData["profileTags"]> }>(res);
+            const json = await readJson<{ title: string; company: string; requirements: Requirement[]; seniority: Seniority | null; tagsById: Record<string, ResumeData["profileTags"]> }>(res);
             if (!json.ok || !json.requirements) throw new Error(json.error ?? "Could not match that job.");
             set({
                 resume: applyTags(draft.resume, json.tagsById ?? {}),
-                job: { title: json.title ?? "This job", company: json.company ?? "", jdText, requirements: json.requirements },
+                job: { title: json.title ?? "This job", company: json.company ?? "", jdText, requirements: json.requirements, seniority: json.seniority ?? null },
                 step: "teaser",
             });
         } catch (err) {
@@ -211,7 +212,7 @@ export function StartFlow() {
 
 function Teaser({ draft, onBack }: { draft: GuestDraft; onBack: () => void }) {
     const job = draft.job!;
-    const m = scoreJob(job.requirements, draft.resume!);
+    const m = scoreJob(job.requirements, draft.resume!, {}, { seniority: job.seniority ?? null });
     const missing = m.rows.filter(r => r.strength < 0.3).length;
     return (
         <Card>

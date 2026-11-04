@@ -409,9 +409,17 @@ each effort over your library and returns outputs + timings, writing nothing.
   `band` = ±95% from Σw²m(1−m); `row.gain` = exact points for fully evidencing that requirement. `missingMust` / `keywordGaps`
   use m < 0.3. UI: `components/ui/job-match/match-breakdown.tsx` (headline ± band + must-haves, sub-score bars, "What would
   raise it", evidence table with Direct / Related / Semantic / Keyword only).
-- **Recommendation** (`lib/match/recommend.ts`): greedy weighted set cover (must = 3, nice = 1, a requirement
-  saturates after 2 carriers) under per-section caps (`DEFAULT_CAPS`, user-editable in `meta/preferences`);
-  matching skill categories always in; education never excluded. Produces include/exclude proposals.
+- **Recommendation** (`lib/match/recommend.ts`): greedy maximisation of Σ w·m (must = 3, nice = 1; m = noisy-OR of the chosen
+  items' evidence, the scorer's own per-item `e` from one `scoreJob` over the whole library with every item on) under per-section
+  caps (`DEFAULT_CAPS`, user-editable in `meta/preferences`); a pick must add ≥ `MIN_GAIN`, so a weak second carrier of a strong
+  requirement loses to an item that covers something new. "Covers" / `uncovered` use evidence ≥ 0.5 *without* recency decay
+  (`scoreJob(..., { recency: false })`): an old role still proves a skill, recency only ranks carriers. Matching skill categories
+  always in; education never excluded. Produces include/exclude proposals.
+- **Seniority** (`lib/match/seniority.ts`): JD analysis returns `seniority` (intern / entry / mid / senior / lead / executive, stored
+  on the job); `candidateLevel` = years of selected non-internship work (overlaps merged; < 0.5 intern, < 2 entry, < 5 mid, else
+  senior) lifted by the latest title (Senior / Lead / Manager / Director…). `seniorityFit` (1 same; under 0.75 / 0.45 / 0.25; over
+  0.95 / 0.8 / 0.65) multiplies the title sub-score (or is it, without `titleSim`); `match.seniority` is shown under the sub-score
+  bars. Callers with a saved job pass `scoreOptionsFor(job)`.
 - `POST /api/jobs/proposals`: deterministic include/exclude + text-model `rewrite-bullet | add-skill | gap`
   proposals, muted rules filtered, statuses preserved by id, stored on the job. "Ignore similar" writes a
   `{kind, tag | itemId}` rule to `users/{uid}/meta/preferences.mutedProposals`.

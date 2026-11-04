@@ -6,7 +6,7 @@ import { toTypstDoc } from "@/lib/typst/doc";
 describe("demo samples", () => {
     it("score in a believable range and print", () => {
         for (const s of demoSamples()) {
-            const m = scoreJob(s.job.requirements, s.resume, {}, { now: new Date(2026, 10, 1) });
+            const m = scoreJob(s.job.requirements, s.resume, {}, { now: new Date(2026, 10, 1), seniority: s.job.seniority });
             expect(m.score, s.id).toBeGreaterThan(40);
             expect(m.score, s.id).toBeLessThan(97);
             expect(toTypstDoc(s.resume).experience.length).toBeGreaterThan(0);

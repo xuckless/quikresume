@@ -16,7 +16,7 @@ import { chatCompletion, GlmError, textModel } from "@/lib/glm/client";
 import { extractJson, ImportParseError } from "@/lib/import/parsed-resume";
 import { readTagAliases } from "@/lib/db/meta";
 import { patchJob, readJob, readPreferences, readProposals } from "@/lib/db/jobs";
-import { scoreJob } from "@/lib/match/score";
+import { scoreJob, scoreOptionsFor } from "@/lib/match/score";
 import { reconcileRequirements } from "@/lib/match/reconcile";
 import { readCandidateContext } from "@/lib/db/characterization";
 import { readResumeBody } from "@/lib/match/resume-body";
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
         const requirements = reconciled.requirements;
         if (reconciled.warning) console.warn("[jobs/proposals] reconcile skipped:", reconciled.warning);
 
-        const match = scoreJob(requirements, resume, aliases);
+        const match = scoreJob(requirements, resume, aliases, scoreOptionsFor(job));
         const rec = recommendSelection(requirements, resume, prefs.caps);
 
         // Items the coach may reference (all of them, so add-skill can cite unselected evidence).

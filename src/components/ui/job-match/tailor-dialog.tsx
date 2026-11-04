@@ -14,7 +14,7 @@ import type { ResumeData, ResumeListKey } from "@/types/schema";
 import { RESUME_LIST_KEYS } from "@/types/schema";
 import type { Caps, DeclinedSkill, JobRecord, Requirement } from "@/lib/match/types";
 import type { AliasMap } from "@/lib/tags/normalize";
-import { scoreJob, uncoveredRequirements } from "@/lib/match/score";
+import { scoreJob, scoreOptionsFor, uncoveredRequirements, type ScoreOptions } from "@/lib/match/score";
 import {
     acceptSuggestion, applySelection, buildTailorPlan, diffSuggestions, fitToOnePage, isPending, planSelection, selectionOf, setHidden, setInclude,
     subEntriesOf, TRIM_ITEM_REASON, TRIM_KEY_REASON, overrideWarnings, type TailorPlan, type TailorSelection, type TailorSuggestion,
@@ -223,6 +223,7 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
             description={step === "questions" ? "Step 1 of 2 · requirements your library doesn't show yet" : "Step 2 of 2 · pick what goes on the résumé"}
             footer={step === "review" ? (
                 <ReviewFooter
+                    scoreOpts={scoreOptionsFor(job)}
                     library={library}
                     applied={applied}
                     requirements={requirements}
@@ -496,14 +497,14 @@ function SortableBlock({ id, label, as: Tag, className, children }: { id: string
 }
 
 function ReviewFooter({
-    library, applied, requirements, aliases, allowMultiPage, onAllowMultiPage, name, onName, busy, onFit, onClose, onSave, onDownload,
+    scoreOpts, library, applied, requirements, aliases, allowMultiPage, onAllowMultiPage, name, onName, busy, onFit, onClose, onSave, onDownload,
 }: {
-    library: ResumeData; applied: ResumeData; requirements: Requirement[]; aliases: AliasMap;
+    scoreOpts: ScoreOptions; library: ResumeData; applied: ResumeData; requirements: Requirement[]; aliases: AliasMap;
     allowMultiPage: boolean; onAllowMultiPage: (v: boolean) => void; name: string; onName: (v: string) => void;
     busy: Busy; onFit: () => void; onClose: () => void; onSave: () => void; onDownload: () => void;
 }) {
-    const score = scoreJob(requirements, applied, aliases).score;
-    const before = scoreJob(requirements, library, aliases).score;
+    const score = scoreJob(requirements, applied, aliases, scoreOpts).score;
+    const before = scoreJob(requirements, library, aliases, scoreOpts).score;
     const { pages, error: pageError } = useResumePageCount(applied);
     const over = pages !== null && pages > 1;
     const blocked = (over && !allowMultiPage) || pages === null || !name.trim();
