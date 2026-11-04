@@ -1,7 +1,7 @@
 // src/lib/typst/pages.ts
 // typst.ts renders every page into one tall SVG (`svg.typst-doc` with one `g.typst-page` per page,
 // stacked vertically). The preview shows them as separate sheets: each sheet is a window of the
-// same SVG, clipped to one page's box. Browser only (DOMParser).
+// same SVG, clipped to one page's box. Browser only (DOMParser, HTML mode).
 
 export interface SvgPageBox {
     /** Top of the page in SVG user units. */
@@ -30,13 +30,16 @@ function translateY(transform: string | null): number | null {
 
 /** Page boxes of a typst.ts SVG; falls back to `fallbackPages` equal slices when the markup is unexpected. */
 export function svgLayout(svg: string, fallbackPages: number): SvgLayout | null {
+    // The HTML parser, not "image/svg+xml": typst.ts output is not always well-formed XML (the strict parser
+    // returns a <parsererror> document), which made every multi-page résumé show as one tall sheet. The HTML
+    // parser reads inline SVG leniently and keeps SVG attribute case (viewBox).
     let root: Element | null = null;
     try {
-        root = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
+        root = new DOMParser().parseFromString(svg, "text/html").querySelector("svg");
     } catch {
         return null;
     }
-    if (!root || root.nodeName.toLowerCase() !== "svg") return null;
+    if (!root) return null;
     const vb = (root.getAttribute("viewBox") ?? "").split(/[\s,]+/).map(Number);
     const width = (vb.length === 4 && Number.isFinite(vb[2]) ? vb[2] : null) ?? num(root.getAttribute("data-width")) ?? num(root.getAttribute("width"));
     const height = (vb.length === 4 && Number.isFinite(vb[3]) ? vb[3] : null) ?? num(root.getAttribute("data-height")) ?? num(root.getAttribute("height"));
