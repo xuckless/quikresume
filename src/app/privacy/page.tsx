@@ -4,6 +4,7 @@
 import type { Metadata } from "next";
 import { auth } from "@/auth";
 import { MarketingFooter, MarketingHeader } from "@/components/marketing-header";
+import { SITE_CONTACT_EMAIL } from "@/lib/site";
 
 export const metadata: Metadata = {
     title: "Privacy",
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
     alternates: { canonical: "/privacy" },
 };
 
-const CONTACT = process.env.NEXT_PUBLIC_CONTACT_EMAIL ?? "";
+const CONTACT = SITE_CONTACT_EMAIL;
 const UPDATED = "November 3, 2026";
 
 function H({ children }: { children: React.ReactNode }) {

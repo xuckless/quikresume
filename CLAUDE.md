@@ -70,7 +70,7 @@ src/
   app/page.tsx, (auth)/login                 public pages (MarketingHeader/Footer in components/marketing-header.tsx);
                                              page.tsx also emits the WebApplication JSON-LD
   app/privacy/page.tsx                       privacy policy (Chrome Web Store policy URL; must match what the code does: update it with
-                                             any new processor, permission or stored field). Optional NEXT_PUBLIC_CONTACT_EMAIL
+                                             any new processor, permission or stored field). Contact = SITE_CONTACT_EMAIL (lib/site.ts, env override)
   app/{robots,sitemap}.ts                    /robots.txt (AI crawlers disallowed, /dashboard + /api + /login hidden,
                                              search engines allowed) and /sitemap.xml (public pages only)
   app/opengraph-image.tsx, twitter-image.tsx 1200x630 social card via next/og (Satori: every div with >1 child needs
