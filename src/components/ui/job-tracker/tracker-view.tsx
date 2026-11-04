@@ -6,6 +6,8 @@
 // saved through setJobStatus; dragging a card between columns and the status menu do the same thing,
 // so keyboard users never need the drag.
 
+import { CompanyLogo } from "./company-logo";
+import { ScoreRing } from "@/components/ui/primitives/score-ring";
 import React, { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -115,10 +117,11 @@ function StatusSelect({ job, onMove, className }: { job: JobRecord; onMove: (id:
     );
 }
 
-function Score({ job }: { job: JobRecord }) {
-    if (job.match.status === "running") return <Loader2 className="size-3.5 animate-spin text-fg-subtle" aria-label="Checking matches with AI" />;
-    if (job.lastScore === null) return <span className="text-xs text-fg-subtle">–</span>;
-    return <span className="font-mono text-13 tabular-nums text-fg" title="Match score of your working selection">{job.lastScore}</span>;
+function Score({ job, size = 36 }: { job: JobRecord; size?: number }) {
+    const box = "flex shrink-0 items-center justify-center";
+    if (job.match.status === "running") return <span className={box} style={{ width: size, height: size }}><Loader2 className="size-3.5 animate-spin text-fg-subtle" aria-label="Checking matches with AI" /></span>;
+    if (job.lastScore === null) return <span className={cn(box, "text-xs text-fg-subtle")} style={{ width: size, height: size }} title="Open the job to score it">–</span>;
+    return <span title="Match score of your working selection" className="shrink-0"><ScoreRing score={job.lastScore} size={size} /></span>;
 }
 
 // ---------- board
@@ -167,11 +170,12 @@ function JobCard({ job, onMove, onOpen }: { job: JobRecord; onMove: (id: string,
             className={cn("rounded-md border border-border bg-surface shadow-sm", isDragging && "relative z-10 opacity-90")}
         >
             <div {...listeners} {...attributes} aria-roledescription="Draggable job" className={cn("cursor-grab rounded-md p-2.5 active:cursor-grabbing", FOCUS_RING)}>
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2.5">
+                    <CompanyLogo job={job} size={32} className="mt-0.5" />
                     <button
                         type="button"
                         onClick={() => onOpen(job.id)}
-                        className={cn("min-w-0 text-left", FOCUS_RING)}
+                        className={cn("min-w-0 flex-1 text-left", FOCUS_RING)}
                         // The card itself is the drag handle; the title is the link.
                         onPointerDown={e => e.stopPropagation()}
                     >
@@ -204,13 +208,16 @@ function JobTable({ jobs, onMove, onOpen, onDelete }: { jobs: JobRecord[]; onMov
                     {jobs.map(j => (
                         <tr key={j.id} className="group/row hover:bg-surface-hover">
                             <Td>
-                                <button type="button" onClick={() => onOpen(j.id)} className={cn("min-w-0 text-left", FOCUS_RING)}>
-                                    <span className="block font-medium text-fg hover:underline">{j.title}</span>
-                                    <span className="block text-xs text-fg-muted">{[j.company || "Unknown company", j.location].filter(Boolean).join(" · ")}</span>
-                                </button>
+                                <div className="flex items-center gap-3">
+                                    <CompanyLogo job={j} size={28} />
+                                    <button type="button" onClick={() => onOpen(j.id)} className={cn("min-w-0 text-left", FOCUS_RING)}>
+                                        <span className="block font-medium text-fg hover:underline">{j.title}</span>
+                                        <span className="block text-xs text-fg-muted">{[j.company || "Unknown company", j.location].filter(Boolean).join(" · ")}</span>
+                                    </button>
+                                </div>
                             </Td>
                             <Td className="w-36"><StatusSelect job={j} onMove={onMove} /></Td>
-                            <Td className="text-right"><Score job={j} /></Td>
+                            <Td><div className="flex justify-end"><Score job={j} size={30} /></div></Td>
                             <Td className="whitespace-nowrap text-fg-muted">{j.appliedAt ?? "–"}</Td>
                             <Td className="whitespace-nowrap text-fg-muted">{j.updatedAt ? j.updatedAt.slice(0, 10) : "–"}</Td>
                             <Td className="w-20 text-right">

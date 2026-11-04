@@ -6,6 +6,7 @@
 //     user's library is never merged with a guest import behind their back);
 //   - the job they matched is saved to the Job Tracker with its requirements (no second analysis).
 
+import { cleanCompanyDomain } from "@/lib/jobs/company-domain";
 import { isSeniority } from "@/lib/match/seniority";
 import { revalidatePath } from "next/cache";
 import { requireUid } from "@/lib/db/session";
@@ -67,6 +68,7 @@ export async function claimGuestDraft(input: { resume: unknown; source: unknown;
                 })).filter(r => r.name),
                 fitNotes: [],
                 seniority: isSeniority(j.seniority) ? j.seniority : null,
+                companyDomain: cleanCompanyDomain(j.companyDomain),
             });
             jobId = job.id;
         }

@@ -55,6 +55,7 @@ export default async function PrivacyPage() {
                 <ul>
                     <li><strong className="text-fg">Google Cloud Firestore</strong> (Firebase) stores your account data. <strong className="text-fg">Vercel</strong> hosts the app.</li>
                     <li>When you save a website or GitHub link, we check it still exists: a request to that website, and to the GitHub API for your GitHub username.</li>
+                    <li>Company logos in the Job Tracker are fetched by our server from Google&apos;s favicon service, sending only the company&apos;s website domain.</li>
                 </ul>
 
                 <H>Cookies and local storage</H>

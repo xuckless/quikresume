@@ -3,6 +3,7 @@
 // Shared by POST /api/jobs/analyze (web form) and POST /api/ext/jobs (browser extension).
 // Callers run it inside withAiUser(uid, "job-analyze", ...) and own guarding / input parsing.
 
+import { cleanCompanyDomain } from "@/lib/jobs/company-domain";
 import { isSeniority } from "@/lib/match/seniority";
 import "server-only";
 import { after } from "next/server";
@@ -84,6 +85,7 @@ export async function analyzeAndSaveJob(uid: string, input: AnalyzeJobInput): Pr
         jdText: input.jdText,
         requirements,
         seniority: isSeniority(json.seniority) ? json.seniority : null,
+        companyDomain: cleanCompanyDomain(json.companyDomain) ?? cleanCompanyDomain(input.posting?.url),
         fitNotes: candidate && Array.isArray(json.fitNotes)
             ? json.fitNotes.filter((n): n is string => typeof n === "string" && n.trim() !== "").slice(0, 2).map(n => cleanModelText(n, 200))
             : [],

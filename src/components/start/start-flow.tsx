@@ -95,11 +95,11 @@ export function StartFlow() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ jdText, resume: draft.resume, field: draft.field, turnstile: (await turnstile.current?.take()) ?? "" }),
             });
-            const json = await readJson<{ title: string; company: string; requirements: Requirement[]; seniority: Seniority | null; tagsById: Record<string, ResumeData["profileTags"]> }>(res);
+            const json = await readJson<{ title: string; company: string; requirements: Requirement[]; seniority: Seniority | null; companyDomain: string | null; tagsById: Record<string, ResumeData["profileTags"]> }>(res);
             if (!json.ok || !json.requirements) throw new Error(json.error ?? "Could not match that job.");
             set({
                 resume: applyTags(draft.resume, json.tagsById ?? {}),
-                job: { title: json.title ?? "This job", company: json.company ?? "", jdText, requirements: json.requirements, seniority: json.seniority ?? null },
+                job: { title: json.title ?? "This job", company: json.company ?? "", jdText, requirements: json.requirements, seniority: json.seniority ?? null, companyDomain: json.companyDomain ?? null },
                 step: "teaser",
             });
         } catch (err) {

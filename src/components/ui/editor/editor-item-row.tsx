@@ -54,11 +54,9 @@ export function EditorItemRow({ id, title, subtitle, meta, isSelected, onToggleS
     const summary = (
         <div className="flex min-w-0 items-center gap-3">
             <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-baseline gap-2">
-                    <span className={cn("truncate text-sm font-medium", isSelected ? "text-fg" : "text-fg-muted")}>{title || <span className="text-fg-subtle">Untitled</span>}</span>
-                    {subtitle && <span className="hidden truncate text-13 text-fg-muted md:inline">{subtitle}</span>}
-                </div>
-                {subtitle && <div className="truncate text-13 text-fg-muted md:hidden">{subtitle}</div>}
+                {/* Title on its own line so it never loses space to the subtitle (a long skill list used to cut it to "S.."). */}
+                <div className={cn("truncate text-sm font-medium leading-5", isSelected ? "text-fg" : "text-fg-muted")}>{title || <span className="text-fg-subtle">Untitled</span>}</div>
+                {subtitle && <div className="mt-0.5 truncate text-13 leading-5 text-fg-subtle">{subtitle}</div>}
             </div>
             <div className="hidden shrink-0 items-center gap-1 sm:flex">
                 {review && <ScoreBadge review={review} outdated={reviewStale} />}

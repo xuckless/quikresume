@@ -443,6 +443,10 @@ each effort over your library and returns outputs + timings, writing nothing.
   (`jobUrlKey(canonicalJobUrl(url))`, `lib/jobs/canonical-url.ts`), `location`, `employmentType`; `source.kind` may be
   `extension`. `setJobStatus` / `updateJobMeta` (`updateJobTracking`) change them; a re-import of the same `urlKey` must refresh
   posting fields only. Board drag and the status Select do the same thing (keyboard users never need the drag).
+- **Company logos**: `job.companyDomain` (JD analysis `companyDomain`, else the posting URL when it is the company's own site;
+  `lib/jobs/company-domain.ts` rejects job boards / ATS hosts) -> `CompanyLogo` -> `GET /logo/<domain>` (signed-in only, outside
+  `/api` so it can be cached; fetches Google's s2 favicon server-side, 404 when unknown -> monogram / briefcase). Read the domain
+  through `companyDomainOf(job)` so older jobs fall back to their URL. Tracker cards and rows show `lastScore` as a `ScoreRing`.
 - **Job list**: `saveJobScore` writes only `lastScore` (no `updatedAt`, which orders the list) 1.5 s after the working-selection
   score changes; titles rename inline (`renameJob`); a trash button on each list row deletes.
 - **The Suggestions card is hidden** (`SHOW_SUGGESTIONS = false` in `job-match-view.tsx`); the route, proposal cards and

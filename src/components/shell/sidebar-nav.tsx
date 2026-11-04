@@ -9,7 +9,7 @@ import { Wordmark } from "@/components/brand";
 import { setTheme, useTheme, type ThemeChoice } from "@/lib/ui/theme-store";
 import { parseView, viewHref, type View } from "@/lib/ui/use-dashboard-view";
 import { useMediaQuery, XL } from "@/lib/ui/use-media-query";
-import { togglePreviewPane, usePreviewPane } from "@/lib/ui/preview-pane-store";
+import { setPreviewPane, togglePreviewPane, usePreviewPane } from "@/lib/ui/preview-pane-store";
 import { interceptNavigation } from "@/lib/ui/leave-guard";
 import { FOCUS_RING } from "@/components/ui/primitives/button";
 import { Monitor, Moon, Sun, Compass, Eye, Layers, Library, ListChecks, LogOut, PenLine, Puzzle, Target, Upload, User, type LucideIcon } from "@/components/ui/primitives/icons";
@@ -96,7 +96,18 @@ export function SidebarNav({ user, signOutAction, onNavigate }: { user: ShellUse
 
     const render = (item: NavItem) => {
         const Icon = item.icon;
-        // On wide screens "Preview" toggles the side pane instead of navigating.
+        // On wide screens "Preview" toggles the side pane instead of navigating. Only the dashboard page draws
+        // the pane (it holds the résumé data), so on any other page it opens the pane and goes there.
+        if (item.view === "preview" && wide && pathname !== "/dashboard") {
+            return (
+                <li key={item.label}>
+                    <Link href="/dashboard" onClick={e => { setPreviewPane(true); follow("/dashboard")(e); }} className={cn(ITEM, IDLE, FOCUS_RING)}>
+                        <Icon className="size-4 shrink-0" aria-hidden />
+                        <span className="flex-1">Preview</span>
+                    </Link>
+                </li>
+            );
+        }
         if (item.view === "preview" && wide) {
             return (
                 <li key={item.label}>

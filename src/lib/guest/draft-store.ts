@@ -16,6 +16,7 @@ export interface GuestJob {
     jdText: string;
     requirements: Requirement[];
     seniority?: Seniority | null;
+    companyDomain?: string | null;
 }
 
 export interface GuestDraft {
