@@ -29,6 +29,7 @@ export const ACTIVE_LABEL = {
     education: "Currently enrolled",
     project: "Ongoing",
     volunteering: "Currently volunteering",
+    custom: "Ongoing",
 } as const;
 export type ActiveType = keyof typeof ACTIVE_LABEL;
 

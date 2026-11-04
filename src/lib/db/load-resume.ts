@@ -11,6 +11,7 @@ import { getProjects } from "@/app/actions/project-actions";
 import { getCertifications } from "@/app/actions/certification-actions";
 import { getAwards } from "@/app/actions/award-actions";
 import { getVolunteering } from "@/app/actions/volunteering-actions";
+import { getCustomEntries } from "@/app/actions/custom-actions";
 import { getPublications } from "@/app/actions/publication-actions";
 import { getLanguages } from "@/app/actions/language-actions";
 import { getUserProfile } from "@/app/actions/user-actions";
@@ -29,14 +30,14 @@ export interface LibraryWithReviews {
 
 /** The get* actions authenticate themselves; `uid` is accepted for symmetry with other helpers. */
 export async function loadLibraryWithReviews(_uid: string, fallbackName?: string | null): Promise<LibraryWithReviews> {
-    const [profile, experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages, layout] =
+    const [profile, experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages, layout, custom] =
         await Promise.all([
             getUserProfile(), getExperiences(), getEducations(), getSkills(), getProjects(), getCertifications(),
-            getAwards(), getVolunteering(), getPublications(), getLanguages(), getLayout(),
+            getAwards(), getVolunteering(), getPublications(), getLanguages(), getLayout(), getCustomEntries(),
         ]);
-    const rows = [experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages].flat();
+    const rows = [experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages, custom].flat();
     return {
-        data: toResumeData({ profile, fallbackName, experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages, layout }),
+        data: toResumeData({ profile, fallbackName, experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages, custom, layout }),
         reviews: Object.fromEntries(rows.map(r => [r.id, r.review])),
         profileReview: profile?.profileReview ?? null,
     };

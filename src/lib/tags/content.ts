@@ -34,6 +34,7 @@ function contentFields<K extends ResumeListKey>(key: K, item: ResumeData[K][numb
         case "volunteering": { const x = item as ResumeData["volunteering"][number]; return [t(x.role), t(x.organization), t(x.description)]; }
         case "publications": { const x = item as ResumeData["publications"][number]; return [t(x.title), t(x.venue), t(x.authors)]; }
         case "languages": { const x = item as ResumeData["languages"][number]; return [t(x.language), t(x.proficiency)]; }
+        case "custom": { const x = item as ResumeData["custom"][number]; return [t(x.section), t(x.title), t(x.subtitle), t(x.description)]; }
     }
     return [];
 }
@@ -65,6 +66,7 @@ export function itemText<K extends ResumeListKey>(key: K, item: ResumeData[K][nu
         case "volunteering": { const x = item as ResumeData["volunteering"][number]; return `Volunteering / leadership: ${t(x.role)} at ${t(x.organization)}\n${bullets(x.description)}`.trim(); }
         case "publications": { const x = item as ResumeData["publications"][number]; return `Publication: ${t(x.title)}\n${t(x.venue) ? `Venue: ${t(x.venue)}\n` : ""}${t(x.authors) ? `Authors: ${t(x.authors)}` : ""}`.trim(); }
         case "languages": { const x = item as ResumeData["languages"][number]; return `Spoken language: ${t(x.language)}${paren(t(x.proficiency))}`; }
+        case "custom": { const x = item as ResumeData["custom"][number]; return `${t(x.section) || "Other"}: ${t(x.title)}${t(x.subtitle) ? ` (${t(x.subtitle)})` : ""}\n${bullets(x.description)}`.trim(); }
     }
     return "";
 }

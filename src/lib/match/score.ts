@@ -43,7 +43,7 @@ export const SUB_WEIGHTS = { coverage: 0.55, ats: 0.15, years: 0.1, title: 0.1, 
 export const MUST_GATE_CAP = 70;
 export const MUST_MISSING_BELOW = 0.3;
 const BINARY_KINDS = new Set<Requirement["kind"]>(["credential", "language"]);
-const DATED_WORK = new Set<ResumeListKey>(["workExperience", "projects", "volunteering"]);
+const DATED_WORK = new Set<ResumeListKey>(["workExperience", "projects", "volunteering", "custom"]);
 
 /**
  * Generic engineering practices that postings list as "technical requirements"

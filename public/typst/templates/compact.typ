@@ -128,6 +128,13 @@
       let title = heading-for(data, key, title)
       let sp = tight(section-spacing(data, key))
       section(title, body(sp), sp, th.accent, th.heading-font)
+    } else if key == "custom" {
+      // User-named sections: one section per heading, entries styled like volunteering.
+      let sp = tight(section-spacing(data, key))
+      for g in data.at("custom", default: ()) {
+        let body = if g.entries.len() > 0 { stack-entries(sp: sp, g.entries, (v, keep) => entry(v.title, org: v.organization, date: v.date, keep: keep, bullets(v.bullets))) }
+        section(g.heading, body, sp, th.accent, th.heading-font)
+      }
     }
   }
 }

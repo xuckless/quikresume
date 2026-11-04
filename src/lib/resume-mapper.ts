@@ -7,6 +7,7 @@ import { PRESENT, toDateInputValue } from "@/lib/dates";
 import type {
     AwardItem,
     CertificationItem,
+    CustomItem,
     EducationItem,
     ExperienceItem,
     LanguageItem,
@@ -32,6 +33,8 @@ export interface ResumeSources {
     volunteering: VolunteeringItem[];
     publications: PublicationItem[];
     languages: LanguageItem[];
+    /** Absent in callers that predate custom sections. */
+    custom?: CustomItem[];
     /** Raw users/{uid}/meta/layout document (normalised here). */
     layout?: unknown;
 }
@@ -164,6 +167,19 @@ export function toResumeData(src: ResumeSources): ResumeData {
             isSelected: l.isSelected,
             tags: l.tags,
             tagsHash: l.tagsHash,
+        })),
+        custom: (src.custom ?? []).map(c => ({
+            id: c.id,
+            section: c.section,
+            title: c.title,
+            subtitle: s(c.subtitle),
+            startDate: toDateInputValue(c.startDate),
+            endDate: endDateOf(c.isActive, c.endDate),
+            description: c.description.join("\n"),
+            hidden: c.hidden,
+            isSelected: c.isSelected,
+            tags: c.tags,
+            tagsHash: c.tagsHash,
         })),
         layout: normalizeLayout(src.layout),
     };

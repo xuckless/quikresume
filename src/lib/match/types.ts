@@ -146,6 +146,7 @@ export const DEFAULT_CAPS: Caps = {
     volunteering: 3,
     publications: 3,
     languages: null,
+    custom: 4,
 };
 
 /** A soft skill the user said they don't have (auto-tailor questionnaire). Warned about on later jobs until answered Yes. */

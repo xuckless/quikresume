@@ -79,12 +79,13 @@ const award = z.object({ title: str, issuer: str.catch(""), date: z.unknown(), d
 const volunteering = z.object({ role: str, organization: str, startDate: z.unknown(), endDate: z.unknown(), bullets: strList.catch([]) });
 const publication = z.object({ title: str, venue: str.catch(""), date: z.unknown(), link: str.catch(""), authors: str.catch("") });
 const language = z.object({ language: str, proficiency: str.catch("") });
+const custom = z.object({ section: str.catch(""), title: str, subtitle: str.catch(""), startDate: z.unknown(), endDate: z.unknown(), bullets: strList.catch([]) });
 
 const list = z.array(z.unknown()).transform(l => l.slice(0, LIMITS.itemsPerSection)).catch([]);
 const envelope = z.object({
     personalInfo: personal.catch({}),
     workExperience: list, education: list, skills: list, projects: list, certifications: list,
-    awards: list, volunteering: list, publications: list, languages: list,
+    awards: list, volunteering: list, publications: list, languages: list, custom: list,
 });
 
 // ---------- Conversion ----------
@@ -104,7 +105,7 @@ const firstText = (x: unknown): string => {
 const LABELS: Record<ResumeListKey, string> = {
     workExperience: "work experience", education: "education", skills: "skill category", projects: "project",
     certifications: "certification", awards: "award", volunteering: "volunteering", publications: "publication",
-    languages: "language",
+    languages: "language", custom: "entry",
 };
 
 export function parseModelOutput(text: string): ParsedImport {
@@ -180,6 +181,9 @@ export function parseModelOutput(text: string): ParsedImport {
     }));
     convert("languages", language, x => missing("language name")(Boolean(x.language)), x => ({
         language: x.language, proficiency: x.proficiency,
+    }));
+    convert("custom", custom, x => missing("title")(Boolean(x.title)), x => ({
+        section: x.section.slice(0, 60) || "Other", title: x.title, subtitle: x.subtitle, ...normalizeDateRange(x.startDate, x.endDate), description: x.bullets.join("\n"),
     }));
 
     return { data: clampResumeData(data), warnings };

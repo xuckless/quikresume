@@ -6,7 +6,7 @@
 import React from "react";
 import type {
     Award, Certification, Education, Language, Project, Publication, ResumeData, ResumeListKey, SkillCategory,
-    Volunteering, WorkExperience,
+    Volunteering, WorkExperience, CustomEntry,
 } from "@/types/schema";
 import { newTempId } from "@/lib/ids";
 import { toBullets } from "@/lib/typst/doc";
@@ -65,7 +65,7 @@ function ShownOnResume({ id, entries, hidden, onChange, variant }: { id: string;
     );
 }
 
-type WithBullets = WorkExperience | Project | Volunteering;
+type WithBullets = WorkExperience | Project | Volunteering | CustomEntry;
 const bulletToggles = <T extends WithBullets>(x: T, set: (patch: Partial<T>) => void) => (
     <ShownOnResume id={x.id} entries={bulletEntries(toBullets(x.description))} hidden={x.hidden ?? []} onChange={hidden => set({ hidden } as Partial<T>)} variant="bullets" />
 );
@@ -159,6 +159,22 @@ export const SECTION_CONFIG: { [K in ResumeListKey]: SectionConfig<K> } = {
                 </div>
                 <DateRangeFields idPrefix={x.id} startDate={x.startDate} endDate={x.endDate} currentLabel="Still involved" errors={errors} onChange={set} />
                 <Lines item={x} set={set} field="description" label="Highlights (one per line)" placeholder="What you did and the impact, one per line…" rows={3} />
+                {bulletToggles(x, set)}
+            </>
+        ),
+    },
+    custom: {
+        addLabel: "Add entry",
+        create: (): CustomEntry => ({ ...base(), hidden: [], section: "", title: "", subtitle: "", startDate: "", endDate: "", description: "" }),
+        fields: (x, set, errors) => (
+            <>
+                <Text item={x} set={set} field="section" label="Section heading" placeholder="Clinical Rotations · Teaching · Exhibitions · References" />
+                <div className={two}>
+                    <Text item={x} set={set} field="title" label="Title" placeholder="Pediatrics Rotation" />
+                    <Text item={x} set={set} field="subtitle" label="Organisation or detail (optional)" placeholder="SickKids Hospital, Toronto" />
+                </div>
+                <DateRangeFields idPrefix={x.id} startDate={x.startDate} endDate={x.endDate} currentLabel="Ongoing" errors={errors} onChange={set} />
+                <Lines item={x} set={set} field="description" label="Details (one per line, optional)" placeholder="What you did, one per line…" rows={3} />
                 {bulletToggles(x, set)}
             </>
         ),

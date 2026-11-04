@@ -24,7 +24,7 @@
 #let rule = rgb("#cfd3e5")
 
 // ---------- Layout defaults ----------
-#let default-order = ("summary", "education", "skills", "projects", "experience", "volunteering", "publications", "awards", "certifications", "languages")
+#let default-order = ("summary", "education", "skills", "projects", "experience", "volunteering", "publications", "awards", "certifications", "languages", "custom")
 #let default-page = (margin: 16, size: 10.5, leading: 0.55)
 #let default-sp = (above: 4, below: 6, gap: 6, indent: 0)
 #let default-item = (space_after: 0, break_before: false, keep: true)
@@ -234,6 +234,11 @@
       let (title, body) = sections.at(key)
       let title = heading-for(data, key, title)
       section(title, body(sp(key)), sp: sp(key), accent-deep: deep)
+    } else if key == "custom" {
+      // User-named sections: one section per heading, entries styled like volunteering.
+      for g in data.at("custom", default: ()) {
+        section(g.heading, volunteering(g.entries, sp(key)), sp: sp(key), accent-deep: deep)
+      }
     }
   }
 }

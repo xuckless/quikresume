@@ -137,6 +137,21 @@ export interface VolunteeringItem extends TagFields {
     updatedAt?: string | null;
 }
 
+export interface CustomItem extends TagFields {
+    id: string;
+    section: string;
+    title: string;
+    subtitle: string | null;
+    startDate: string | null;
+    endDate: string | null;
+    isActive: boolean;
+    description: string[];
+    hidden: string[];
+    isSelected: boolean;
+    createdAt: string | null;
+    updatedAt?: string | null;
+}
+
 export interface PublicationItem extends TagFields {
     id: string;
     title: string;

@@ -8,7 +8,7 @@
 // `hidden` is not part of the content hash: toggling never stales tags.
 
 /** List sections whose items carry `hidden`. */
-export const SUB_ITEM_SECTIONS = ["workExperience", "projects", "volunteering", "skills"] as const;
+export const SUB_ITEM_SECTIONS = ["workExperience", "projects", "volunteering", "custom", "skills"] as const;
 export type SubItemSection = (typeof SUB_ITEM_SECTIONS)[number];
 
 export interface SubItem {

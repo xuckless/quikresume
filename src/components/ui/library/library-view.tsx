@@ -7,7 +7,7 @@ import { isBriefOutdated, isReviewStale } from "@/lib/review/content";
 import type { ItemReview } from "@/lib/review/types";
 import type {
     AwardItem, CertificationItem, EducationItem, ExperienceItem, LanguageItem, ProjectItem, PublicationItem,
-    SkillCategoryItem, VolunteeringItem,
+    SkillCategoryItem, VolunteeringItem, CustomItem,
 } from "@/types/db";
 import { deleteExperience, updateExperience } from "@/app/actions/experience-actions";
 import { deleteEducation, updateEducation } from "@/app/actions/education-actions";
@@ -18,6 +18,7 @@ import { deleteAward, updateAward } from "@/app/actions/award-actions";
 import { deleteVolunteering, updateVolunteering } from "@/app/actions/volunteering-actions";
 import { deletePublication, updatePublication } from "@/app/actions/publication-actions";
 import { deleteLanguage, updateLanguage } from "@/app/actions/language-actions";
+import { deleteCustomEntry, updateCustomEntry } from "@/app/actions/custom-actions";
 import { formatDateRange, formatMonthYear, PRESENT } from "@/lib/dates";
 import { SECTION_LABEL } from "@/lib/sections";
 import type { SectionTab } from "@/components/ui/section-tabs";
@@ -32,7 +33,7 @@ import { hasManualOrder, isDatedSection, moveItem, moveSection, orderedItems, re
 import type { ResumeLayout, SectionId } from "@/lib/layout/types";
 import { Button } from "@/components/ui/primitives/button";
 import {
-    ArrowDownWideNarrow, Award, BadgeCheck, BookOpen, Briefcase, FolderGit2, GraduationCap, HeartHandshake, Languages, Library, Search, Wrench,
+    ArrowDownWideNarrow, Award, BadgeCheck, BookOpen, Briefcase, FolderGit2, GraduationCap, HeartHandshake, Languages, Layers, Library, Search, Wrench,
     type LucideIcon,
 } from "@/components/ui/primitives/icons";
 
@@ -46,6 +47,7 @@ export const SECTION_ICON: Record<ResumeListKey, LucideIcon> = {
     awards: Award,
     certifications: BadgeCheck,
     languages: Languages,
+    custom: Layers,
 };
 
 export interface LibraryLists {
@@ -58,6 +60,7 @@ export interface LibraryLists {
     volunteering: VolunteeringItem[];
     publications: PublicationItem[];
     languages: LanguageItem[];
+    custom: CustomItem[];
 }
 
 export function libraryCounts(lists: LibraryLists): Record<ResumeListKey, number> {
@@ -71,6 +74,7 @@ export function libraryCounts(lists: LibraryLists): Record<ResumeListKey, number
         awards: lists.awards.length,
         certifications: lists.certifications.length,
         languages: lists.languages.length,
+        custom: lists.custom.length,
     };
 }
 
@@ -241,6 +245,20 @@ export function LibraryView({ tab, variantUsage, resumeData, onImport, onEdit, q
                         isSelected={x.isSelected} active={{ isActive: x.isActive, type: "volunteering" }} tags={x.tags} usedBy={variantUsage[x.id]}
                         onUpdate={updateVolunteering} onDelete={deleteVolunteering}>
                         <SubItemToggles id={x.id} entries={bulletEntries(bulletLines(x.description))} hidden={x.hidden} onError={onError} onUpdate={updateVolunteering} variant="bullets" />
+                    </SortableLibraryRow>
+                )),
+            };
+        },
+        custom: () => {
+            const sub = (x: CustomItem) => [x.subtitle, x.section].filter(Boolean).join(" · ");
+            const xs = ordered("custom", lists.custom, x => ({ title: x.title, subtitle: sub(x) }));
+            return {
+                ids: xs.map(x => x.id), labels: Object.fromEntries(xs.map(x => [x.id, x.title])),
+                rows: xs.map(x => (
+                    <SortableLibraryRow key={x.id} {...rowProps("custom", x)} id={x.id} title={x.title} subtitle={sub(x)} meta={range(x.startDate, x.endDate, x.isActive)}
+                        isSelected={x.isSelected} active={{ isActive: x.isActive, type: "custom" }} tags={x.tags} usedBy={variantUsage[x.id]}
+                        onUpdate={updateCustomEntry} onDelete={deleteCustomEntry}>
+                        <SubItemToggles id={x.id} entries={bulletEntries(bulletLines(x.description))} hidden={x.hidden} onError={onError} onUpdate={updateCustomEntry} variant="bullets" />
                     </SortableLibraryRow>
                 )),
             };

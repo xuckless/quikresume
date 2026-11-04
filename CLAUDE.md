@@ -174,7 +174,7 @@ public/pdfjs/pdf.worker.min.mjs              gitignored, filled by scripts/copy-
 ## Data flow
 
 1. `dashboard/page.tsx` (RSC) fetches profile + `experience`, `education`, `skills`, `projects`,
-   `certifications`, `awards`, `volunteering`, `publications`, `languages` in parallel and builds
+   `certifications`, `awards`, `volunteering`, `publications`, `languages`, `custom` in parallel and builds
    `initialResumeData` with `toResumeData`.
 2. `DashboardClient` reads the view from `?view=editor|preview|import|jobs` (no param = library; the removed `insights` maps to `jobs`;
    `?view=jobs&job=<id>` opens one job's Match page, `jobHref()`) and
@@ -243,6 +243,15 @@ One global working layout in `meta/layout`; variants snapshot it.
   everything optional; end without start is an error; end before start is an error (same month is fine); a start or single
   date after the current month is an error; future end dates are allowed; certification year must be `YYYY`, not future.
   Errors show inline, disable Save & Exit ("Fix N dates" jumps to the first), and the import review flags them.
+
+## Custom sections
+
+`custom` is a 10th list section (`CustomEntry` in `types/schema.ts`, collection `custom`, `custom-actions.ts`): each entry names its
+own printed `section` heading ("Clinical Rotations", "Teaching", "References"…) and has title / subtitle / dates / bullets with
+per-bullet hiding, like volunteering. `toTypstDoc` groups selected entries by heading (case-insensitive, first spelling wins, in
+order of first appearance) and every template prints each group as its own section at the `"custom"` position of the section order
+(the per-section "Printed heading" override is hidden for it). Import routes any unrecognised résumé section there. Bodies and guest
+drafts from clients that predate it (no `custom` key) are filled with `[]` (`withAllSections` in `lib/match/resume-body.ts`).
 
 ## Sub-item selection
 
@@ -669,6 +678,7 @@ ResumeData --toTypstDoc()--> TypstResumeDoc (JSON) --sys.inputs.resume--> main.t
 | `awards[]` | `{ title, issuer, date, description }` |
 | `certifications[]` | `{ name, issuer, year }` |
 | `languages[]` | `{ language, proficiency }` |
+| `custom[]` | `{ heading, entries: [{ title, organization, date, bullets[] }] }`: one group per heading, printed at the `"custom"` slot of `order` |
 | `layout` | `{ order: sectionKey[], page: { margin (mm), size (pt), leading (em) }, sections: { <key>: { above, below, gap, indent } } }` |
 
 Every list entry also carries `space_after` (pt), `break_before`, `keep` (entries are unbreakable unless `keep` is false).
@@ -691,6 +701,7 @@ Subcollections, each item doc has `isSelected`, `tags`, `contentHash`, `tagsHash
 | `awards` | `title, issuer, date, description` |
 | `volunteering` | `role, organization, startDate, endDate, isActive, description: string[], hidden: string[]` |
 | `publications` | `title, venue, date, link, authors` |
+| `custom` | `section, title, subtitle, startDate, endDate, isActive, description: string[], hidden: string[]` (entries of user-named sections; ordered by `createdAt`) |
 | `languages` | `language, proficiency` |
 | `variants` | `name, labels: string[], items: {experience: string[], …}, hidden: {itemId: string[]}, layout: ResumeLayout \| null, templateId` (pointers only) |
 | `jobs` | `title, company, source, jdText, summary, requirements[] ({name, display, kind, importance, yearsMin, satisfiedBy[], evidence[], reason}), match ({status, runningUntil, checkedAt, libraryHash, warning}), proposals[], proposalsAt, lastScore, fitNotes[], status, appliedAt, notes, variantId, url, urlKey, location, employmentType` |

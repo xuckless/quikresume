@@ -5,6 +5,7 @@
 // in; <GuestClaim> in the dashboard shell then hands it to claimGuestDraft and clears it.
 
 import { createPersistedStore } from "@/lib/ui/persisted-store";
+import { withAllSections } from "@/lib/match/resume-body";
 import type { ResumeData } from "@/types/schema";
 import type { Requirement } from "@/lib/match/types";
 
@@ -35,7 +36,8 @@ export const guestDraftStore = createPersistedStore<GuestDraft>({
     initial: EMPTY_GUEST_DRAFT,
     deserialize: s => {
         const v = JSON.parse(s) as GuestDraft;
-        return v && v.v === 1 ? { ...EMPTY_GUEST_DRAFT, ...v } : EMPTY_GUEST_DRAFT;
+        if (!v || v.v !== 1) return EMPTY_GUEST_DRAFT;
+        return { ...EMPTY_GUEST_DRAFT, ...v, resume: v.resume ? withAllSections(v.resume) : null };
     },
 });
 

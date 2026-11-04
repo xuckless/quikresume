@@ -150,6 +150,27 @@ export interface Language {
     tagsHash: string | null;
 }
 
+/**
+ * An entry of a user-named section ("Clinical Rotations", "Teaching", "Exhibitions", "References"...).
+ * Entries sharing a `section` heading print together as one section, at the "custom" slot of the order.
+ */
+export interface CustomEntry {
+    id: string;
+    /** The printed section heading this entry belongs to. */
+    section: string;
+    title: string;
+    /** Organisation, place, role, or anything that goes under the title. */
+    subtitle: string;
+    startDate: string;
+    endDate: string;
+    description: string;
+    /** Keys of switched-off bullets (see src/lib/sub-items.ts). */
+    hidden: string[];
+    isSelected: boolean;
+    tags: Tag[];
+    tagsHash: string | null;
+}
+
 export interface ResumeData {
     personalInfo: PersonalInfo;
     /** Tags extracted from the headline + summary (kept outside PersonalInfo, which is a flat string map). */
@@ -164,6 +185,7 @@ export interface ResumeData {
     volunteering: Volunteering[];
     publications: Publication[];
     languages: Language[];
+    custom: CustomEntry[];
     /** Section order, manual item order and spacing (users/{uid}/meta/layout). */
     layout: ResumeLayout;
 }
@@ -181,6 +203,7 @@ export const RESUME_LIST_KEYS: ResumeListKey[] = [
     "volunteering",
     "publications",
     "languages",
+    "custom",
 ];
 
 export function emptyPersonalInfo(): PersonalInfo {
@@ -212,6 +235,7 @@ export function emptyResumeData(): ResumeData {
         volunteering: [],
         publications: [],
         languages: [],
+        custom: [],
         layout: defaultLayout(),
     };
 }

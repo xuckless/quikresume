@@ -38,6 +38,7 @@ import { updateAward } from "@/app/actions/award-actions";
 import { updateVolunteering } from "@/app/actions/volunteering-actions";
 import { updatePublication } from "@/app/actions/publication-actions";
 import { updateLanguage } from "@/app/actions/language-actions";
+import { updateCustomEntry } from "@/app/actions/custom-actions";
 import { mergeImport, type ImportSelection } from "@/lib/import/merge";
 import { contentHashOf, staleInputs } from "@/lib/tags/content";
 import { applyProposal } from "@/lib/match/proposals";
@@ -81,6 +82,7 @@ const UPDATE_ACTION: Record<ResumeListKey, (id: string, fd: FormData) => Promise
     volunteering: updateVolunteering,
     publications: updatePublication,
     languages: updateLanguage,
+    custom: updateCustomEntry,
 };
 
 interface DashboardClientProps extends LibraryLists {
@@ -112,7 +114,7 @@ export default function DashboardClient(props: DashboardClientProps) {
 
 function DashboardClientInner({
     initialResumeData,
-    experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages,
+    experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages, custom,
     variants,
     variantUsage,
     loadedVariantId,
@@ -208,7 +210,7 @@ function DashboardClientInner({
 
     // Coach reviews come with the library rows; the model items decide staleness.
     const reviews: ReviewMap = Object.fromEntries(
-        [experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages].flat().map(r => [r.id, r.review]),
+        [experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages, custom].flat().map(r => [r.id, r.review]),
     );
     const refresh = () => router.refresh();
     // Library: review whatever changed since its last review (Library edits, accepted suggestions, Job Match
@@ -390,7 +392,7 @@ function DashboardClientInner({
     const blockingContact = view === "editor" ? contactBlocking(editorDraft.personalInfo) : null;
     const editorBlocked = view === "editor" && (invalidDates.length > 0 || blockingContact !== null);
 
-    const lists: LibraryLists = { experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages };
+    const lists: LibraryLists = { experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages, custom };
     const counts = libraryCounts(lists);
     const draftCounts = Object.fromEntries(RESUME_LIST_KEYS.map(k => [k, editorDraft[k].length])) as Record<ResumeListKey, number>;
 

@@ -10,7 +10,7 @@ import type { ResumeLayout, SectionId } from "./types";
 
 type AnyItem = ResumeData[ResumeListKey][number];
 
-const RANGE: ReadonlySet<ResumeListKey> = new Set(["workExperience", "education", "projects", "volunteering"]);
+const RANGE: ReadonlySet<ResumeListKey> = new Set(["workExperience", "education", "projects", "volunteering", "custom"]);
 const UNDATED: ReadonlySet<ResumeListKey> = new Set(["skills", "languages"]);
 
 export const isDatedSection = (key: ResumeListKey) => !UNDATED.has(key);

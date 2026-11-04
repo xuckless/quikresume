@@ -54,13 +54,14 @@ export const metadata: Metadata = {
         },
     },
     category: "productivity",
+    // ?v= busts browser favicon caches (they keep favicons far longer than other assets); bump it when the icons change.
     icons: {
         icon: [
-            { url: "/favicon.ico", sizes: "any" },
+            { url: "/favicon.ico?v=2", sizes: "any" },
             // Switches to the dark monogram with the OS theme (media query inside the SVG).
-            { url: "/icons/favicon.svg", type: "image/svg+xml" },
+            { url: "/icons/favicon.svg?v=2", type: "image/svg+xml" },
         ],
-        apple: "/icons/apple-touch-icon.png",
+        apple: "/icons/apple-touch-icon.png?v=2",
     },
     formatDetection: {
         telephone: false,

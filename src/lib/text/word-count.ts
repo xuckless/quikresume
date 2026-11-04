@@ -30,6 +30,7 @@ export function itemWordCount(key: ResumeListKey, item: AnyItem): number {
         certifications: ["name", "issuer"],
         awards: ["title", "issuer", "description"],
         volunteering: ["role", "organization", "description"],
+        custom: ["section", "title", "subtitle", "description"],
         publications: ["title", "venue", "authors"],
         languages: ["language", "proficiency"],
     };

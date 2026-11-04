@@ -86,6 +86,7 @@ export function mergeItem<K extends ResumeListKey>(
         case "awards": fillFields(["issuer", "date", "description"]); break;
         case "publications": fillFields(["venue", "date", "link", "authors"]); break;
         case "languages": fillFields(["proficiency"]); break;
+        case "custom": next.description = unionBullets(e.description, i.description); fillFields(["subtitle", "startDate", "endDate"]); break;
     }
     const changed = Object.keys(next).some(k => next[k] !== e[k]);
     return { item: (changed ? next : e) as unknown as ResumeData[K][number], changed };

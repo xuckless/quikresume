@@ -56,6 +56,11 @@ export const REVIEW_FIELDS: Record<ReviewTarget, ReviewFieldSpec[]> = {
         { field: "organization", form: "organization", label: "Organization" },
         { field: "description", form: "description", label: "Bullets", bullets: true },
     ],
+    custom: [
+        { field: "title", form: "title", label: "Title" },
+        { field: "subtitle", form: "subtitle", label: "Detail" },
+        { field: "description", form: "description", label: "Bullets", bullets: true },
+    ],
     publications: [
         { field: "title", form: "title", label: "Title" },
         { field: "venue", form: "venue", label: "Venue" },
