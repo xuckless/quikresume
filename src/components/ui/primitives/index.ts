@@ -14,3 +14,4 @@ export * from "./empty-state";
 export * from "./score-ring";
 export * from "./notice-banner";
 export * from "./chip-input";
+export * from "./swap";

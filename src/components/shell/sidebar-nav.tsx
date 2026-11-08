@@ -1,15 +1,17 @@
 "use client";
 
-import React from "react";
+import React, { useId } from "react";
+import { m } from "motion/react";
+import { useMotionPresets } from "@/lib/ui/motion";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { Wordmark } from "@/components/brand";
-import { setTheme, useTheme, type ThemeChoice } from "@/lib/ui/theme-store";
-import { parseView, viewHref, type View } from "@/lib/ui/use-dashboard-view";
+import { setThemeFrom, useTheme, type ThemeChoice } from "@/lib/ui/theme-store";
+import { navigateDashboard, parseView, viewHref, type View } from "@/lib/ui/use-dashboard-view";
 import { useMediaQuery, XL } from "@/lib/ui/use-media-query";
-import { togglePreviewPane, usePreviewPane } from "@/lib/ui/preview-pane-store";
+import { setPreviewPane, togglePreviewPane, usePreviewPane } from "@/lib/ui/preview-pane-store";
 import { interceptNavigation } from "@/lib/ui/leave-guard";
 import { FOCUS_RING } from "@/components/ui/primitives/button";
 import { Monitor, Moon, Sun, Compass, Eye, Layers, Library, ListChecks, LogOut, PenLine, Puzzle, Target, Upload, User, type LucideIcon } from "@/components/ui/primitives/icons";
@@ -48,9 +50,10 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     },
 ];
 
-const ITEM = "flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors";
+const ITEM = "press relative flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm";
 const IDLE = "text-fg-muted hover:bg-surface-hover hover:text-fg";
-const ACTIVE = "bg-accent-subtle font-medium text-fg [&>svg]:text-accent-text";
+// The active background is one shared pill (layoutId) that slides to the new item.
+const ACTIVE = "font-medium text-fg [&>svg]:text-accent-text";
 
 const THEME_OPTIONS: { value: ThemeChoice; label: string; icon: LucideIcon }[] = [
     { value: "light", label: "Light", icon: Sun },
@@ -60,6 +63,8 @@ const THEME_OPTIONS: { value: ThemeChoice; label: string; icon: LucideIcon }[] =
 
 function ThemeToggle() {
     const choice = useTheme();
+    const thumbId = useId();
+    const t = useMotionPresets();
     return (
         <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 gap-0.5 rounded-md bg-surface-muted p-0.5">
             {THEME_OPTIONS.map(o => {
@@ -71,10 +76,11 @@ function ThemeToggle() {
                         type="button"
                         role="radio"
                         aria-checked={on}
-                        onClick={() => setTheme(o.value)}
-                        className={cn("flex h-7 items-center justify-center gap-1.5 rounded-[5px] text-xs transition-colors", on ? "bg-surface font-medium text-fg shadow-sm" : "text-fg-muted hover:text-fg", FOCUS_RING)}
+                        onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setThemeFrom(o.value, { x: r.left + r.width / 2, y: r.top + r.height / 2 }); }}
+                        className={cn("press relative flex h-7 items-center justify-center gap-1.5 rounded-[5px] text-xs", on ? "font-medium text-fg" : "text-fg-muted hover:text-fg", FOCUS_RING)}
                     >
-                        <Icon className="size-3.5" aria-hidden />{o.label}
+                        {on && <m.span layoutId={thumbId} aria-hidden className="absolute inset-0 rounded-[5px] bg-surface shadow-sm" transition={t.move} />}
+                        <Icon className="relative size-3.5" aria-hidden /><span className="relative">{o.label}</span>
                     </button>
                 );
             })}
@@ -89,21 +95,44 @@ export function SidebarNav({ user, signOutAction, onNavigate }: { user: ShellUse
     const wide = useMediaQuery(XL);
     const paneOpen = usePreviewPane();
 
+    const router = useRouter();
+    // Separate ids for the sidebar and the drawer copy of this nav, so their pills never fly between them.
+    const pillId = useId();
+    const t = useMotionPresets();
+
     const follow = (href: string) => (e: React.MouseEvent) => {
+        // Let modified clicks (new tab / window) through to the browser.
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
         if (interceptNavigation(href)) e.preventDefault();
+        // Views of /dashboard switch on the client (no server round-trip); see navigateDashboard.
+        else if (pathname === "/dashboard" && new URL(href, window.location.origin).pathname === "/dashboard") {
+            e.preventDefault();
+            navigateDashboard(router, href);
+        }
         onNavigate?.();
     };
 
     const render = (item: NavItem) => {
         const Icon = item.icon;
-        // On wide screens "Preview" toggles the side pane instead of navigating.
+        // On wide screens "Preview" toggles the side pane instead of navigating. Only the dashboard page draws
+        // the pane (it holds the résumé data), so on any other page it opens the pane and goes there.
+        if (item.view === "preview" && wide && pathname !== "/dashboard") {
+            return (
+                <li key={item.label}>
+                    <Link href="/dashboard" onClick={e => { setPreviewPane(true); follow("/dashboard")(e); }} className={cn(ITEM, IDLE, FOCUS_RING)}>
+                        <Icon className="size-4 shrink-0" aria-hidden />
+                        <span className="flex-1">Preview</span>
+                    </Link>
+                </li>
+            );
+        }
         if (item.view === "preview" && wide) {
             return (
                 <li key={item.label}>
-                    <button type="button" onClick={() => { togglePreviewPane(); onNavigate?.(); }} aria-pressed={paneOpen} className={cn(ITEM, "w-full", paneOpen ? ACTIVE : IDLE, FOCUS_RING)}>
+                    <button type="button" onClick={() => { togglePreviewPane(); onNavigate?.(); }} aria-pressed={paneOpen} className={cn(ITEM, "w-full", IDLE, FOCUS_RING)}>
                         <Icon className="size-4 shrink-0" aria-hidden />
                         <span className="flex-1 text-left">Preview</span>
-                        <span className="text-xs text-fg-subtle">{paneOpen ? "On" : "Off"}</span>
+                        <span className={cn("text-xs", paneOpen ? "text-accent-text" : "text-fg-subtle")}>{paneOpen ? "On" : "Off"}</span>
                     </button>
                 </li>
             );
@@ -112,8 +141,9 @@ export function SidebarNav({ user, signOutAction, onNavigate }: { user: ShellUse
         return (
             <li key={item.label}>
                 <Link href={item.href} onClick={follow(item.href)} aria-current={active ? "page" : undefined} className={cn(ITEM, active ? ACTIVE : IDLE, FOCUS_RING)}>
-                    <Icon className="size-4 shrink-0" aria-hidden />
-                    {item.label}
+                    {active && <m.span layoutId={pillId} aria-hidden className="absolute inset-0 rounded-md bg-accent-subtle" transition={t.move} />}
+                    <Icon className="relative size-4 shrink-0" aria-hidden />
+                    <span className="relative">{item.label}</span>
                 </Link>
             </li>
         );

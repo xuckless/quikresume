@@ -4,7 +4,8 @@
 // effort needs a much larger output limit or the JSON reply gets cut off.
 //
 // Background work (Job Match reconcile, coach review) can afford more thinking than interactive
-// calls. `GLM_EFFORT_RECONCILE` / `GLM_EFFORT_REVIEW` / `GLM_EFFORT_TAILOR` override the defaults
+// calls, but the user watches the Job Match score while reconcile runs: at "max" one pass took
+// ~65 s for ~3.5K output tokens, so it runs at "high". `GLM_EFFORT_RECONCILE` / `GLM_EFFORT_REVIEW` / `GLM_EFFORT_TAILOR` override the defaults
 // (handy for A/B testing on a deployment without a code change).
 
 import "server-only";
@@ -13,7 +14,7 @@ export type Effort = "low" | "high" | "max";
 export type EffortTask = "reconcile" | "review" | "tailor";
 
 export const AI_EFFORT: Record<EffortTask, Effort> = {
-    reconcile: "max",
+    reconcile: "high",
     review: "high",
     tailor: "high",
 };

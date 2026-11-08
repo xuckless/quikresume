@@ -21,7 +21,7 @@ export function Drawer({ open, onClose, children, label }: { open: boolean; onCl
             onCancel={e => { e.preventDefault(); onClose(); }}
             onClick={e => { if (e.target === e.currentTarget) onClose(); }}
             className={cn(
-                "fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-72 max-w-[85vw] border-r border-border bg-surface p-0 text-fg",
+                "motion-drawer fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-72 max-w-[85vw] border-r border-border bg-surface p-0 text-fg",
                 "backdrop:bg-black/35",
             )}
         >

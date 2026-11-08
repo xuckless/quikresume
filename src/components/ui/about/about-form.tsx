@@ -71,7 +71,9 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
     const [followUpsHash, setFollowUpsHash] = useState<string | null>(saved.followUpsHash);
     const [step, setStep] = useState<Step>("core");
     const [prefilling, setPrefilling] = useState(fresh && !emptyLibrary);
-    const [busy, setBusy] = useState<"draft" | "finish" | "skip" | "questions" | null>(null);
+    const [busy, setBusy] = useState<"draft" | "finish" | "skip" | null>(null);
+    // Writing follow-up questions is a background AI call: it never blocks Skip / Save draft / Finish.
+    const [writingQuestions, setWritingQuestions] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [notice, setNotice] = useState<{ tone: "success" | "warning"; text: string } | null>(
         saved.briefStale ? { tone: "warning", text: "Your last AI summary could not be written. Finish again to retry." } : null,
@@ -123,7 +125,7 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
     const hint = (key: SuggestKey, fallback?: string) => (suggested.has(key) ? (key === "yearsExperience" || key === "educationStatus" || key === "graduationDate" ? "Calculated from your library dates. Change it if it's off." : "Suggested from your library. Edit if it's off.") : fallback);
 
     const generateQuestions = async () => {
-        setBusy("questions");
+        setWritingQuestions(true);
         setError(null);
         try {
             const res = await fetch("/api/about/follow-ups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }) });
@@ -136,13 +138,13 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
         } catch (err) {
             setError(err instanceof Error ? err.message : "Could not generate questions.");
         } finally {
-            setBusy(null);
+            setWritingQuestions(false);
         }
     };
 
     const goTo = (next: Step) => {
         setStep(next);
-        if (next === "follow-ups" && busy === null && coreHash(answers) !== followUpsHash) void generateQuestions();
+        if (next === "follow-ups" && !writingQuestions && busy === null && coreHash(answers) !== followUpsHash) void generateQuestions();
     };
 
     const save = async (status: "draft" | "complete") => {
@@ -333,11 +335,11 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
                     <CardHeader
                         title="A few questions from your coach"
                         hint="Written for your answers. Skip any you like."
-                        action={<Button size="sm" variant="ghost" icon={Sparkles} onClick={() => void generateQuestions()} loading={busy === "questions"} disabled={busy !== null && busy !== "questions"}>New questions</Button>}
+                        action={<Button size="sm" variant="ghost" icon={Sparkles} onClick={() => void generateQuestions()} loading={writingQuestions} disabled={busy !== null}>New questions</Button>}
                     />
                     <CardBody className="space-y-4">
-                        {busy === "questions" && followUps.length === 0 && <p className="text-13 text-fg-subtle">Writing questions…</p>}
-                        {busy !== "questions" && followUps.length === 0 && <p className="text-13 text-fg-subtle">No questions yet. Press New questions, or finish without them.</p>}
+                        {writingQuestions && followUps.length === 0 && <p className="text-13 text-fg-subtle">Writing questions…</p>}
+                        {!writingQuestions && followUps.length === 0 && <p className="text-13 text-fg-subtle">No questions yet. Press New questions, or finish without them.</p>}
                         {followUps.map((f, i) => (
                             <Field key={f.id} label={f.question} htmlFor={`about-fu-${f.id}`} hint={f.why || undefined}>
                                 <Textarea

@@ -14,11 +14,12 @@ export function DeleteAccountCard() {
     const [error, setError] = useState<string | null>(null);
 
     const confirm = async () => {
-        if (text !== "DELETE") { setError("Type DELETE to confirm."); return; }
+        const typed = text.trim();
+        if (typed !== "DELETE") { setError("Type DELETE to confirm."); return; }
         setBusy(true);
         setError(null);
         try {
-            const res = await deleteAccount(text);
+            const res = await deleteAccount(typed);
             setError(res.error);
         } catch (err) {
             // A successful delete signs out and redirects (thrown by Next); anything else is a real failure.
@@ -43,7 +44,7 @@ export function DeleteAccountCard() {
                         <Label htmlFor="delete-confirm">Type DELETE to confirm</Label>
                         <Input id="delete-confirm" value={text} autoComplete="off" onChange={e => setText(e.target.value)} />
                     </div>
-                    {error && <p className="text-danger">{error}</p>}
+                    {error && <p role="alert" className="text-danger">{error}</p>}
                 </div>
             </ConfirmDialog>
         </Card>

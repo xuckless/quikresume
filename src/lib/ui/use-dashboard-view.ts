@@ -28,16 +28,30 @@ export function jobHref(jobId: string | null): string {
     return jobId ? `/dashboard?view=jobs&job=${encodeURIComponent(jobId)}` : viewHref("jobs");
 }
 
-/** The dashboard view, read from `?view=` and written with router navigation (so Back works). */
+type AppRouter = ReturnType<typeof useRouter>;
+
+/**
+ * Navigates to `href`. Moves between views of /dashboard (`?view=`, `?job=`) are client-only: the page already
+ * holds all its data, so they update the URL through the History API (Next keeps useSearchParams in sync and
+ * Back / Forward work) instead of re-rendering the server page, which re-reads the whole library. Anything else
+ * goes through the router.
+ */
+export function navigateDashboard(router: AppRouter, href: string, opts?: { replace?: boolean }): void {
+    if (typeof window !== "undefined" && window.location.pathname === "/dashboard" && new URL(href, window.location.origin).pathname === "/dashboard") {
+        if (opts?.replace) window.history.replaceState(null, "", href);
+        else window.history.pushState(null, "", href);
+        return;
+    }
+    if (opts?.replace) router.replace(href, { scroll: false });
+    else router.push(href, { scroll: false });
+}
+
+/** The dashboard view, read from `?view=` and written as a history entry (so Back works). */
 export function useDashboardView(): [View, (view: View, opts?: { replace?: boolean }) => void] {
     const params = useSearchParams();
     const pathname = usePathname();
     const router = useRouter();
     const view = pathname === "/dashboard" ? parseView(params.get("view")) : "library";
-    const setView = (next: View, opts?: { replace?: boolean }) => {
-        const href = viewHref(next);
-        if (opts?.replace) router.replace(href, { scroll: false });
-        else router.push(href, { scroll: false });
-    };
+    const setView = (next: View, opts?: { replace?: boolean }) => navigateDashboard(router, viewHref(next), opts);
     return [view, setView];
 }

@@ -9,6 +9,7 @@ import { RESUME_LIST_KEYS } from "@/types/schema";
 import { contentHashOf, hasContent, PROFILE_ID, profileHashOf, profileText } from "@/lib/tags/content";
 import { itemLabel, itemShortTitle, itemTitle } from "@/lib/sections";
 import { toBullets } from "@/lib/typst/doc";
+import type { ReviewHistoryEntry } from "./history";
 import { LOW_SCORE, type ItemReview, type ReviewFlag, type ReviewTarget } from "./types";
 
 type AnyItem = ResumeData[ResumeListKey][number];
@@ -86,6 +87,8 @@ export interface ReviewInput {
     /** Dates or year, for context only. */
     meta: string;
     fields: Record<string, string | string[]>;
+    /** Earlier accepted / declined rewrites (server-side, filled in by the run route). */
+    history?: ReviewHistoryEntry[];
 }
 
 const value = (source: object, field: string) => {
@@ -136,6 +139,21 @@ export function reviewStaleInputs(data: ResumeData, reviews: ReviewMap, profileR
         }
     }
     return out;
+}
+
+/**
+ * Signature of what is stale: ids AND the text hash, so a second change to the same item is a new set of
+ * changes (an automatic run keyed on ids alone would never review it again this session).
+ */
+export function staleReviewSignature(data: ResumeData, reviews: ReviewMap, profileReview: ItemReview | null): string {
+    const out: string[] = [];
+    if (isProfileReviewStale(data.personalInfo, profileReview)) out.push(`${PROFILE_ID}:${profileHashOf(data.personalInfo)}`);
+    for (const key of RESUME_LIST_KEYS) {
+        for (const item of data[key] as AnyItem[]) {
+            if (isReviewStale(key, item, reviews[item.id])) out.push(`${item.id}:${contentHashOf(key, item)}`);
+        }
+    }
+    return out.sort().join(",");
 }
 
 export interface LowScoreItem {

@@ -40,7 +40,7 @@ export function LibrarySection({ icon, title, ids, handle, headerActions, collap
                     }
                 />
             </div>
-            {!collapsed && <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">{children}</ul>}
+            {!collapsed && <ul className="stagger-children divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">{children}</ul>}
         </section>
     );
 }

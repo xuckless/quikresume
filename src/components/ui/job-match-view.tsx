@@ -13,6 +13,7 @@ import type { ResumeVariant } from "@/types/db";
 import { JOB_STATUS_LABEL, JOB_STATUSES, type JobRecord, type JobStatus, type MuteRule, type Preferences, type Proposal, type Requirement, type ResumeSource } from "@/lib/match/types";
 import type { AliasMap } from "@/lib/tags/normalize";
 import { requirementTier, scoreJob, scoreOptionsFor, uncoveredRequirements } from "@/lib/match/score";
+import { contradictsMeasuredLevel } from "@/lib/match/seniority";
 import { muteRuleFor } from "@/lib/match/proposals";
 import { applyTags, allInputs, tagContext } from "@/lib/tags/content";
 import { kindMeta } from "@/lib/tags/types";
@@ -45,7 +46,8 @@ import { readJson } from "@/lib/ui/fetch-json";
 /** The Suggestions card (AI proposals) is hidden from the UI; its code paths stay for later. */
 const SHOW_SUGGESTIONS = false;
 /** How often the job page polls the job status while a background reconcile runs. */
-const MATCH_POLL_MS = 5000;
+const MATCH_POLL_MS = 4000;
+const MATCH_POLL_MAX_FAILURES = 6;
 
 export interface ExternalResume {
     fileName: string;
@@ -74,6 +76,8 @@ export function JobMatchView(props: JobMatchViewProps) {
     const [pendingDelete, setPendingDelete] = useState<JobRecord | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [analysing, setAnalysing] = useState(false);
+    const [analyseBusy, setAnalyseBusy] = useState(false);
+    const [deleteError, setDeleteError] = useState<string | null>(null);
     const selected = jobs.find(j => j.id === selectedJobId) ?? null;
 
     return (
@@ -89,37 +93,39 @@ export function JobMatchView(props: JobMatchViewProps) {
                 <TrackerView jobs={jobs} onOpen={onSelectJob} onAnalyse={() => setAnalysing(true)} onDelete={setPendingDelete} />
             )}
 
-            <Dialog open={analysing} onClose={() => setAnalysing(false)} title="Analyse a job" description="Paste a job description or upload it. We extract its requirements and score your résumé against them.">
+            <Dialog open={analysing} onClose={() => { if (!analyseBusy) setAnalysing(false); }} title="Analyse a job" description="Paste a job description or upload it. We extract its requirements and score your résumé against them.">
                 <AnalyzeForm
                     resumeData={props.resumeData}
                     onAnalyzed={(job) => { setAnalysing(false); onSelectJob(job.id); router.refresh(); }}
-                    onError={setError}
+                    onBusyChange={setAnalyseBusy}
                 />
             </Dialog>
 
             <ConfirmDialog
                 open={pendingDelete !== null}
-                title={`Delete "${pendingDelete?.title}"?`}
+                title={`Delete "${pendingDelete?.title ?? "job"}"?`}
                 confirmLabel="Delete"
                 danger
                 busy={deleting}
-                onCancel={() => setPendingDelete(null)}
+                onCancel={() => { setPendingDelete(null); setDeleteError(null); }}
                 onConfirm={async () => {
                     if (!pendingDelete) return;
                     setDeleting(true);
+                    setDeleteError(null);
                     try {
                         await deleteJob(pendingDelete.id);
                         if (selectedJobId === pendingDelete.id) onSelectJob(null);
                         setPendingDelete(null);
                         router.refresh();
                     } catch (err) {
-                        setError(err instanceof Error ? err.message : "Could not delete the job.");
+                        setDeleteError(err instanceof Error ? err.message : "Could not delete the job.");
                     } finally {
                         setDeleting(false);
                     }
                 }}
             >
                 <p>The analysis, its suggestions and the tracker entry are removed. Your library is not affected.</p>
+                {deleteError && <p role="alert" className="text-danger">{deleteError}</p>}
             </ConfirmDialog>
         </div>
     );
@@ -129,13 +135,15 @@ export function JobMatchView(props: JobMatchViewProps) {
 
 const ACCEPT = ".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp";
 
-function AnalyzeForm({ resumeData, onAnalyzed, onError }: { resumeData: ResumeData; onAnalyzed: (job: JobRecord) => void; onError: (e: string | null) => void }) {
+function AnalyzeForm({ resumeData, onAnalyzed, onBusyChange }: { resumeData: ResumeData; onAnalyzed: (job: JobRecord) => void; onBusyChange: (busy: boolean) => void }) {
     const [text, setText] = useState("");
     const [file, setFile] = useState<File | null>(null);
-    const [busy, setBusy] = useState<string | null>(null);
+    const [busy, setBusyLabel] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const setBusy = (label: string | null) => { setBusyLabel(label); onBusyChange(label !== null); };
 
     const submit = async () => {
-        onError(null);
+        setError(null);
         try {
             let body: FormData;
             if (text.trim()) {
@@ -157,7 +165,7 @@ function AnalyzeForm({ resumeData, onAnalyzed, onError }: { resumeData: ResumeDa
             setFile(null);
             onAnalyzed(json.job);
         } catch (err) {
-            onError(err instanceof Error ? err.message : "Analysis failed.");
+            setError(err instanceof Error ? err.message : "Analysis failed.");
         } finally {
             setBusy(null);
         }
@@ -177,13 +185,14 @@ function AnalyzeForm({ resumeData, onAnalyzed, onError }: { resumeData: ResumeDa
                         disabled={busy !== null}
                         onChange={e => {
                             const f = e.target.files?.[0] ?? null;
-                            if (f && f.size > MAX_FILE_BYTES) { onError("That file is over 10 MB."); return; }
+                            if (f && f.size > MAX_FILE_BYTES) { setError("That file is over 10 MB."); return; }
                             setFile(f);
                             e.target.value = "";
                         }}
                     />
                     {file ? file.name : "PDF · DOCX · TXT · image"}
                 </label>
+                {error && <p role="alert" className="text-13 text-danger">{error}</p>}
                 <Button variant="primary" className="w-full" onClick={submit} disabled={!text.trim() && !file} loading={busy !== null}>
                     {busy ?? "Analyse"}
                 </Button>
@@ -324,8 +333,10 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
     };
 
     // Remember the working selection's score for the job list (debounced; writes nothing when unchanged).
+    // Not while the AI check runs: the tracker would show the preliminary keyword score as final.
+    const matchRunning = job.match.status === "running";
     const roundedScore = Math.round(match.score);
-    const scoreToSave = source.kind === "selection" && roundedScore !== job.lastScore ? roundedScore : null;
+    const scoreToSave = source.kind === "selection" && !matchRunning && roundedScore !== job.lastScore ? roundedScore : null;
     useEffect(() => {
         if (scoreToSave === null) return;
         const timer = setTimeout(() => { void saveJobScore(job.id, scoreToSave).catch(() => {}); }, 1500);
@@ -334,24 +345,34 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
     const [answering, setAnswering] = useState(false);
     const [notice, setNotice] = useState<string | null>(null);
 
-    // Background reconcile (max effort, up to ~5 min): poll the job's status (one document read) and refresh
-    // the page once it stops running. The server turns an expired run into "failed", so the poll always ends.
-    const matchRunning = job.match.status === "running";
+    // Background reconcile (usually well under a minute, at most ~5): poll the job's status (one document
+    // read) and refresh once it stops running. The server reads an expired run as "failed", so the poll ends
+    // there; it also ends when the job is gone (404) or after MATCH_POLL_MAX_FAILURES failed polls in a row.
+    const runningUntil = job.match.runningUntil;
     useEffect(() => {
         if (!matchRunning) return;
         let stopped = false;
+        let failures = 0;
+        const stop = () => { stopped = true; clearInterval(timer); router.refresh(); };
         const timer = setInterval(async () => {
-            const reply = await fetch(`/api/jobs/reconcile?jobId=${encodeURIComponent(job.id)}`).then(r => readJson<{ status: string }>(r)).catch(() => null);
-            // A failed poll (network, cold start) just waits for the next tick.
-            if (stopped || !reply?.ok) return;
-            if (reply.status !== "running") {
-                stopped = true;
-                clearInterval(timer);
-                router.refresh();
+            const res = await fetch(`/api/jobs/reconcile?jobId=${encodeURIComponent(job.id)}`).catch(() => null);
+            if (stopped) return;
+            if (res?.status === 404) return stop();
+            const reply = res ? await readJson<{ status: string }>(res) : null;
+            if (stopped) return;
+            if (!reply?.ok) {
+                // A failed poll (network, cold start) waits for the next tick, but not forever.
+                const expired = runningUntil !== null && Date.parse(runningUntil) < Date.now();
+                if (++failures >= MATCH_POLL_MAX_FAILURES || expired) stop();
+                return;
             }
+            failures = 0;
+            if (reply.status !== "running") stop();
         }, MATCH_POLL_MS);
         return () => { stopped = true; clearInterval(timer); };
-    }, [matchRunning, job.id, router]);
+    }, [matchRunning, job.id, runningUntil, router]);
+    // Notes about seniority that the measured level shown above already contradicts (older jobs, self-reported years).
+    const fitNotes = job.fitNotes.filter(n => !contradictsMeasuredLevel(n, job.seniority, match.seniority?.candidate.level ?? null));
 
     return (
         <div className="space-y-4">
@@ -360,7 +381,9 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                 <NoticeBanner tone="warning">
                     <span className="inline-flex items-center gap-2">
                         <Loader2 className="size-3.5 animate-spin" aria-hidden />
-                        Checking matches with AI against your whole library. Scores may still go up; this can take a few minutes.
+                        {job.match.checkedAt
+                            ? "Re-checking matches with AI against your whole library. The score below is from the last check and may change; this takes up to a minute."
+                            : "Checking matches with AI against your whole library. The score below is preliminary (exact keywords only) and usually goes up; this takes up to a minute."}
                     </span>
                 </NoticeBanner>
             )}
@@ -443,7 +466,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                     ) : (
                         <div className="space-y-5">
                             <div className="flex flex-col gap-5 @2xl:flex-row @2xl:items-center">
-                                <ScoreHeadline match={match} />
+                                <ScoreHeadline match={match} provisional={matchRunning ? (job.match.checkedAt ? "recheck" : "first") : false} />
                                 <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-13">
                                     <dt className="text-fg-subtle">Length</dt>
                                     <dd className={cn("tabular-nums", pages !== null && pages > 1 && "text-warning")}>{pages === null ? (pageError ? "Couldn't measure length" : "…") : `${pages} ${pages === 1 ? "page" : "pages"}${pages > 1 ? " · over one page" : ""}`}</dd>
@@ -461,7 +484,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                                 </section>
                                 <section aria-label="What would raise the score" className="space-y-2">
                                     <h3 className="text-13 font-medium text-fg">What would raise it</h3>
-                                    <WhatIfList rows={match.rows} />
+                                    <WhatIfList rows={match.rows} provisional={matchRunning} />
                                 </section>
                             </div>
                         </div>
@@ -475,7 +498,8 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                     declinedNeeded={declinedNeeded}
                     onAnswerDeclined={() => setAnswering(true)}
                     showScoreSource={source.kind !== "selection"}
-                    fitNotes={job.fitNotes}
+                    fitNotes={fitNotes}
+                    provisional={matchRunning}
                 />
 
                 {/* Evidence per requirement, collapsible */}
@@ -485,7 +509,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                         hint="Direct = a skill on the item or confirmed by the AI check · Related = an equivalent skill · Semantic = a line that means it · Keyword only = printed but not shown in your work."
                         action={<Button size="sm" variant="ghost" onClick={() => setShowAts(v => !v)} aria-expanded={showAts}>{showAts ? "Hide" : "Show"}<ChevronDown className={cn("size-3.5 transition-transform", showAts && "rotate-180")} /></Button>}
                     />
-                    {showAts && <EvidenceTable rows={match.rows} />}
+                    {showAts && <EvidenceTable rows={match.rows} provisional={matchRunning} />}
                 </div>
             </Card>
 
@@ -627,13 +651,15 @@ function RequirementGroups({ requirements }: { requirements: Requirement[] }) {
 
 // ---------- guidelines
 
-function GuidelinesSection({ missingMust, keywordGaps, declinedNeeded, onAnswerDeclined, showScoreSource, fitNotes }: {
+function GuidelinesSection({ missingMust, keywordGaps, declinedNeeded, onAnswerDeclined, showScoreSource, fitNotes, provisional }: {
     missingMust: Requirement[];
     keywordGaps: Requirement[];
     declinedNeeded: Requirement[];
     onAnswerDeclined: () => void;
     showScoreSource: boolean;
     fitNotes: string[];
+    /** The AI check is running: gaps aren't final, so they read as "not found yet". */
+    provisional: boolean;
 }) {
     const declined = new Set(declinedNeeded.map(r => r.name));
     const gaps = keywordGaps.filter(r => !declined.has(r.name));
@@ -642,14 +668,17 @@ function GuidelinesSection({ missingMust, keywordGaps, declinedNeeded, onAnswerD
         <div className="border-t border-border">
             <CardHeader title="Guidelines" hint={showScoreSource ? "For the résumé being scored above." : "For your working selection."} />
             <CardBody className="space-y-3 text-13">
-                {empty && <p className="text-fg-muted">Nothing missing. Every requirement is covered by the résumé above.</p>}
+                {empty && !provisional && <p className="text-fg-muted">Nothing missing. Every requirement is covered by the résumé above.</p>}
+                {provisional && (missingMust.length > 0 || gaps.length > 0) && (
+                    <p className="text-fg-muted">The AI check is still looking for the requirements below in your work; this list usually shrinks.</p>
+                )}
                 {fitNotes.length > 0 && (
                     <GuidelineRow tone="warning" label="Fit with your goals">
                         <ul className="space-y-1">{fitNotes.map(n => <li key={n}>{n}</li>)}</ul>
                     </GuidelineRow>
                 )}
                 {missingMust.length > 0 && (
-                    <GuidelineRow tone="danger" label="Missing must-haves">
+                    <GuidelineRow tone={provisional ? "warning" : "danger"} label={provisional ? "Must-haves not found yet" : "Missing must-haves"}>
                         <span className="font-medium">{missingMust.map(r => r.display).join(", ")}</span>
                     </GuidelineRow>
                 )}

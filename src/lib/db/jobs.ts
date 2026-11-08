@@ -1,6 +1,7 @@
 // src/lib/db/jobs.ts
 // Server-only Firestore helpers for users/{uid}/jobs and Job Match preferences.
 
+import { cleanCompanyDomain } from "@/lib/jobs/company-domain";
 import { isSeniority } from "@/lib/match/seniority";
 import "server-only";
 import { Timestamp, type DocumentData } from "firebase-admin/firestore";
@@ -144,6 +145,7 @@ function mapJob(id: string, d: DocumentData): JobRecord {
         match: readMatch(d.match),
         titleSim: readTitleSim(d.titleSim),
         seniority: isSeniority(d.seniority) ? d.seniority : null,
+        companyDomain: cleanCompanyDomain(d.companyDomain),
         status: isJobStatus(d.status) ? d.status : "saved",
         appliedAt: typeof d.appliedAt === "string" ? d.appliedAt : null,
         notes: strOf(d.notes),
@@ -159,7 +161,7 @@ function mapJob(id: string, d: DocumentData): JobRecord {
 
 /** Fields the job list needs. `jdText` (up to 30k chars per job) stays on the server; nothing in the UI shows it. */
 const LIST_FIELDS = [
-    "title", "company", "source", "summary", "requirements", "proposals", "proposalsAt", "lastScore", "fitNotes", "match", "titleSim", "seniority",
+    "title", "company", "source", "summary", "requirements", "proposals", "proposalsAt", "lastScore", "fitNotes", "match", "titleSim", "seniority", "companyDomain",
     "status", "appliedAt", "notes", "variantId", "url", "urlKey", "location", "employmentType", "createdAt", "updatedAt",
 ];
 
@@ -198,11 +200,11 @@ function matchDoc(m: { status: JobMatchState["status"]; runningUntilMs?: number 
 /** `runningForMs` set = a background reconcile starts right after (status "running"). */
 export async function createJob(
     uid: string,
-    input: Omit<JobRecord, "id" | "createdAt" | "updatedAt" | "proposals" | "proposalsAt" | "lastScore" | "match" | "titleSim" | keyof JobTracking | keyof JobPosting>
-        & Partial<JobTracking> & Partial<JobPosting>,
+    input: Omit<JobRecord, "id" | "createdAt" | "updatedAt" | "proposals" | "proposalsAt" | "lastScore" | "match" | "titleSim" | "companyDomain" | keyof JobTracking | keyof JobPosting>
+        & Partial<JobTracking> & Partial<JobPosting> & { companyDomain?: string | null },
     opts: { runningForMs?: number } = {},
 ): Promise<JobRecord> {
-    const job = { ...DEFAULT_TRACKING, ...EMPTY_POSTING, ...input };
+    const job = { ...DEFAULT_TRACKING, ...EMPTY_POSTING, ...input, companyDomain: input.companyDomain ?? null };
     const now = Timestamp.now();
     const runningUntilMs = opts.runningForMs ? now.toMillis() + opts.runningForMs : null;
     const match = matchDoc({ status: runningUntilMs ? "running" : "idle", runningUntilMs });

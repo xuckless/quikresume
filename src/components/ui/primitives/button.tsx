@@ -3,6 +3,7 @@
 import React from "react";
 import { cn } from "@/lib/cn";
 import { Loader2, type LucideIcon } from "./icons";
+import { Swap } from "./swap";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md";
@@ -34,7 +35,7 @@ export function Button({ variant = "secondary", size = "md", loading = false, ic
             type={type}
             disabled={disabled || loading}
             className={cn(
-                "inline-flex shrink-0 items-center justify-center font-medium whitespace-nowrap transition-colors select-none",
+                "press inline-flex shrink-0 items-center justify-center font-medium whitespace-nowrap select-none",
                 "disabled:opacity-50 disabled:pointer-events-none",
                 FOCUS_RING,
                 VARIANT[variant],
@@ -43,7 +44,11 @@ export function Button({ variant = "secondary", size = "md", loading = false, ic
             )}
             {...rest}
         >
-            {loading ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : Icon ? <Icon className="size-3.5" aria-hidden /> : null}
+            {(loading || Icon) && (
+                <Swap swapKey={loading ? "loading" : "icon"}>
+                    {loading ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : Icon ? <Icon className="size-3.5" aria-hidden /> : null}
+                </Swap>
+            )}
             {children}
         </button>
     );
@@ -64,7 +69,7 @@ export function IconButton({ icon: Icon, variant = "ghost", size = "sm", loading
             type={type}
             disabled={disabled || loading}
             className={cn(
-                "inline-flex shrink-0 items-center justify-center rounded-md transition-colors",
+                "press inline-flex shrink-0 items-center justify-center rounded-md",
                 "disabled:opacity-50 disabled:pointer-events-none",
                 FOCUS_RING,
                 VARIANT[variant],
@@ -73,7 +78,9 @@ export function IconButton({ icon: Icon, variant = "ghost", size = "sm", loading
             )}
             {...rest}
         >
-            {loading ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Icon className="size-4" aria-hidden />}
+            <Swap swapKey={loading ? "loading" : (Icon.displayName ?? "icon")}>
+                {loading ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Icon className="size-4" aria-hidden />}
+            </Swap>
         </button>
     );
 }

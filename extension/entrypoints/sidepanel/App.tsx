@@ -55,9 +55,14 @@ function Connect({ appUrl }: { appUrl: string }) {
     const pair = async () => {
         setBusy(true);
         setError(null);
-        const res = await send<{ ok: boolean; error?: string }>({ type: "pair", code });
-        setBusy(false);
-        if (!res?.ok) setError(res?.error ?? "That didn't work.");
+        try {
+            const res = await send<{ ok: boolean; error?: string }>({ type: "pair", code });
+            if (!res?.ok) setError(res?.error ?? "That didn't work.");
+        } catch {
+            setError("Couldn't reach the extension. Reload it and try again.");
+        } finally {
+            setBusy(false);
+        }
     };
     return (
         <div className="card stack">
@@ -139,7 +144,8 @@ export function App() {
     const [fabEnabled, setFabEnabled] = useState(true);
 
     useEffect(() => {
-        const load = () => void send<AccountStatus>({ type: "status" }).then(setAccount);
+        // If the background worker can't answer, fall back to the Connect screen instead of "Loading…" forever.
+        const load = () => void send<AccountStatus>({ type: "status" }).then(setAccount).catch(() => setAccount({ paired: false, appUrl: "" } as AccountStatus));
         load();
         void chrome.storage.local.get("fabEnabled").then(v => setFabEnabled(v.fabEnabled !== false));
         const onMsg = (m: { type?: string }) => { if (m?.type === "account-changed") load(); };
@@ -172,7 +178,9 @@ export function App() {
                     <div className="row subtle"><span className="spinner" /> Loading…</div>
                 ) : !account.paired ? (
                     <Connect appUrl={appUrl} />
-                ) : tabId === null ? null : (
+                ) : tabId === null ? (
+                    <div className="card"><p className="muted" style={{ margin: 0 }}>No active tab. Open a page to get started.</p></div>
+                ) : (
                     <>
                         {state?.error && <div className="notice err">{state.error}</div>}
                         {!posting ? (
@@ -204,7 +212,7 @@ export function App() {
                     </>
                 )}
             </main>
-            <footer>AI can make mistakes please review the work before applying.</footer>
+            <footer>AI can make mistakes. Please review the work before applying.</footer>
         </>
     );
 }

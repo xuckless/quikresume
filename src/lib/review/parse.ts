@@ -1,11 +1,13 @@
 // src/lib/review/parse.ts
 // Lenient parsing of the review reply. Suggestions that can't be applied safely are dropped: unknown
-// fields, a `current` that isn't in the item, empty / unchanged / placeholder rewrites. Pure.
+// fields, a `current` that isn't in the item, empty / unchanged / placeholder rewrites, and rewrites that
+// would keep the coach from converging (see history.ts). Pure.
 
 import { stableHash } from "@/lib/hash";
 import { bulletKey } from "@/lib/sub-items";
 import { cleanModelText } from "@/lib/security/prompt";
 import { fieldSpec, type ReviewInput } from "./content";
+import { historyConflict, rewriteProblem } from "./history";
 import { REVIEW_FLAGS, type ReviewFlag, type ReviewSuggestion } from "./types";
 
 export interface ParsedReview {
@@ -47,6 +49,11 @@ function parseSuggestion(input: ReviewInput, raw: unknown, context: string): Rev
     // The headline / summary may use the candidate brief (target role, graduation year).
     const known = digits(input.target === "profile" ? `${Object.values(input.fields).flat().join(" ")} ${context}` : current);
     if ([...digits(proposed)].some(d => !known.has(d))) return null;
+    // Convergence: never reword a line the user accepted from the coach, never re-offer a declined
+    // rewrite, and drop synonym swaps, ownership upgrades and invented outcomes.
+    if (historyConflict(o.field, current, proposed, input.history ?? [])) return null;
+    const problem = rewriteProblem(current, proposed);
+    if (problem === "equivalent" || problem === "ownership" || (problem === "new-outcome" && input.target !== "profile")) return null;
 
     const reason = typeof o.reason === "string" ? cleanModelText(o.reason, 200) : "";
     return { id: stableHash(`${o.field}|${current}|${proposed}`), field: o.field, current, proposed, reason };

@@ -95,11 +95,11 @@ export function StartFlow() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ jdText, resume: draft.resume, field: draft.field, turnstile: (await turnstile.current?.take()) ?? "" }),
             });
-            const json = await readJson<{ title: string; company: string; requirements: Requirement[]; seniority: Seniority | null; tagsById: Record<string, ResumeData["profileTags"]> }>(res);
+            const json = await readJson<{ title: string; company: string; requirements: Requirement[]; seniority: Seniority | null; companyDomain: string | null; tagsById: Record<string, ResumeData["profileTags"]> }>(res);
             if (!json.ok || !json.requirements) throw new Error(json.error ?? "Could not match that job.");
             set({
                 resume: applyTags(draft.resume, json.tagsById ?? {}),
-                job: { title: json.title ?? "This job", company: json.company ?? "", jdText, requirements: json.requirements, seniority: json.seniority ?? null },
+                job: { title: json.title ?? "This job", company: json.company ?? "", jdText, requirements: json.requirements, seniority: json.seniority ?? null, companyDomain: json.companyDomain ?? null },
                 step: "teaser",
             });
         } catch (err) {
@@ -245,7 +245,7 @@ function Teaser({ draft, onBack }: { draft: GuestDraft; onBack: () => void }) {
                         <form action={signInFromStartAction}>
                             <Button type="submit" variant="primary">Sign in with Google to see the full review</Button>
                         </form>
-                        <p className="text-xs text-fg-muted">{draft.source === "upload" ? "Your imported résumé and this job are saved to your new account." : "This job is saved to your new account."}</p>
+                        <p className="text-xs text-fg-muted">{draft.source === "upload" ? "After sign-in, we’ll add your imported résumé if you don’t already have a library, and save this job to your Job Tracker." : "This job will be added to your Job Tracker after sign-in."}</p>
                     </div>
                 </div>
                 <Button variant="ghost" onClick={onBack}>Try another job</Button>

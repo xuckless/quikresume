@@ -22,6 +22,9 @@ function blockText(el: Element | null): string {
     if (!el) return "";
     const it = (el as HTMLElement).innerText;
     if (typeof it === "string" && it.trim()) return clean(it).slice(0, MAX_DESCRIPTION);
+    // jsdom path (and a guard for pages that inline <style> in the description, like Indeed): never read CSS as text.
+    el = el.cloneNode(true) as Element;
+    el.querySelectorAll("style,script,noscript,template").forEach(n => n.remove());
     const parts: string[] = [];
     el.querySelectorAll("h1,h2,h3,h4,p,li").forEach(n => { const t = clean(n.textContent); if (t) parts.push(n.tagName === "LI" ? `- ${t}` : t); });
     return clean(parts.length ? parts.join("\n") : el.textContent).slice(0, MAX_DESCRIPTION);
@@ -35,7 +38,7 @@ function htmlToText(html: string, doc: Document): string {
 
 // ---------- canonical posting URLs for list/search pages that show one job in a pane
 
-export function postingUrl(href: string): string {
+export function postingUrl(href: string, doc?: Document): string {
     let u: URL;
     try { u = new URL(href); } catch { return href; }
     const host = u.hostname.replace(/^www\./, "");
@@ -44,8 +47,9 @@ export function postingUrl(href: string): string {
         if (id) return `https://www.linkedin.com/jobs/view/${id}/`;
     }
     if (/(^|\.)indeed\./.test(host)) {
-        const jk = u.searchParams.get("vjk") ?? u.searchParams.get("jk");
-        if (jk) return `https://${u.hostname}/viewjob?jk=${jk}`;
+        // The selected card carries the key when the URL doesn't (first result opened without a vjk).
+        const jk = u.searchParams.get("vjk") ?? u.searchParams.get("jk") ?? doc?.querySelector(".vjs-highlight [data-jk]")?.getAttribute("data-jk");
+        if (jk && /^[0-9a-f]{8,32}$/i.test(jk)) return `https://${u.hostname}/viewjob?jk=${jk}`;
     }
     if (/(^|\.)glassdoor\./.test(host)) {
         const jl = u.searchParams.get("jl") ?? /_JV_[^.]*?(\d+)\.htm/.exec(u.pathname)?.[1];
@@ -135,10 +139,12 @@ const ADAPTERS: Adapter[] = [
     },
     {
         site: "Indeed", test: h => /(^|\.)indeed\./.test(h),
-        title: ['[data-testid="jobsearch-JobInfoHeader-title"]', ".jobsearch-JobInfoHeader-title", "h1"],
-        company: ['[data-testid="inlineHeader-companyName"]', '[data-company-name="true"]'],
-        location: ['[data-testid="inlineHeader-companyLocation"]', '[data-testid="job-location"]'],
-        description: ["#jobDescriptionText"],
+        // Search pages show the posting in a right-hand pane (React Native web markup, 2026); /viewjob uses the
+        // older jobsearch-* markup. No bare "h1": on search pages it is the search heading ("… jobs in Canada").
+        title: ['[data-testid="vj-job-title"]', '[data-testid="vj-job-title-compact"]', '[data-testid="jobsearch-JobInfoHeader-title"]', ".jobsearch-JobInfoHeader-title"],
+        company: ['[data-testid="company-info-metadata"] a[href*="/cmp/"]', '[data-testid="company-info-metadata"] a', '[data-testid="inlineHeader-companyName"]', '[data-company-name="true"]'],
+        location: ['[data-testid="company-info-metadata"] > div > div:nth-child(2)', '[data-testid="inlineHeader-companyLocation"]', '[data-testid="job-location"]'],
+        description: [".simple-job-description-html", "#jobDescriptionText", ".react-native-html-content"],
     },
     {
         site: "Glassdoor", test: h => /(^|\.)glassdoor\./.test(h),
@@ -237,7 +243,7 @@ export function extractPosting(doc: Document, href: string): Posting | null {
         title: result.title.slice(0, 160),
         company: (result.company.split("\n")[0] ?? "").slice(0, 120),
         location: (result.location.split("\n")[0] ?? "").slice(0, 120),
-        url: postingUrl(href),
+        url: postingUrl(href, doc),
         site: adapter?.site ?? host,
     };
 }

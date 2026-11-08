@@ -102,6 +102,26 @@ async function init(): Promise<TypstInstance> {
     return typst;
 }
 
+const CSP_RELOAD_KEY = "quikresume.typst-csp-reload";
+const isCspBlock = (err: unknown) => /unsafe-eval|Content Security Policy|trusted-types/i.test(err instanceof Error ? err.message : String(err));
+
+/**
+ * The browser keeps the CSP of the document it first loaded, so a client-side navigation from a public page
+ * (strict policy, no wasm eval) into the app leaves the engine blocked until a full load. Reload once to pick
+ * up the app's policy; the session flag stops a loop if the policy itself is wrong.
+ */
+function reloadForCsp(err: unknown): boolean {
+    if (!isCspBlock(err)) return false;
+    try {
+        if (sessionStorage.getItem(CSP_RELOAD_KEY)) return false;
+        sessionStorage.setItem(CSP_RELOAD_KEY, "1");
+    } catch {
+        return false;
+    }
+    window.location.reload();
+    return true;
+}
+
 /** Idempotent: loads wasm, fonts and template sources once. Re-armed on failure, so a retry starts clean. */
 export function ensureTypst(): Promise<TypstInstance> {
     if (!instancePromise) {
@@ -109,12 +129,14 @@ export function ensureTypst(): Promise<TypstInstance> {
         instancePromise = init().then(
             inst => {
                 stage = "ready";
+                try { sessionStorage.removeItem(CSP_RELOAD_KEY); } catch { /* storage unavailable */ }
                 return inst;
             },
             err => {
                 stage = "failed";
                 instancePromise = null;
                 console.error("[typst] engine failed to start:", err);
+                if (reloadForCsp(err)) return new Promise<never>(() => {});
                 throw err instanceof TypstEngineError ? err : new TypstEngineError(explainEngineFailure(err), err);
             },
         );

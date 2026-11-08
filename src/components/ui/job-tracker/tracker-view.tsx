@@ -6,7 +6,10 @@
 // saved through setJobStatus; dragging a card between columns and the status menu do the same thing,
 // so keyboard users never need the drag.
 
-import React, { useOptimistic, useState, useTransition } from "react";
+import { CompanyLogo } from "./company-logo";
+import { ScoreRing } from "@/components/ui/primitives/score-ring";
+import React, { useOptimistic, useRef, useState, useTransition } from "react";
+import { useArcMoves } from "@/lib/ui/use-arc-moves";
 import { useRouter } from "next/navigation";
 import {
     DndContext, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent,
@@ -91,7 +94,9 @@ export function TrackerView({ jobs, onOpen, onAnalyse, onDelete }: {
                     <Button size="sm" variant="primary" icon={Plus} onClick={onAnalyse}>Analyse a job</Button>
                 </div>
             </div>
-            {layout === "board"
+            {q && visible.length === 0
+                ? <EmptyState icon={Search} title="No jobs match your search" body={`Nothing matches "${query.trim()}".`} actions={<Button size="sm" variant="secondary" onClick={() => setQuery("")}>Clear search</Button>} />
+                : layout === "board"
                 ? <Board jobs={visible} onMove={move} onOpen={onOpen} />
                 : <JobTable jobs={visible} onMove={move} onOpen={onOpen} onDelete={onDelete} />}
         </div>
@@ -115,22 +120,28 @@ function StatusSelect({ job, onMove, className }: { job: JobRecord; onMove: (id:
     );
 }
 
-function Score({ job }: { job: JobRecord }) {
-    if (job.match.status === "running") return <Loader2 className="size-3.5 animate-spin text-fg-subtle" aria-label="Checking matches with AI" />;
-    if (job.lastScore === null) return <span className="text-xs text-fg-subtle">–</span>;
-    return <span className="font-mono text-13 tabular-nums text-fg" title="Match score of your working selection">{job.lastScore}</span>;
+function Score({ job, size = 36 }: { job: JobRecord; size?: number }) {
+    const box = "flex shrink-0 items-center justify-center";
+    if (job.match.status === "running") return <span className={box} style={{ width: size, height: size }}><Loader2 className="size-3.5 animate-spin text-fg-subtle" role="img" aria-label="Checking matches with AI" /></span>;
+    if (job.lastScore === null) return <span className={cn(box, "text-xs text-fg-subtle")} style={{ width: size, height: size }} title="Open the job to score it">–</span>;
+    return <span title="Match score of your working selection" className="shrink-0"><ScoreRing score={job.lastScore} size={size} /></span>;
 }
 
 // ---------- board
 
 function Board({ jobs, onMove, onOpen }: { jobs: JobRecord[]; onMove: (id: string, s: JobStatus) => void; onOpen: (id: string) => void }) {
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
+    const boardRef = useRef<HTMLDivElement>(null);
+    const statusSig = jobs.map(j => `${j.id}:${j.status}`).join("|");
+    const dropped = useArcMoves(boardRef, statusSig);
     const end = ({ active, over }: DragEndEvent) => {
+        const at = active.rect.current.translated;
+        if (at) dropped.current.set(String(active.id), { x: at.left, y: at.top });
         if (over && typeof over.id === "string") onMove(String(active.id), over.id as JobStatus);
     };
     return (
         <DndContext id="job-tracker-board" sensors={sensors} onDragEnd={end}>
-            <div className="grid auto-cols-[minmax(220px,1fr)] grid-flow-col gap-3 overflow-x-auto pb-2">
+            <div ref={boardRef} className="grid auto-cols-[minmax(220px,1fr)] grid-flow-col gap-3 overflow-x-auto pb-2">
                 {JOB_STATUSES.map(status => (
                     <Column key={status} status={status} jobs={jobs.filter(j => j.status === status)} onMove={onMove} onOpen={onOpen} />
                 ))}
@@ -151,7 +162,7 @@ function Column({ status, jobs, onMove, onOpen }: { status: JobStatus; jobs: Job
                 <h3 className="text-13 font-medium text-fg">{JOB_STATUS_LABEL[status]}</h3>
                 <span className="font-mono text-xs tabular-nums text-fg-subtle">{jobs.length}</span>
             </header>
-            <ul className="space-y-2">
+            <ul className="stagger-children space-y-2">
                 {jobs.map(j => <JobCard key={j.id} job={j} onMove={onMove} onOpen={onOpen} />)}
             </ul>
         </section>
@@ -164,14 +175,16 @@ function JobCard({ job, onMove, onOpen }: { job: JobRecord; onMove: (id: string,
         <li
             ref={setNodeRef}
             style={{ transform: CSS.Translate.toString(transform) }}
+            data-job-card={job.id}
             className={cn("rounded-md border border-border bg-surface shadow-sm", isDragging && "relative z-10 opacity-90")}
         >
             <div {...listeners} {...attributes} aria-roledescription="Draggable job" className={cn("cursor-grab rounded-md p-2.5 active:cursor-grabbing", FOCUS_RING)}>
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2.5">
+                    <CompanyLogo job={job} size={32} className="mt-0.5" />
                     <button
                         type="button"
                         onClick={() => onOpen(job.id)}
-                        className={cn("min-w-0 text-left", FOCUS_RING)}
+                        className={cn("min-w-0 flex-1 text-left", FOCUS_RING)}
                         // The card itself is the drag handle; the title is the link.
                         onPointerDown={e => e.stopPropagation()}
                     >
@@ -204,13 +217,16 @@ function JobTable({ jobs, onMove, onOpen, onDelete }: { jobs: JobRecord[]; onMov
                     {jobs.map(j => (
                         <tr key={j.id} className="group/row hover:bg-surface-hover">
                             <Td>
-                                <button type="button" onClick={() => onOpen(j.id)} className={cn("min-w-0 text-left", FOCUS_RING)}>
-                                    <span className="block font-medium text-fg hover:underline">{j.title}</span>
-                                    <span className="block text-xs text-fg-muted">{[j.company || "Unknown company", j.location].filter(Boolean).join(" · ")}</span>
-                                </button>
+                                <div className="flex items-center gap-3">
+                                    <CompanyLogo job={j} size={28} />
+                                    <button type="button" onClick={() => onOpen(j.id)} className={cn("min-w-0 text-left", FOCUS_RING)}>
+                                        <span className="block font-medium text-fg hover:underline">{j.title}</span>
+                                        <span className="block text-xs text-fg-muted">{[j.company || "Unknown company", j.location].filter(Boolean).join(" · ")}</span>
+                                    </button>
+                                </div>
                             </Td>
                             <Td className="w-36"><StatusSelect job={j} onMove={onMove} /></Td>
-                            <Td className="text-right"><Score job={j} /></Td>
+                            <Td><div className="flex justify-end"><Score job={j} size={30} /></div></Td>
                             <Td className="whitespace-nowrap text-fg-muted">{j.appliedAt ?? "–"}</Td>
                             <Td className="whitespace-nowrap text-fg-muted">{j.updatedAt ? j.updatedAt.slice(0, 10) : "–"}</Td>
                             <Td className="w-20 text-right">
@@ -220,7 +236,7 @@ function JobTable({ jobs, onMove, onOpen, onDelete }: { jobs: JobRecord[]; onMov
                                             <ExternalLink className="size-3.5" aria-hidden />
                                         </a>
                                     )}
-                                    <IconButton icon={Trash2} aria-label={`Delete ${j.title}`} onClick={() => onDelete(j)} className="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100" />
+                                    <IconButton icon={Trash2} aria-label={`Delete ${j.title}`} onClick={() => onDelete(j)} className="opacity-60 hover:opacity-100 group-hover/row:opacity-100 focus-visible:opacity-100" />
                                 </span>
                             </Td>
                         </tr>

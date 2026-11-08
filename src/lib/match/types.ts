@@ -110,6 +110,8 @@ export interface JobRecord extends JobTracking, JobPosting {
     match: JobMatchState;
     /** Calibrated similarity of the job title to each work-experience item's title (item id -> 0..1). */
     titleSim: Record<string, number>;
+    /** The company's website domain for its logo (JD analysis or the posting URL); null = unknown. Read through companyDomainOf. */
+    companyDomain: string | null;
     /** Level the posting asks for (JD analysis); null = unknown or analysed before it existed. */
     seniority: Seniority | null;
     createdAt: string | null;

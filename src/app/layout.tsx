@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AUTHOR, SITE_DESCRIPTION, SITE_KEYWORDS, SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/site";
+import { MotionProvider } from "@/components/motion-provider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -88,7 +89,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
             </head>
             <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-                {children}
+                <MotionProvider>{children}</MotionProvider>
             </body>
         </html>
     );

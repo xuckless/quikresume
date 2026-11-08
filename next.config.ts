@@ -32,7 +32,10 @@ const buildCsp = (scriptSrc: string, extra: { frame?: string; connect?: string }
     ...(isDev ? [] : ["upgrade-insecure-requests"]),
 ].join("; ");
 
-const publicCsp = buildCsp(`'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`);
+// The /start flow can be reached through a client-side navigation from any public page. CSP is
+// enforced from the original document response during that navigation, so the public policy must
+// allow Turnstile too (the /start response still carries the same dedicated policy for direct loads).
+const publicCsp = buildCsp(`'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} ${TURNSTILE}`, { frame: TURNSTILE, connect: TURNSTILE });
 const appCsp = buildCsp("'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:");
 // /start (signed-out funnel): the Typst preview like the dashboard, plus Cloudflare Turnstile.
 const startCsp = buildCsp(`'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: ${TURNSTILE}`, { frame: TURNSTILE, connect: TURNSTILE });
@@ -50,6 +53,9 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
     reactCompiler: true,
+    // Router cache for dynamic pages: going back to a signed-in page within 30 s reuses what was rendered
+    // instead of re-reading Firestore. Server actions (revalidatePath) and router.refresh() still clear it.
+    experimental: { staleTimes: { dynamic: 30 } },
     poweredByHeader: false,
     // Native Typst compiler for server-side PDFs (lib/typst/server-pdf.ts): never bundled, and the
     // templates + fonts it reads from public/typst are traced into the function that uses it.

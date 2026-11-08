@@ -12,9 +12,14 @@ interface PaneResizeHandleProps {
     /** The grid that holds content + pane; its right edge is the pane's right edge. */
     containerRef: React.RefObject<HTMLElement | null>;
     width: number;
-    /** Live width while dragging (null when idle). */
-    onDrag: (px: number | null) => void;
+    /** Live width while dragging (null when idle). `settle` asks the layout to ease to it (after release). */
+    onDrag: (px: number | null, settle?: boolean) => void;
 }
+
+/** Past a limit the pane gives a little, with growing resistance, like pulling rubber. */
+const RUBBER_RANGE = 120;
+const rubber = (over: number) => RUBBER_RANGE * (1 - 1 / (over / RUBBER_RANGE * 0.55 + 1));
+const SETTLE_MS = 240;
 
 const STEP = 16;
 const BIG_STEP = 64;
@@ -41,9 +46,13 @@ export function PaneResizeHandle({ containerRef, width, onDrag }: PaneResizeHand
         if (!dragging) return;
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
-        latest.current = clamp(rect.right - e.clientX);
+        // Follow the pointer 1:1 while held (no easing); beyond the limits, rubber-band.
+        const raw = rect.right - e.clientX;
+        latest.current = clamp(raw);
+        const max = maxWidth();
+        const shown = raw > max ? max + rubber(raw - max) : raw < PANE_MIN ? PANE_MIN - rubber(PANE_MIN - raw) : raw;
         cancelAnimationFrame(frame.current);
-        frame.current = requestAnimationFrame(() => onDrag(latest.current));
+        frame.current = requestAnimationFrame(() => onDrag(shown));
     };
 
     const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -54,7 +63,10 @@ export function PaneResizeHandle({ containerRef, width, onDrag }: PaneResizeHand
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         setPreviewPaneWidth(latest.current);
-        onDrag(null);
+        // Released past a limit: ease back to it, then hand the width back to the stored value.
+        const target = latest.current;
+        onDrag(target, true);
+        window.setTimeout(() => onDrag(null), SETTLE_MS);
     };
 
     const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {

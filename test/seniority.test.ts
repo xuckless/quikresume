@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { candidateLevel, seniorityFit, titleLevel, workYears } from "@/lib/match/seniority";
+import { candidateLevel, contradictsMeasuredLevel, seniorityFit, titleLevel, workYears } from "@/lib/match/seniority";
 import { emptyResumeData, type WorkExperience } from "@/types/schema";
 import { scoreJob } from "@/lib/match/score";
 import { demoSamples } from "@/lib/demo/samples";
@@ -48,5 +48,22 @@ describe("seniority", () => {
         expect(m.seniority?.job).toBe("executive");
         expect(m.subScores.title).toBeLessThan(0.5);
         expect(scoreJob(s.job.requirements, s.resume, {}, { now: NOW }).seniority).toBeNull();
+    });
+});
+
+
+describe("contradictsMeasuredLevel", () => {
+    const note = "Posting targets a senior engineer with 5+ years; candidate is mid-level with 5 years.";
+    it("drops a seniority note when the measured level meets the posting", () => {
+        expect(contradictsMeasuredLevel(note, "senior", "senior")).toBe(true);
+        expect(contradictsMeasuredLevel(note, "mid", "lead")).toBe(true);
+    });
+    it("keeps it when the measured level is below the posting, or unknown", () => {
+        expect(contradictsMeasuredLevel(note, "senior", "mid")).toBe(false);
+        expect(contradictsMeasuredLevel(note, null, "senior")).toBe(false);
+        expect(contradictsMeasuredLevel(note, "senior", null)).toBe(false);
+    });
+    it("keeps notes about other conflicts", () => {
+        expect(contradictsMeasuredLevel("The posting is on-site in Austin; you want remote work in Seattle.", "senior", "senior")).toBe(false);
     });
 });

@@ -4,7 +4,7 @@
 // GLM-4.6V, then the text model extracts structured requirements. When the
 // form also carries `resume` (ResumeData as JSON), the job is saved as
 // `match.status: "running"` and returned right away; the reconcile pass
-// (lib/match/reconcile.ts, max effort) runs after the response and writes its verdicts.
+// (lib/match/reconcile.ts, effortFor("reconcile")) runs after the response and writes its verdicts.
 //
 // Guarded (lib/security/guard.ts): same-origin, session, per-user rate limit, daily AI budget.
 // The posting is fenced as untrusted data before it reaches the model.
@@ -24,7 +24,7 @@ import { sanitizeForPrompt } from "@/lib/security/prompt";
 import { MAX_JSON_BYTES } from "@/lib/security/request";
 
 export const runtime = "nodejs";
-// The reconcile pass runs after the response (after()) at max reasoning effort, inside this limit.
+// The reconcile pass runs after the response (after()), inside this limit.
 export const maxDuration = 300;
 
 const fail = (status: number, error: string) => NextResponse.json({ ok: false, error }, { status });

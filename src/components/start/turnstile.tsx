@@ -7,7 +7,9 @@
 
 import React, { useEffect, useImperativeHandle, useRef, useState } from "react";
 
-const SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+// GuestGuard skips Turnstile in local development; don't load a production key there because
+// Cloudflare rejects localhost unless it is explicitly configured as an allowed hostname.
+const SITE_KEY = process.env.NODE_ENV === "production" ? (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "") : "";
 const SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
 interface TurnstileApi {

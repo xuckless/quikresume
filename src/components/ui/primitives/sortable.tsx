@@ -61,10 +61,13 @@ export function SortableList({ ids, onMove, onDragStart, onDragDone, labelOf, ch
 }
 
 export function useSortableRow(id: string, label: string, disabled = false) {
-    const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id, disabled });
+    // Rows making room move ease-in-out; the held row follows the pointer with no easing at all.
+    const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+        id, disabled, transition: { duration: 240, easing: "cubic-bezier(0.77, 0, 0.175, 1)" },
+    });
     const style: React.CSSProperties = {
         transform: CSS.Translate.toString(transform),
-        transition,
+        transition: isDragging ? undefined : transition,
         position: "relative",
         zIndex: isDragging ? 10 : undefined,
     };
