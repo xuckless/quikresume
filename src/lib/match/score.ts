@@ -11,7 +11,8 @@
 //             credentials / languages without a confirmation: at most BINARY_SEMANTIC_CAP)
 //   times recency 0.5^(age / 4y) for dated work (experience, projects, volunteering).
 // strength m_r = 1 − Π(1 − e) over the top 3 items (noisy-OR: more evidence helps, with diminishing
-// returns); binary kinds use the best e. A literal keyword hit with nothing better counts 0.5.
+// returns); binary kinds use the best e. A literal keyword hit with nothing better counts 0.5, and so
+// does close wording of a multi-word name on one line (lib/match/text.ts closeWordingHit; not binary kinds).
 //
 // Sub-scores (each 0..1, null when the posting gives nothing to measure):
 //   coverage  C = Σ w·m / Σ w,  w = importance (must 1, nice 0.4) × tier (hard 1, soft 0.3)
@@ -32,7 +33,7 @@ import { RESUME_LIST_KEYS } from "@/types/schema";
 import { emptyKindTotals, type KindTotals } from "@/lib/tags/aggregate";
 import { surfaceForms, type AliasMap } from "@/lib/tags/normalize";
 import { toTypstDoc } from "@/lib/typst/doc";
-import { literalHit, renderedText } from "@/lib/match/text";
+import { closeWordingHit, literalHit, renderedText } from "@/lib/match/text";
 import { coverageItems, requirementCoverage } from "@/lib/match/coverage";
 import { itemAgeMonths, itemSpan } from "@/lib/match/units";
 import { BINARY_SEMANTIC_CAP, JUDGE_BAND, noisyOr, recencyWeight } from "@/lib/match/semantic";
@@ -174,6 +175,10 @@ export function scoreJob(requirements: Requirement[], data: ResumeData, aliases:
         if (literal && m < 0.5) {
             m = 0.5;
             if (evidence.length === 0) evidence.push({ itemId: "", label: "Printed on the résumé", via: "keyword", e: 0.5, quote: "" });
+        } else if (!binary && m < 0.5 && closeWordingHit(text, r.display)) {
+            // Same keyword weight for close wording ("REST APIs" for "REST API Design"); ATS placement stays literal-only.
+            m = 0.5;
+            if (evidence.length === 0) evidence.push({ itemId: "", label: "Printed in close wording", via: "keyword", e: 0.5, quote: "" });
         }
 
         let years: MatchRow["years"] = null;

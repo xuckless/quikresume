@@ -23,6 +23,8 @@ import { extractTags } from "@/lib/tags/extract";
 import { contentHashOf, hasContent, isStale, itemText, PROFILE_ID, profileHashOf, tagContext, type TagInput } from "@/lib/tags/content";
 import { SECTION_COLLECTION } from "@/lib/sections";
 import { isBriefOutdated, isProfileReviewStale, isReviewStale, profileReviewInput, reviewInputOf, type ReviewInput } from "@/lib/review/content";
+import { MAX_PRIOR, mergeHistory, normText, readCandidates, readHistory, resolveOutcomes, type ReviewHistoryEntry } from "@/lib/review/history";
+import type { ItemReview } from "@/lib/review/types";
 import { acquireReviewLock, releaseReviewLock, REVIEW_MAX_PER_RUN, reviewItems } from "@/lib/review/run";
 import { RESUME_LIST_KEYS, type ResumeData, type ResumeListKey } from "@/types/schema";
 import { guardApi } from "@/lib/security/guard";
@@ -74,6 +76,8 @@ export async function POST(req: Request) {
             }
             picked.sort((a, b) => Number(b.selected) - Number(a.selected));
             const batch = picked.slice(0, REVIEW_MAX_PER_RUN);
+            // What the user did with earlier rewrites, so the coach converges instead of rewording forever.
+            for (const p of batch) p.input.history = historyFor(p.input, p.key === "profile" ? profileReview : reviews[p.input.id]);
             if (batch.length === 0) return NextResponse.json({ ok: true, reviewed: 0, skipped: 0, remaining: 0, retagged: 0 });
 
             const userRef = db.collection("users").doc(uid);
@@ -105,10 +109,25 @@ export async function POST(req: Request) {
                 if (!r) return [];
                 // Hash of the text as loaded: an edit made while the model ran shows as outdated and is picked up next time.
                 const reviewHash = p.key === "profile" ? profileHashOf(data.personalInfo) : contentHashOf(p.key, p.item as AnyItem);
-                const review = stripUndefined({ ...r, dismissed: [], reviewHash, briefHash, reviewedAt: now });
-                return [p.key === "profile"
-                    ? userRef.update({ profileReview: review })
-                    : userRef.collection(SECTION_COLLECTION[p.key]).doc(p.input.id).update({ review })];
+                const ref = p.key === "profile" ? userRef : userRef.collection(SECTION_COLLECTION[p.key]).doc(p.input.id);
+                const fieldName = p.key === "profile" ? "profileReview" : "review";
+                // A transaction, so a dismissal (or an accept) made while the model ran is kept, not overwritten.
+                return [db.runTransaction(async tx => {
+                    const snap = await tx.get(ref);
+                    if (!snap.exists) return;
+                    const raw = (snap.get(fieldName) ?? {}) as Record<string, unknown>;
+                    const rawSuggestions = readCandidates(raw.suggestions);
+                    const rawPrior = readCandidates(raw.prior);
+                    const rawDismissed = Array.isArray(raw.dismissed) ? raw.dismissed.filter((x): x is string => typeof x === "string") : [];
+                    const history = mergeHistory(readHistory(raw.history), p.input.history ?? [], resolveOutcomes(p.input, rawSuggestions, rawDismissed));
+                    const resolved = new Set(history.map(h => `${h.field}|${normText(h.current)}|${normText(h.proposed)}`));
+                    const prior = [...rawSuggestions, ...rawPrior]
+                        .filter(c => !resolved.has(`${c.field}|${normText(c.current)}|${normText(c.proposed)}`))
+                        .slice(0, MAX_PRIOR)
+                        .map(c => ({ field: c.field, current: c.current, proposed: c.proposed, ...(c.id ? { id: c.id } : {}) }));
+                    const review = stripUndefined({ ...r, dismissed: rawDismissed.slice(-50), history, prior, reviewHash, briefHash, reviewedAt: now });
+                    tx.update(ref, { [fieldName]: review });
+                })];
             });
             const settled = await Promise.allSettled(writes);
             const failed = settled.filter(r => r.status === "rejected" && !notFound(r));
@@ -127,4 +146,10 @@ export async function POST(req: Request) {
             await releaseReviewLock(uid).catch(() => {});
         }
     });
+}
+
+/** Earlier history plus what happened to the last review's rewrites (accepted into the text, or dismissed). */
+function historyFor(input: ReviewInput, prev: ItemReview | null | undefined): ReviewHistoryEntry[] {
+    if (!prev) return [];
+    return mergeHistory(prev.history, resolveOutcomes(input, [...prev.suggestions, ...prev.prior], prev.dismissed));
 }

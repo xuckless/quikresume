@@ -2,7 +2,6 @@
 import type { Metadata } from "next"
 import { signIn, signOut, auth } from "@/auth"
 import Image from "next/image"
-import Link from "next/link"
 import { MarketingHeader } from "@/components/marketing-header";
 
 export const metadata: Metadata = {
@@ -37,7 +36,7 @@ export default async function LoginPage() {
                                 </div>
                             </div>
                             <div className="flex w-full flex-col gap-2">
-                                <Link href="/dashboard" className={PRIMARY}>Go to dashboard</Link>
+                                <a href="/dashboard" className={PRIMARY}>Go to dashboard</a>
                                 <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }) }}>
                                     <button className={SECONDARY}>Sign out</button>
                                 </form>

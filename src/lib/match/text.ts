@@ -33,3 +33,41 @@ export function literalHit(text: string, forms: string[]): boolean {
     }
     return false;
 }
+
+/**
+ * Qualifier words a posting adds to a skill name ("REST API Design", "Backend Development") that a
+ * résumé rarely prints next to it. Dropped before the close-wording check below.
+ */
+const QUALIFIER_WORDS = new Set([
+    "design", "development", "developing", "engineering", "management", "experience", "skills", "skill",
+    "practices", "practice", "principles", "knowledge", "proficiency", "expertise", "and", "or", "of", "the", "with", "in", "for",
+]);
+
+/** Too broad to stand alone once the qualifier is gone ("Software Engineering" -> "software"). */
+const BROAD_WORDS = new Set([
+    "software", "data", "web", "system", "project", "product", "business", "technical", "application", "service",
+    "customer", "team", "client", "program", "process", "quality", "computer", "information", "digital", "general",
+]);
+
+const wordStem = (w: string) => (w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
+const wordsOf = (s: string) => (s.toLowerCase().match(/[a-z0-9][a-z0-9+#.]*/g) ?? []).map(w => wordStem(w.replace(/\.+$/, "")));
+
+/**
+ * The same requirement in close wording on one printed line: every core word of a multi-word name
+ * (qualifiers dropped, plural "s" ignored) appears as a whole word on the same line. "REST API Design"
+ * finds "Wrote REST APIs with Django"; "Backend Development" finds "Backend engineer with 5 years".
+ * Single-word names never use this (they are literal or nothing), and a lone core word must be at
+ * least 4 characters and not a broad word, so "Go Development" can't match the verb "go" and
+ * "Software Engineering" can't match any line that says "software".
+ */
+export function closeWordingHit(text: string, display: string): boolean {
+    const all = wordsOf(display);
+    if (all.length < 2) return false;
+    const core = all.filter(w => !QUALIFIER_WORDS.has(w));
+    if (core.length === 0) return false;
+    if (core.length === 1 && (core[0].length < 4 || BROAD_WORDS.has(core[0]))) return false;
+    return text.split("\n").some(line => {
+        const words = new Set(wordsOf(line));
+        return core.every(w => words.has(w));
+    });
+}

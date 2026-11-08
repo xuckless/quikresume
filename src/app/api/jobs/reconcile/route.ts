@@ -1,7 +1,7 @@
 // src/app/api/jobs/reconcile/route.ts
 // POST { jobId, resume: ResumeData } -> { ok, job } with `job.match.status: "running"`.
 // Re-runs the "broader context" pass (lib/match/reconcile.ts) for a saved job against the resume
-// the user is scoring. The pass runs after the response (after(), max effort) and stores the verdicts
+// the user is scoring. The pass runs after the response (after()) and stores the verdicts
 // on the job's requirements; the client polls while the job reads as running.
 //
 // Guarded (lib/security/guard.ts): same-origin, session, per-user rate limit, daily AI budget.

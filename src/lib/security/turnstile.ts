@@ -9,11 +9,12 @@ import "server-only";
 export const isTurnstileConfigured = () => Boolean(process.env.TURNSTILE_SECRET_KEY);
 
 export async function verifyTurnstile(token: string, ip: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    // Local development runs on localhost, which production Turnstile site keys usually reject.
+    // Production still requires a configured secret and a valid token.
+    if (process.env.NODE_ENV !== "production") return { ok: true };
     const secret = process.env.TURNSTILE_SECRET_KEY;
     if (!secret) {
-        return process.env.NODE_ENV === "production"
-            ? { ok: false, error: "Trying quikResume without an account is not available right now. Sign in with Google instead." }
-            : { ok: true };
+        return { ok: false, error: "Trying quikResume without an account is not available right now. Sign in with Google instead." };
     }
     if (!token || token.length > 2048) return { ok: false, error: "Please complete the check and try again." };
     try {

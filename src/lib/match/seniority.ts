@@ -74,3 +74,15 @@ export function seniorityFit(job: Seniority, candidate: Seniority): number {
     if (gap < 0) return gap === -1 ? 0.75 : gap === -2 ? 0.45 : 0.25;
     return gap === 1 ? 0.95 : gap === 2 ? 0.8 : 0.65;
 }
+
+const SENIORITY_NOTE_RE = /\b(senior|seniority|junior|mid[- ]?level|entry[- ]?level|over-?qualified|under-?qualified|stretch|\d+\+?\s*(years?|yrs?))\b/i;
+
+/**
+ * A fit note about seniority or years when the measured résumé level already meets the posting's level.
+ * The match panel shows that measurement, so such a note (often built on older self-reported years)
+ * would contradict it ("reads as senior (7.5 yrs)" next to "candidate is mid-level with 5 years").
+ */
+export function contradictsMeasuredLevel(note: string, jobLevel: Seniority | null, measured: Seniority | null): boolean {
+    if (jobLevel === null || measured === null || rank(measured) < rank(jobLevel)) return false;
+    return SENIORITY_NOTE_RE.test(note);
+}

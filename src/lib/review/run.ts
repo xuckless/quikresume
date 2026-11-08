@@ -43,7 +43,7 @@ export async function reviewItems(
             try {
                 const result = await chatCompletion(
                     [{ role: "system", content: REVIEW_SYSTEM_PROMPT }, { role: "user", content: reviewUserMessage(chunk, candidate) }],
-                    { model: textModel(), json: true, effort, temperature: 0.3, maxTokens: maxTokensFor(effort, 8000), timeoutMs: Math.min(CHUNK_TIMEOUT_MS, left), retries: 0 },
+                    { model: textModel(), json: true, effort, temperature: 0.1, maxTokens: maxTokensFor(effort, 8000), timeoutMs: Math.min(CHUNK_TIMEOUT_MS, left), retries: 0 },
                 );
                 const parsed = parseReviewReply(extractJson(result.text), chunk, candidate ? `${candidate.brief} ${candidate.facts.graduation ?? ""}` : "");
                 for (const c of chunk) {

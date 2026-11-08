@@ -28,20 +28,34 @@ const VIA_LABEL: Record<EvidenceVia, string> = {
     keyword: "Keyword only",
 };
 
-export function ScoreHeadline({ match }: { match: MatchResult }) {
+/**
+ * `provisional`: the AI check is running. "first" = the number is a floor from exact keywords and tags;
+ * "recheck" = it still carries the last check's verdicts. Either way it is shown muted and labelled,
+ * so the later score reads as the check finishing, not as a correction.
+ */
+export function ScoreHeadline({ match, provisional = false }: { match: MatchResult; provisional?: false | "first" | "recheck" }) {
     return (
-        <div className="flex items-center gap-4">
-            <ScoreRing score={match.score} size={80} />
+        <div className="flex items-center gap-4" aria-busy={provisional ? true : undefined}>
+            <ScoreRing score={match.score} size={80} className={cn("transition-opacity", provisional && "opacity-45")} />
             <div className="space-y-0.5">
-                <p className="font-mono text-13 tabular-nums text-fg-muted" title="95% range from how certain each piece of evidence is">
-                    {match.score} <span className="text-fg-subtle">±{match.band}</span>
-                </p>
+                {provisional ? (
+                    <p className="text-13 text-fg-muted" title={provisional === "first" ? "Exact keywords and skill tags only. The AI check adds equivalent skills and work that shows a requirement." : "From the last AI check; a new one is running."}>
+                        <span className="font-medium text-fg">{provisional === "first" ? "Preliminary" : "Updating"}</span> · checking with AI
+                    </p>
+                ) : (
+                    <p className="font-mono text-13 tabular-nums text-fg-muted" title="95% range from how certain each piece of evidence is">
+                        {match.score} <span className="text-fg-subtle">±{match.band}</span>
+                    </p>
+                )}
                 <p className="text-13">
                     <span className="font-medium text-fg">Must-haves {match.must.hit}/{match.must.total}</span>
                     {match.nice.total > 0 && <span className="text-fg-muted"> · nice {match.nice.hit}/{match.nice.total}</span>}
+                    {provisional && <span className="text-fg-subtle"> so far</span>}
                 </p>
                 {match.gated && (
-                    <p className="text-xs text-warning">Capped at {MUST_GATE_CAP}: a hard must-have is missing.</p>
+                    <p className="text-xs text-warning">
+                        {provisional ? `Capped at ${MUST_GATE_CAP} for now: a hard must-have isn't confirmed yet.` : `Capped at ${MUST_GATE_CAP}: a hard must-have is missing.`}
+                    </p>
                 )}
             </div>
         </div>
@@ -81,7 +95,8 @@ export function SubScoreBars({ subScores, seniority = null }: { subScores: SubSc
 }
 
 /** Gaps ordered by how many points closing them is worth. */
-export function WhatIfList({ rows, limit = 5 }: { rows: MatchRow[]; limit?: number }) {
+export function WhatIfList({ rows, limit = 5, provisional = false }: { rows: MatchRow[]; limit?: number; provisional?: boolean }) {
+    if (provisional) return <p className="text-13 text-fg-muted">Shown once the AI check finishes: it often finds evidence the keyword pass misses.</p>;
     const gains = rows.filter(r => r.gain >= 0.5).sort((a, b) => b.gain - a.gain).slice(0, limit);
     if (gains.length === 0) return <p className="text-13 text-fg-muted">Nothing left that would move the score by a point or more.</p>;
     return (
@@ -111,7 +126,10 @@ function StrengthCell({ row }: { row: MatchRow }) {
     );
 }
 
-export function EvidenceTable({ rows }: { rows: MatchRow[] }) {
+/** Below this, a row is still open while the AI check runs (it can only add evidence). */
+const PENDING_BELOW = 0.5;
+
+export function EvidenceTable({ rows, provisional = false }: { rows: MatchRow[]; provisional?: boolean }) {
     return (
         <Table>
             <thead>
@@ -126,15 +144,18 @@ export function EvidenceTable({ rows }: { rows: MatchRow[] }) {
             <tbody>
                 {rows.map(r => {
                     const top = r.evidence[0];
+                    const pending = provisional && r.strength < PENDING_BELOW;
                     return (
                         <tr key={r.requirement.name}>
                             <Td className="whitespace-nowrap">
-                                <span className={cn("font-medium", r.strength < 0.3 ? "text-danger" : "text-fg")}>{r.requirement.display}</span>
+                                <span className={cn("font-medium", r.strength < 0.3 && !pending ? "text-danger" : "text-fg")}>{r.requirement.display}</span>
                                 <span className="block text-xs text-fg-subtle">{r.requirement.importance === "must" ? "Must" : "Nice"} · {r.tier}</span>
                             </Td>
-                            <Td><StrengthCell row={r} /></Td>
+                            <Td>{pending ? <span className="text-xs text-fg-subtle">…</span> : <StrengthCell row={r} />}</Td>
                             <Td className="min-w-72 text-xs leading-relaxed">
-                                {top ? (
+                                {pending ? (
+                                    <span className="text-fg-muted">Checking with AI…{top ? <span className="block text-fg-subtle">So far: {top.quote ? `“${top.quote}”` : top.label}</span> : null}</span>
+                                ) : top ? (
                                     <>
                                         <span className={cn("mr-1.5 rounded-sm px-1 py-0.5 text-[11px] font-medium", top.via === "keyword" ? "bg-warning-bg text-warning" : "bg-accent-subtle text-accent-text")}>{VIA_LABEL[top.via]}</span>
                                         <span className="text-fg">{top.quote ? `“${top.quote}”` : top.label}</span>
@@ -147,7 +168,7 @@ export function EvidenceTable({ rows }: { rows: MatchRow[] }) {
                                 )}
                             </Td>
                             <Td className="whitespace-nowrap font-mono text-xs tabular-nums">
-                                {r.years ? <span className={r.years.have < r.years.need ? "text-warning" : "text-fg-muted"}>{r.years.have}/{r.years.need} y</span> : <span className="text-fg-subtle">–</span>}
+                                {r.years && !pending ? <span className={r.years.have < r.years.need ? "text-warning" : "text-fg-muted"}>{r.years.have}/{r.years.need} y</span> : <span className="text-fg-subtle">–</span>}
                             </Td>
                             <Td className="whitespace-nowrap text-xs">
                                 {r.tier === "soft" ? <span className="text-fg-subtle">–</span>

@@ -40,11 +40,20 @@ export function GuestClaim() {
             result.jobId && "The job you matched is in your Job Tracker.",
         ].filter(Boolean).join(" ");
     return (
-        <div className="fixed right-4 bottom-4 z-50 max-w-md shadow-sm">
+        <div className="group fixed top-16 right-4 z-50 max-w-md overflow-hidden rounded-md shadow-sm">
             <NoticeBanner tone={result.ok ? "success" : "danger"} onDismiss={() => setResult(null)}>
                 {text}{" "}
                 {result.jobId && <Link className="font-medium underline underline-offset-2" href={jobHref(result.jobId)}>Open the full review</Link>}
             </NoticeBanner>
+            {/* A success note leaves on its own: the bar runs down over 12 s and pauses while hovered or focused.
+                An error stays until dismissed. */}
+            {result.ok && (
+                <span
+                    aria-hidden
+                    onAnimationEnd={() => setResult(null)}
+                    className="toast-countdown absolute inset-x-0 bottom-0 h-0.5 origin-left bg-success/40 group-hover:[animation-play-state:paused] group-focus-within:[animation-play-state:paused]"
+                />
+            )}
         </div>
     );
 }

@@ -242,3 +242,271 @@ body {
 dialog::backdrop {
   background: var(--overlay);
 }
+
+/* ── Motion system ─────────────────────────────────────────────────────────────────────────────────
+ * One vocabulary for every animation (see lib/ui/motion.ts for the JS side, same values):
+ *   entrances ease-out · moves ease-in-out · exits ease-in and 20% shorter than their entrance ·
+ *   popovers/dialogs/dropdowns 150-250 ms and start at scale 0.95 · list rows stagger 30 ms ·
+ *   no overshoot on everyday UI. Users who ask the OS for reduced motion get none (bottom of this block).
+ */
+@theme {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+:root {
+  --dur-press: 120ms;
+  --dur-pop: 200ms;
+  --dur-pop-exit: 160ms; /* 20% shorter */
+  --dur-move: 240ms;
+  --dur-reveal: 220ms;
+  --dur-reveal-exit: 176ms;
+  --stagger: 30ms;
+}
+
+/* Press: everything clickable scales to 0.97 while pressed. */
+@utility press {
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease-out);
+  &:active:not(:disabled) {
+    transform: scale(0.97);
+    transition-duration: var(--dur-press);
+  }
+}
+
+/* List rows: rise in, 30 ms apart (index in --i, capped so long lists still land fast). */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@utility rise-in {
+  animation: rise-in var(--dur-reveal) var(--ease-out) backwards;
+  animation-delay: calc(min(var(--i, 0), 12) * var(--stagger));
+}
+
+/* Details settle: an opened body is revealed top-down through a mask, its children arrive in sequence. */
+@keyframes mask-reveal {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes settle-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+@utility settle {
+  animation: mask-reveal var(--dur-reveal) var(--ease-out) both;
+  & > * {
+    animation: settle-in var(--dur-reveal) var(--ease-out) both;
+  }
+  & > :nth-child(2) { animation-delay: calc(1 * var(--stagger)); }
+  & > :nth-child(3) { animation-delay: calc(2 * var(--stagger)); }
+  & > :nth-child(4) { animation-delay: calc(3 * var(--stagger)); }
+  & > :nth-child(5) { animation-delay: calc(4 * var(--stagger)); }
+  & > :nth-child(n + 6) { animation-delay: calc(5 * var(--stagger)); }
+}
+
+/* Success: one soft ring pulse. */
+@keyframes pulse-success {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 7px color-mix(in oklab, var(--accent) 0%, transparent);
+  }
+}
+@utility pulse-success {
+  animation: pulse-success 520ms var(--ease-out) 1;
+}
+
+/* Fade for content that swaps in place (view bodies, skeleton -> page). */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@utility fade-in {
+  animation: fade-in var(--dur-pop) var(--ease-out) both;
+}
+
+/*
+ * Native <dialog>: enters from its trigger (transform-origin is set to the trigger by the component),
+ * from scale 0.95, ease-out; exits back to it, ease-in and 20% shorter. Needs @starting-style and
+ * transition-behavior (current Chrome, Safari, Firefox); older browsers just show and hide it.
+ */
+dialog.motion-pop {
+  opacity: 0;
+  transform: scale(0.95);
+  transform-origin: var(--origin, 50% 50%);
+  transition:
+    opacity var(--dur-pop-exit) var(--ease-in),
+    transform var(--dur-pop-exit) var(--ease-in),
+    overlay var(--dur-pop-exit) var(--ease-in) allow-discrete,
+    display var(--dur-pop-exit) var(--ease-in) allow-discrete;
+}
+dialog.motion-pop[open] {
+  opacity: 1;
+  transform: scale(1);
+  transition-duration: var(--dur-pop);
+  transition-timing-function: var(--ease-out);
+}
+@starting-style {
+  dialog.motion-pop[open] {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* Mobile navigation drawer: slides from the left edge, where its menu button is. */
+dialog.motion-drawer {
+  transform: translateX(-100%);
+  transition:
+    transform var(--dur-reveal-exit) var(--ease-in),
+    overlay var(--dur-reveal-exit) var(--ease-in) allow-discrete,
+    display var(--dur-reveal-exit) var(--ease-in) allow-discrete;
+}
+dialog.motion-drawer[open] {
+  transform: translateX(0);
+  transition-duration: 260ms;
+  transition-timing-function: var(--ease-out);
+}
+@starting-style {
+  dialog.motion-drawer[open] {
+    transform: translateX(-100%);
+  }
+}
+
+dialog.motion-pop::backdrop,
+dialog.motion-drawer::backdrop {
+  opacity: 0;
+  transition:
+    opacity var(--dur-pop-exit) var(--ease-in),
+    overlay var(--dur-pop-exit) allow-discrete,
+    display var(--dur-pop-exit) allow-discrete;
+}
+dialog.motion-pop[open]::backdrop,
+dialog.motion-drawer[open]::backdrop {
+  opacity: 1;
+  transition-duration: var(--dur-pop);
+  transition-timing-function: var(--ease-out);
+}
+@starting-style {
+  dialog.motion-pop[open]::backdrop,
+  dialog.motion-drawer[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+/* Switch knob: travels ease-in-out and stretches 12% mid-travel. Explicit from/to (a transform transition
+ * would outrank the animation in the cascade); two names so every toggle restarts it. */
+@keyframes knob-stretch-on {
+  from { transform: translate(var(--knob-from), -50%); }
+  50% { transform: translate(var(--knob-mid), -50%) scaleX(1.12); }
+  to { transform: translate(var(--knob-to), -50%); }
+}
+@keyframes knob-stretch-off {
+  from { transform: translate(var(--knob-from), -50%); }
+  50% { transform: translate(var(--knob-mid), -50%) scaleX(1.12); }
+  to { transform: translate(var(--knob-to), -50%); }
+}
+
+/* Reduced motion: no animation at all (the user's choice). Loading spinners keep turning: they say
+ * "working", and a frozen spinner reads as a hang. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after,
+  ::backdrop {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-spin {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
+/* A success notice rises in, then pulses once to confirm. */
+@utility notice-in-success {
+  animation:
+    rise-in var(--dur-reveal) var(--ease-out) both,
+    pulse-success 520ms var(--ease-out) 140ms 1;
+}
+
+/* List rows rise in 30 ms apart, in DOM order (capped at the 12th so long lists land fast). Backwards
+ * fill only: once a row has arrived, inline transforms (drag and drop) apply untouched. */
+@utility stagger-children {
+  & > * {
+    animation: rise-in var(--dur-reveal) var(--ease-out) backwards;
+  }
+  & > :nth-child(2) { animation-delay: calc(1 * var(--stagger)); }
+  & > :nth-child(3) { animation-delay: calc(2 * var(--stagger)); }
+  & > :nth-child(4) { animation-delay: calc(3 * var(--stagger)); }
+  & > :nth-child(5) { animation-delay: calc(4 * var(--stagger)); }
+  & > :nth-child(6) { animation-delay: calc(5 * var(--stagger)); }
+  & > :nth-child(7) { animation-delay: calc(6 * var(--stagger)); }
+  & > :nth-child(8) { animation-delay: calc(7 * var(--stagger)); }
+  & > :nth-child(9) { animation-delay: calc(8 * var(--stagger)); }
+  & > :nth-child(10) { animation-delay: calc(9 * var(--stagger)); }
+  & > :nth-child(11) { animation-delay: calc(10 * var(--stagger)); }
+  & > :nth-child(12) { animation-delay: calc(11 * var(--stagger)); }
+  & > :nth-child(n + 13) { animation-delay: calc(12 * var(--stagger)); }
+}
+
+/* Skeleton shimmer: a soft highlight sweeps across, then rests before the next pass. */
+@keyframes shimmer {
+  0% { background-position: 150% 0; }
+  60%, 100% { background-position: -50% 0; }
+}
+@utility shimmer {
+  background-image: linear-gradient(90deg, transparent 0%, color-mix(in oklab, var(--fg) 6%, transparent) 50%, transparent 100%);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: shimmer 1.8s var(--ease-in-out) infinite;
+}
+
+/* Score ring arc: draws in once on mount, then eases (in-out: it is a move) to a new value. */
+@keyframes score-draw {
+  from {
+    stroke-dashoffset: var(--ring-c);
+  }
+}
+@utility score-arc {
+  animation: score-draw 600ms var(--ease-out) backwards;
+  transition: stroke-dashoffset 420ms var(--ease-in-out);
+}
+
+/* Theme switch reveal (setThemeFrom): the new snapshot is unmasked by script; no default crossfade. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* Toast countdown bar (linear: it measures time, it is not an object moving). */
+@keyframes toast-countdown {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+@utility toast-countdown {
+  animation: toast-countdown 12s linear forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* A timer, not decoration: keep its real length or the toast would vanish at once. */
+  .toast-countdown {
+    animation-duration: 12s !important;
+  }
+}

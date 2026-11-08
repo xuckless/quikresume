@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useRef } from "react";
+import React, { useId, useRef } from "react";
+import { m } from "motion/react";
+import { useMotionPresets } from "@/lib/ui/motion";
 import { cn } from "@/lib/cn";
 import { FOCUS_RING } from "./button";
 
@@ -21,6 +23,9 @@ interface TabsProps<T extends string> {
 /** Underline tabs. Scrolls horizontally when it overflows; arrow keys move between tabs. */
 export function Tabs<T extends string>({ items, value, onChange, className, "aria-label": ariaLabel }: TabsProps<T>) {
     const listRef = useRef<HTMLDivElement>(null);
+    // The underline is one element that slides between tabs.
+    const underlineId = useId();
+    const motionT = useMotionPresets();
 
     const onKeyDown = (e: React.KeyboardEvent) => {
         if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
@@ -48,7 +53,7 @@ export function Tabs<T extends string>({ items, value, onChange, className, "ari
                         tabIndex={active ? 0 : -1}
                         onClick={() => onChange(t.value)}
                         className={cn(
-                            "relative flex h-9 shrink-0 items-center gap-1.5 rounded-t-md px-2.5 text-13 whitespace-nowrap transition-colors",
+                            "press relative flex h-9 shrink-0 items-center gap-1.5 rounded-t-md px-2.5 text-13 whitespace-nowrap",
                             active ? "text-fg font-medium" : "text-fg-muted hover:text-fg",
                             FOCUS_RING,
                         )}
@@ -57,7 +62,7 @@ export function Tabs<T extends string>({ items, value, onChange, className, "ari
                         {t.count !== undefined && (
                             <span className={cn("rounded-sm px-1 text-xs tabular-nums", active ? "bg-surface-muted text-fg-muted" : "text-fg-subtle")}>{t.count}</span>
                         )}
-                        {active && <span aria-hidden className="absolute inset-x-1.5 -bottom-px h-0.5 rounded-full bg-accent" />}
+                        {active && <m.span layoutId={underlineId} aria-hidden className="absolute inset-x-1.5 -bottom-px h-0.5 rounded-full bg-accent" transition={motionT.move} />}
                     </button>
                 );
             })}

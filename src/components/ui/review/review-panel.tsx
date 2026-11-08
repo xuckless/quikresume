@@ -53,7 +53,8 @@ export function ReviewPanel({ review, suggestions, stale, briefOutdated, running
                     </Button>
                 )}
             </div>
-            {review.comment && <p className="text-fg-muted leading-relaxed">{review.comment}</p>}
+            {/* A stale comment describes text that no longer exists: dimmed until the new review lands. */}
+            {review.comment && <p className={cn("text-fg-muted leading-relaxed", stale && !readOnly && "opacity-60")}>{review.comment}</p>}
             {stale && <p className="text-xs text-fg-subtle">{readOnly ? "Based on the last saved text; it is re-reviewed after you save." : "The text changed since this review; a new one is on its way."}</p>}
             {!stale && briefOutdated && <p className="text-xs text-fg-subtle">Written before you updated your About you answers.</p>}
             {suggestions.length > 0 && (

@@ -59,7 +59,7 @@ export default async function PrivacyPage() {
                 </ul>
 
                 <H>Cookies and local storage</H>
-                <p>We use a sign-in session cookie, and local or session storage for preferences such as the theme, open panels and the signed-out draft. No advertising or analytics trackers.</p>
+                <p>We use a sign-in session cookie, a preference cookie that remembers the preview pane&apos;s layout (open or closed, and its width) so pages load without shifting, and local or session storage for preferences such as the theme, open panels and the signed-out draft. No advertising or analytics trackers.</p>
 
                 <H>Keeping and deleting your data</H>
                 <p>Your data stays until you delete it. Delete single items at any time, or delete everything from <strong className="text-fg">Profile → Delete account</strong>: this removes your library, variants, jobs, preferences, connected extensions and sign-in link straight away. Usage counters expire on their own within days. You can also download your résumés as PDFs at any time.</p>

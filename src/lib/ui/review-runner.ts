@@ -2,8 +2,9 @@
 
 // Client side of the background coach review (/api/review/run). One request at a time per tab; ids asked
 // for while a run is in flight are queued for the next one. Automatic runs are fire-and-forget and never
-// awaited by a save. Guards against loops: an automatic run for a set of stale items is attempted once
-// per session, and a server without GLM switches automatic runs off.
+// awaited by a save. Guards against loops: an automatic run for a set of stale items (ids + text hashes)
+// is attempted once per session, and a server without GLM switches automatic runs off. Automatic runs
+// wait for the user to stop changing things (several accepts in a row become one review of the final text).
 
 import { useSyncExternalStore } from "react";
 import { readJson } from "./fetch-json";
@@ -27,6 +28,9 @@ const attempted = new Set<string>();
 let queuedIds = new Set<string>();
 let queuedStale = false;
 let onDoneQueue: ((r: RunResult) => void)[] = [];
+/** Quiet time before an automatic run starts; every new change restarts it. */
+export const AUTO_REVIEW_DELAY_MS = 2500;
+let autoTimer: ReturnType<typeof setTimeout> | null = null;
 
 const SERVER: ReviewRunState = { running: false, ids: [], error: null };
 export function useReviewRunState(): ReviewRunState {
@@ -68,18 +72,30 @@ async function drain(first: { ids?: string[]; scope?: Scope }) {
 }
 
 /**
- * Starts a review run. `ids` re-reviews those items (explicit); otherwise items whose text changed.
- * `signature` (sorted stale ids) makes an automatic run happen once per set of changes.
+ * Starts a review run. `ids` re-reviews those items (explicit, immediate); otherwise items whose text
+ * changed. `signature` (stale ids + text hashes) makes an automatic run happen once per set of changes,
+ * after AUTO_REVIEW_DELAY_MS without a newer change.
  */
 export function kickReviews(opts: { ids?: string[]; scope?: Scope; signature?: string; onDone?: (r: RunResult) => void } = {}): void {
     const explicit = Boolean(opts.ids?.length) || opts.scope === "outdated-brief";
-    if (!explicit) {
-        if (disabled) return;
-        if (opts.signature !== undefined) {
-            if (attempted.has(opts.signature)) return;
-            attempted.add(opts.signature);
-        }
+    if (!explicit && opts.signature !== undefined) {
+        if (disabled || attempted.has(opts.signature)) return;
+        // Debounced: a newer change replaces the pending run (the newest signature covers the final text).
+        if (autoTimer) clearTimeout(autoTimer);
+        const signature = opts.signature;
+        autoTimer = setTimeout(() => {
+            autoTimer = null;
+            if (disabled || attempted.has(signature)) return;
+            attempted.add(signature);
+            start({ onDone: opts.onDone });
+        }, AUTO_REVIEW_DELAY_MS);
+        return;
     }
+    if (!explicit && disabled) return;
+    start(opts);
+}
+
+function start(opts: { ids?: string[]; scope?: Scope; onDone?: (r: RunResult) => void }): void {
     if (opts.onDone) onDoneQueue.push(opts.onDone);
     if (state.running) {
         if (opts.ids?.length) opts.ids.forEach(id => queuedIds.add(id));
@@ -87,6 +103,11 @@ export function kickReviews(opts: { ids?: string[]; scope?: Scope; signature?: s
         return;
     }
     void drain({ ids: opts.ids, scope: opts.scope });
+}
+
+/** The pending automatic run is no longer wanted (nothing is stale any more, or the view changed). */
+export function cancelPendingAutoReview(): void {
+    if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
 }
 
 /** Runs "outdated-brief" reviews until nothing is left (or a pass makes no progress). */

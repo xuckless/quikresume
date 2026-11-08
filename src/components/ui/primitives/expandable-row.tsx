@@ -39,13 +39,14 @@ export function ExpandableRow({ open, onToggle, summary, controls, children, cla
                     onClick={onToggle}
                     className={cn("flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 pr-2 text-left", FOCUS_RING, "focus-visible:ring-inset focus-visible:ring-offset-0")}
                 >
-                    <ChevronDown className={cn("size-4 shrink-0 text-fg-subtle transition-transform", open && "rotate-180")} aria-hidden />
+                    <ChevronDown className={cn("size-4 shrink-0 text-fg-subtle transition-transform duration-[240ms] ease-in-out", open && "rotate-180")} aria-hidden />
                     <div className={cn("min-w-0 flex-1", muted && "opacity-60")}>{summary}</div>
                 </button>
                 {controls && <div className="flex shrink-0 items-center gap-2 pr-4 pl-1">{controls}</div>}
             </div>
+            {/* Details settle: revealed top-down through a mask, children arriving 30 ms apart. */}
             <div id={bodyId} hidden={!open} className="pb-4 pl-11 pr-4">
-                {open && children}
+                {open && <div className="settle">{children}</div>}
             </div>
         </Tag>
     );

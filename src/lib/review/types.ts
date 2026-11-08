@@ -3,6 +3,7 @@
 // as `review` (users/{uid}.profileReview for the profile). Pure and isomorphic.
 
 import type { ResumeListKey } from "@/types/schema";
+import { readCandidates, readHistory, type ReviewCandidate, type ReviewHistoryEntry } from "./history";
 
 export const REVIEW_FLAGS = [
     "too-wordy", "vague", "no-metrics", "weak-verb", "buzzwords", "passive-voice", "first-person",
@@ -46,8 +47,13 @@ export interface ItemReview {
     flags: ReviewFlag[];
     comment: string;
     suggestions: ReviewSuggestion[];
-    /** Suggestion ids the user dismissed. */
+    /** Suggestion ids the user dismissed (kept across re-reviews: an identical rewrite stays hidden). */
     dismissed: string[];
+    /** What the user accepted / declined in earlier reviews; sent back to the coach so it converges. */
+    history: ReviewHistoryEntry[];
+    /** Suggestions of the review this one replaced, still unresolved when it was written (an accept made
+     *  while this review ran is recognised from them on the next run). */
+    prior: ReviewCandidate[];
     /** Content hash of the text that was reviewed (same hash rule as tags). */
     reviewHash: string;
     /** Candidate brief hash at review time (null: reviewed without "About you"). */
@@ -80,6 +86,8 @@ export function readReview(v: unknown): ItemReview | null {
             })
             : [],
         dismissed: Array.isArray(o.dismissed) ? o.dismissed.filter((x): x is string => typeof x === "string") : [],
+        history: readHistory(o.history),
+        prior: readCandidates(o.prior),
         reviewHash: o.reviewHash,
         briefHash: typeof o.briefHash === "string" ? o.briefHash : null,
         reviewedAt: typeof at === "string" ? at : typeof at?.toDate === "function" ? at.toDate().toISOString() : null,

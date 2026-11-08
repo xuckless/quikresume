@@ -14,7 +14,8 @@ export function MarketingHeader({ session, backHome = false }: { session: Sessio
                 </Link>
                 <nav className="flex items-center gap-2">
                     {session ? (
-                        <Link href="/dashboard" className={`${BTN} bg-accent text-accent-fg hover:bg-accent-hover`}>Dashboard</Link>
+                        // Plain <a>: entering the signed-in area must be a full page load so its CSP (Typst wasm) applies.
+                        <a href="/dashboard" className={`${BTN} bg-accent text-accent-fg hover:bg-accent-hover`}>Dashboard</a>
                     ) : backHome ? (
                         <Link href="/" className={`${BTN} text-fg-muted hover:bg-surface-hover hover:text-fg`}>Back to home</Link>
                     ) : (

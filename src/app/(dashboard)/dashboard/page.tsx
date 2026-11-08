@@ -21,6 +21,8 @@ import { DEFAULT_CAPS } from "@/lib/match/types"
 import { toResumeData } from "@/lib/resume-mapper"
 import DashboardClient from "@/components/dashboard-client"
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { PANE_COOKIE, parsePaneCookie } from "@/lib/ui/preview-pane-cookie";
 
 // Save & Exit runs the smart-tag extractor (GLM) inside the server action;
 // actions inherit this segment's limit.
@@ -33,8 +35,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         redirect("/login");
     }
 
-    const [sp, about, profile, experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages, variants, loadedVariantId, jobs, preferences, tagAliases, layout, custom] =
+    const [cookieStore, sp, about, profile, experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages, variants, loadedVariantId, jobs, preferences, tagAliases, layout, custom] =
         await Promise.all([
+            cookies(),
             searchParams,
             getCharacterizationSummary(),
             getUserProfile(),
@@ -100,6 +103,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             linkChecks={profile?.linkChecks ?? {}}
             about={about ?? { status: null, briefHash: null }}
             profileReview={profile?.profileReview ?? null}
+            initialPane={parsePaneCookie(cookieStore.get(PANE_COOKIE)?.value)}
             userName={initialResumeData.personalInfo.firstName || session.user.name?.split(" ")[0] || "there"}
         />
     )

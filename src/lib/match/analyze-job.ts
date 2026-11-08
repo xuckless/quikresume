@@ -4,7 +4,7 @@
 // Callers run it inside withAiUser(uid, "job-analyze", ...) and own guarding / input parsing.
 
 import { cleanCompanyDomain } from "@/lib/jobs/company-domain";
-import { isSeniority } from "@/lib/match/seniority";
+import { candidateLevel, contradictsMeasuredLevel, isSeniority, type Seniority } from "@/lib/match/seniority";
 import "server-only";
 import { after } from "next/server";
 import { chatCompletion, textModel } from "@/lib/glm/client";
@@ -13,7 +13,7 @@ import { readTagAliases } from "@/lib/db/meta";
 import { createJob, countJobs, MAX_JOBS } from "@/lib/db/jobs";
 import { readCandidateContext } from "@/lib/db/characterization";
 import { reconcileRunningMs, reconcileTimeoutMs, runReconcileJob } from "@/lib/match/reconcile";
-import { JD_SYSTEM_PROMPT, jdUserMessage } from "@/lib/match/prompt";
+import { JD_SYSTEM_PROMPT, jdUserMessage, type MeasuredLevel } from "@/lib/match/prompt";
 import { makeTag, type AliasMap } from "@/lib/tags/normalize";
 import { isTagKind } from "@/lib/tags/types";
 import { withAiUser } from "@/lib/security/ai-budget";
@@ -48,6 +48,15 @@ export function parseRequirements(raw: unknown, aliases: AliasMap): Requirement[
     return out;
 }
 
+/** Model fit notes, minus seniority notes the measured résumé level contradicts, trimmed to 2. */
+function cleanFitNotes(raw: unknown[], jobLevel: Seniority | null, measured: Seniority | null): string[] {
+    return raw
+        .filter((n): n is string => typeof n === "string" && n.trim() !== "")
+        .filter(n => !contradictsMeasuredLevel(n, jobLevel, measured))
+        .slice(0, 2)
+        .map(n => cleanModelText(n, 200));
+}
+
 export interface AnalyzeJobInput {
     /** Sanitised posting text (sanitizeForPrompt, JD_MAX_CHARS). */
     jdText: string;
@@ -67,8 +76,13 @@ export async function analyzeAndSaveJob(uid: string, input: AnalyzeJobInput): Pr
     if (input.jdText.length < 40) throw new AnalyzeJobError("That job description is too short to analyse.", 400);
 
     const candidate = await readCandidateContext(uid);
+    // The same level / years the match panel's "Level" line shows, so fit notes can't contradict it.
+    const measuredLevel = input.resume ? candidateLevel(input.resume) : null;
+    const measured: MeasuredLevel | null = measuredLevel
+        ? { level: measuredLevel.level, years: measuredLevel.years, latestTitle: measuredLevel.fromTitle }
+        : null;
     const result = await chatCompletion(
-        [{ role: "system", content: JD_SYSTEM_PROMPT }, { role: "user", content: jdUserMessage(input.jdText, candidate) }],
+        [{ role: "system", content: JD_SYSTEM_PROMPT }, { role: "user", content: jdUserMessage(input.jdText, candidate, measured) }],
         { model: textModel(), json: true, effort: "low", temperature: 0.1, maxTokens: 6000 },
     );
     const json = extractJson(result.text) as Record<string, unknown>;
@@ -76,6 +90,7 @@ export async function analyzeAndSaveJob(uid: string, input: AnalyzeJobInput): Pr
     const requirements = parseRequirements(json.requirements, aliases);
     if (requirements.length === 0) throw new AnalyzeJobError("No requirements could be extracted from that text. Try the full posting.", 502);
 
+    const seniority = isSeniority(json.seniority) ? json.seniority : null;
     const reconcileTimeout = reconcileTimeoutMs(input.startedAt);
     const job = await createJob(uid, {
         title: cleanModelText(input.hints?.title ?? "", 120) || cleanModelText(String(json.title ?? ""), 120) || "Untitled job",
@@ -84,10 +99,10 @@ export async function analyzeAndSaveJob(uid: string, input: AnalyzeJobInput): Pr
         source: input.source,
         jdText: input.jdText,
         requirements,
-        seniority: isSeniority(json.seniority) ? json.seniority : null,
+        seniority,
         companyDomain: cleanCompanyDomain(json.companyDomain) ?? cleanCompanyDomain(input.posting?.url),
         fitNotes: candidate && Array.isArray(json.fitNotes)
-            ? json.fitNotes.filter((n): n is string => typeof n === "string" && n.trim() !== "").slice(0, 2).map(n => cleanModelText(n, 200))
+            ? cleanFitNotes(json.fitNotes, seniority, measuredLevel?.level ?? null)
             : [],
         ...input.posting,
         ...input.tracking,

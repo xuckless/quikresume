@@ -245,7 +245,7 @@ function Teaser({ draft, onBack }: { draft: GuestDraft; onBack: () => void }) {
                         <form action={signInFromStartAction}>
                             <Button type="submit" variant="primary">Sign in with Google to see the full review</Button>
                         </form>
-                        <p className="text-xs text-fg-muted">{draft.source === "upload" ? "Your imported résumé and this job are saved to your new account." : "This job is saved to your new account."}</p>
+                        <p className="text-xs text-fg-muted">{draft.source === "upload" ? "After sign-in, we’ll add your imported résumé if you don’t already have a library, and save this job to your Job Tracker." : "This job will be added to your Job Tracker after sign-in."}</p>
                     </div>
                 </div>
                 <Button variant="ghost" onClick={onBack}>Try another job</Button>

@@ -4,6 +4,8 @@ import React, { Suspense, useEffect, useOptimistic, useRef, useState, useTransit
 import { updateLayout } from "@/app/actions/layout-actions";
 import type { ResumeTheme } from "@/lib/layout/theme";
 import dynamic from "next/dynamic";
+import { AnimatePresence, m } from "motion/react";
+import { useMotionPresets } from "@/lib/ui/motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { ResumeData, ResumeListKey } from "@/types/schema";
 import { RESUME_LIST_KEYS } from "@/types/schema";
@@ -23,10 +25,11 @@ import { ConfirmDialog, Dialog } from "@/components/ui/primitives/dialog";
 import { NoticeBanner } from "@/components/ui/primitives/notice-banner";
 import { PanelRight, PenLine, Search, Upload } from "@/components/ui/primitives/icons";
 import { Input } from "@/components/ui/primitives/field";
-import { jobHref, parseView, useDashboardView, VIEW_TITLE, viewHref } from "@/lib/ui/use-dashboard-view";
+import { jobHref, navigateDashboard, parseView, useDashboardView, VIEW_TITLE, viewHref } from "@/lib/ui/use-dashboard-view";
 import { setLeaveGuard } from "@/lib/ui/leave-guard";
 import { useMediaQuery, XL } from "@/lib/ui/use-media-query";
-import { PANE_MIN, setPreviewPane, togglePreviewPane, usePreviewPane, usePreviewPaneWidth } from "@/lib/ui/preview-pane-store";
+import { PANE_MIN, setPreviewPane, togglePreviewPane, usePaneState } from "@/lib/ui/preview-pane-store";
+import type { PaneSnapshot } from "@/lib/ui/preview-pane-cookie";
 import { PaneResizeHandle } from "@/components/ui/pane-resize-handle";
 import { saveResumeData } from "@/app/actions/resume-actions";
 import { updateExperience } from "@/app/actions/experience-actions";
@@ -53,8 +56,8 @@ import { dismissAboutNudge, useAboutNudgeDismissed } from "@/lib/ui/about-nudge-
 import type { CharacterizationSummary } from "@/app/actions/about-actions";
 import Link from "next/link";
 import type { ItemReview } from "@/lib/review/types";
-import { isBriefOutdated, lowScoreItems, reviewStaleInputs, type ReviewMap } from "@/lib/review/content";
-import { kickReviews, reReviewAll } from "@/lib/ui/review-runner";
+import { isBriefOutdated, lowScoreItems, staleReviewSignature, type ReviewMap } from "@/lib/review/content";
+import { cancelPendingAutoReview, kickReviews, reReviewAll } from "@/lib/ui/review-runner";
 import { ActionItemsCard, type OpenItem } from "@/components/ui/action-items-card";
 import { Switch } from "@/components/ui/primitives/switch";
 import { setAdvancedLayout, useAdvancedLayout } from "@/lib/ui/advanced-layout-store";
@@ -98,6 +101,8 @@ interface DashboardClientProps extends LibraryLists {
     linkChecks: LinkChecks;
     about: CharacterizationSummary;
     profileReview: ItemReview | null;
+    /** The preview pane as the server saw it (cookie), so the first render already has its column. */
+    initialPane: PaneSnapshot;
 }
 
 type Notice = { tone: "ok" | "warn"; text: string };
@@ -124,16 +129,25 @@ function DashboardClientInner({
     linkChecks,
     about,
     profileReview,
+    initialPane,
 }: DashboardClientProps) {
     const router = useRouter();
+    const motionT = useMotionPresets();
     const [view, setView] = useDashboardView();
     const advancedLayout = useAdvancedLayout();
     const aboutNudgeDismissed = useAboutNudgeDismissed();
     const wide = useMediaQuery(XL);
-    const paneWanted = usePreviewPane();
-    const paneOpen = wide && paneWanted && view !== "preview";
-    const storedPaneWidth = usePreviewPaneWidth();
+    const { open: paneWanted, width: storedPaneWidth } = usePaneState(initialPane);
+    // Layout only: the pane's column is xl-only CSS, so it renders from the server snapshot without waiting for
+    // the media query; its content (the Typst preview) mounts once the client knows the screen is wide.
+    const paneOpen = paneWanted && view !== "preview";
     const [dragWidth, setDragWidth] = useState<number | null>(null);
+    /** True for the moment after a resize is released, while the pane eases to its final width. */
+    const [paneSettling, setPaneSettling] = useState(false);
+    const onPaneDrag = (px: number | null, settle?: boolean) => {
+        setPaneSettling(Boolean(settle));
+        setDragWidth(px);
+    };
     const paneWidth = dragWidth ?? storedPaneWidth;
     const gridRef = useRef<HTMLDivElement>(null);
 
@@ -155,7 +169,7 @@ function DashboardClientInner({
     // The open job lives in the URL (?view=jobs&job=<id>) so a job page can be linked to and Back returns to the board.
     const searchParams = useSearchParams();
     const selectedJobId = view === "jobs" ? searchParams.get("job") : null;
-    const setSelectedJobId = (id: string | null) => router.push(jobHref(id), { scroll: false });
+    const setSelectedJobId = (id: string | null) => navigateDashboard(router, jobHref(id));
     const [externalResume, setExternalResume] = useState<ExternalResume | null>(null);
 
     // Draft model: `draft` is null unless the editor is open. Everything else
@@ -213,12 +227,26 @@ function DashboardClientInner({
         [experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages, custom].flat().map(r => [r.id, r.review]),
     );
     const refresh = () => router.refresh();
+    // View switches no longer re-render the server page, so pick up changes made elsewhere (the extension,
+    // another tab) when this tab comes back, at most once a minute and never over an open editor draft.
+    useEffect(() => {
+        let last = Date.now();
+        const onVisible = () => {
+            if (document.visibilityState !== "visible" || hasDraft || Date.now() - last < 60_000) return;
+            last = Date.now();
+            router.refresh();
+        };
+        document.addEventListener("visibilitychange", onVisible);
+        return () => document.removeEventListener("visibilitychange", onVisible);
+    }, [router, hasDraft]);
     // Library: review whatever changed since its last review (Library edits, accepted suggestions, Job Match
-    // answers). Keyed on the ids, so each set of changes is attempted once (see review-runner.ts).
-    const staleReviewSig = view === "library" ? reviewStaleInputs(initialResumeData, reviews, profileReview).map(i => i.id).sort().join(",") : "";
+    // answers). Keyed on ids + text hashes, so each new version is reviewed once, after a short quiet time
+    // (several accepts in a row become one review of the final text; see review-runner.ts).
+    const staleReviewSig = view === "library" ? staleReviewSignature(initialResumeData, reviews, profileReview) : "";
     useEffect(() => {
         if (!staleReviewSig) return;
         kickReviews({ signature: staleReviewSig, onDone: r => { if (r.reviewed > 0) router.refresh(); } });
+        return cancelPendingAutoReview;
     }, [staleReviewSig, router]);
     const outdatedReviews = about.briefHash
         ? Object.values(reviews).filter(r => isBriefOutdated(r, about.briefHash)).length + (isBriefOutdated(profileReview, about.briefHash) ? 1 : 0)
@@ -316,7 +344,7 @@ function DashboardClientInner({
                 : result.tagged > 0
                     ? { tone: "ok", text: `Saved. Analysed skills for ${result.tagged} ${result.tagged === 1 ? "item" : "items"}.` }
                     : { tone: "ok", text: "Saved." });
-            if (target) router.push(target, { scroll: false });
+            if (target) navigateDashboard(router, target);
             else setView("library", { replace: true });
         } catch (error) {
             console.error("Failed to save:", error);
@@ -328,7 +356,7 @@ function DashboardClientInner({
 
     const handleSaveAndExit = (target: string | null = null) => {
         if (!draft) {
-            if (target) router.push(target, { scroll: false });
+            if (target) navigateDashboard(router, target);
             else setView("library", { replace: true });
             return;
         }
@@ -344,7 +372,7 @@ function DashboardClientInner({
         setPendingDeletes([]);
         setSaveError(null);
         setNotice(null);
-        if (href) router.push(href, { scroll: false });
+        if (href) navigateDashboard(router, href);
     };
     const leaveSaving = () => {
         const href = pendingLeave;
@@ -397,9 +425,13 @@ function DashboardClientInner({
     const counts = libraryCounts(lists);
     const draftCounts = Object.fromEntries(RESUME_LIST_KEYS.map(k => [k, editorDraft[k].length])) as Record<ResumeListKey, number>;
 
-    const previewToggle = wide
-        ? <IconButton icon={PanelRight} aria-label={paneWanted ? "Hide preview pane" : "Show preview pane"} aria-pressed={paneWanted} variant={paneWanted ? "secondary" : "ghost"} size="md" onClick={togglePreviewPane} />
-        : <Button variant="ghost" onClick={() => setView("preview")}>Preview</Button>;
+    // Both rendered, CSS picks by width: no swap after hydration.
+    const previewToggle = (
+        <>
+            <IconButton icon={PanelRight} aria-label={paneWanted ? "Hide preview pane" : "Show preview pane"} aria-pressed={paneWanted} variant={paneWanted ? "secondary" : "ghost"} size="md" onClick={togglePreviewPane} className="hidden xl:inline-flex" />
+            <Button variant="ghost" onClick={() => setView("preview")} className="xl:hidden">Preview</Button>
+        </>
+    );
 
     const actions =
         view === "editor" ? (
@@ -438,6 +470,8 @@ function DashboardClientInner({
             </>
         ) : view === "preview" ? (
             wide ? <Button variant="secondary" onClick={() => { setPreviewPane(true); setView("library", { replace: true }); }}>Dock as side pane</Button> : null
+        ) : view === "jobs" ? (
+            null // the board and the job page carry their own navigation ("All jobs")
         ) : (
             <Button variant="ghost" onClick={() => setView("library")}>Back to library</Button>
         );
@@ -508,7 +542,7 @@ function DashboardClientInner({
     return (
         <>
             <TopBar
-                title={VIEW_TITLE[view]}
+                title={view === "jobs" && selectedJobId ? "Job Match" : VIEW_TITLE[view]}
                 actions={actions}
                 tabs={tabs}
             />
@@ -517,11 +551,15 @@ function DashboardClientInner({
                 ref={gridRef}
                 className={cn("flex-1", paneOpen && "xl:grid")}
                 // clamp(): the 50% cap follows window resizes without JS.
-                style={paneOpen ? { gridTemplateColumns: `minmax(0,1fr) clamp(${PANE_MIN}px, ${paneWidth}px, 50%)` } : undefined}
+                style={paneOpen ? {
+                    // While dragging the width is used as-is (the handle rubber-bands it past the limits).
+                    gridTemplateColumns: dragWidth !== null ? `minmax(0,1fr) ${dragWidth}px` : `minmax(0,1fr) clamp(${PANE_MIN}px, ${paneWidth}px, 50%)`,
+                    transition: paneSettling ? "grid-template-columns 240ms var(--ease-out)" : undefined,
+                } : undefined}
             >
                 <main className="min-w-0 p-4 pb-16 md:p-6">
                     {/* Job Match is a two-column workspace: let it use the full width left of the pane. */}
-                    <div className={cn("mx-auto space-y-4", view === "jobs" ? "max-w-[1600px]" : "max-w-5xl")}>
+                    <div className={cn("relative mx-auto space-y-4", view === "jobs" ? "max-w-[1600px]" : "max-w-5xl")}>
                         {saveError && <NoticeBanner tone="danger" onDismiss={() => setSaveError(null)}>{saveError}</NoticeBanner>}
                         {notice && (view === "editor" || view === "library") && (
                             <NoticeBanner tone={notice.tone === "ok" ? "success" : "warning"} onDismiss={() => setNotice(null)}>{notice.text}</NoticeBanner>
@@ -534,13 +572,23 @@ function DashboardClientInner({
                             </NoticeBanner>
                         )}
                         {(view === "editor" || view === "library") && <ActionItemsCard overCap={overCap} invalidDates={invalidDates} lowScore={lowScoreItems(resumeData, reviews, profileReview)} onOpen={openItem} />}
-                        {body}
+                        {/* Old and new view overlap: the outgoing one fades out above while the new one fades in. */}
+                        <AnimatePresence initial={false} mode="popLayout">
+                            <m.div
+                                key={view === "jobs" ? `jobs:${selectedJobId ?? ""}` : view}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1, transition: motionT.view }}
+                                exit={{ opacity: 0, transition: motionT.viewExit }}
+                            >
+                                {body}
+                            </m.div>
+                        </AnimatePresence>
                     </div>
                 </main>
                 {paneOpen && (
                     <aside className="hidden xl:block sticky top-14 h-[calc(100dvh-3.5rem)] border-l border-border bg-surface-muted/60" aria-label="Résumé preview">
-                        <PaneResizeHandle containerRef={gridRef} width={paneWidth} onDrag={setDragWidth} />
-                        <ResumePreview resumeData={previewData} compact onClose={() => setPreviewPane(false)} onThemeChange={changeTheme} />
+                        <PaneResizeHandle containerRef={gridRef} width={paneWidth} onDrag={onPaneDrag} />
+                        {wide && <ResumePreview resumeData={previewData} compact onClose={() => setPreviewPane(false)} onThemeChange={changeTheme} />}
                     </aside>
                 )}
             </div>
