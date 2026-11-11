@@ -21,7 +21,7 @@ export default defineContentScript({
             }
             if (m?.type !== "capture-profile" || typeof m.url !== "string") return;
             captureProfile(m.url).then(
-                ({ data, warnings }) => reply({ ok: true, data, warnings } satisfies CaptureReply),
+                capture => reply({ ok: true, ...capture } satisfies CaptureReply),
                 err => reply({ ok: false, error: err instanceof CaptureError ? err.message : "Couldn't read your profile. Reload it, then click Import." } satisfies CaptureReply),
             );
             return true;

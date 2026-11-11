@@ -19,8 +19,8 @@ import {
     LINKEDIN_PORT, parseLinkedInAppPayload,
     type LinkedInAppPayload, type LinkedInExtPayload,
 } from "../../src/lib/ext/bridge";
-import type { ImportEnvelope } from "../../src/lib/import/envelope";
 import { canonicalProfileUrl, MAX_PROFILE_JSON } from "../../src/lib/import/linkedin";
+import type { CaptureResult } from "./profile-merge";
 
 export type LinkedInState =
     | { phase: "idle" }
@@ -81,7 +81,7 @@ export type LinkedInRequest =
 /** Background -> profile content script (entrypoints/linkedin-profile.content.ts). */
 export type ProfileTabRequest = { type: "profile-page" } | { type: "capture-profile"; url: string };
 export type ProfilePageReply = { loginWall: boolean };
-export type CaptureReply = { ok: true; data: ImportEnvelope; warnings: string[] } | { ok: false; error: string };
+export type CaptureReply = ({ ok: true } & CaptureResult) | { ok: false; error: string };
 
 export const MESSAGES = {
     mismatch: "This tab is not the LinkedIn profile saved in quikResume. Open your profile, then click Import.",

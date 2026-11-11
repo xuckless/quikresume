@@ -1,9 +1,14 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { CAPTURE_ERRORS, captureProfile, extractProfile, isDateLine, isLoginWall, splitDates } from "./profile-extract";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { CAPTURE_ERRORS, captureProfile, detailsUrl, extractProfile, isDateLine, isLoginWall, pageState, splitDates } from "./profile-extract";
+import { needsAnalysis } from "./profile-merge";
 
-// Minimal fixtures in the shape of LinkedIn's signed-in profile (2024-25): cards are <section>s with an
-// anchor <div id>, entries are <li>s whose visible text is in aria-hidden spans, each followed by a
-// visually-hidden twin for screen readers. Not captured from the live site; see the module header.
+// ---------- Older markup (2024-25), hand-built ----------
+// Cards are <section>s with an anchor <div id>, entries are <li>s whose visible text is in aria-hidden
+// spans, each followed by a visually-hidden twin for screen readers. Still read as a fallback (and
+// possibly the shape of /details/ pages); the current markup is tested on the live fixture below.
 const t = (text: string) => `<span aria-hidden="true">${text}</span><span class="visually-hidden">${text}</span>`;
 const entry = (lines: string[], sub = "", link = "") => `
   <li class="artdeco-list__item"><div data-view-name="profile-component-entity">
@@ -52,9 +57,11 @@ const PROFILE = `
 const ABOUT = `<section class="artdeco-card"><div id="about"></div><div><h2>${t("About")}</h2></div>
   <div class="inline-show-more-text">${t("I build payment systems.<br>Based in Toronto.")}</div></section>`;
 
+const JANE = "https://www.linkedin.com/in/jane-person";
+
 function load(html = PROFILE) {
     document.body.innerHTML = html.replace(card("about", "About", ""), ABOUT);
-    return extractProfile(document);
+    return extractProfile(document, JANE);
 }
 
 afterEach(() => { document.body.innerHTML = ""; });
@@ -74,7 +81,7 @@ describe("dates", () => {
     });
 });
 
-describe("extractProfile", () => {
+describe("extractProfile (older markup)", () => {
     it("reads the top card and About", () => {
         const { data } = load();
         expect(data.personalInfo).toEqual({
@@ -120,8 +127,9 @@ describe("extractProfile", () => {
         expect(json).not.toMatch(/John Other|Home My Network|Messaging overlay|Show all|see less/);
     });
 
-    it("warns about cards cut short on the profile page", () => {
-        const { warnings } = load();
+    it("reports cards cut short on the profile page", () => {
+        const { warnings, truncated } = load();
+        expect(truncated).toEqual({ experience: `${JANE}/details/experience/`, skills: `${JANE}/details/skills/` });
         expect(warnings).toEqual([
             "Experience may be incomplete: LinkedIn shows only part of it on your profile page.",
             "Skills may be incomplete: LinkedIn shows only part of it on your profile page.",
@@ -134,6 +142,7 @@ describe("extractProfile", () => {
         expect(data.projects).toEqual([]);
         expect(warnings).toContain("Could not read Projects.");
         expect(data.workExperience).toHaveLength(3);
+        expect(load(html).unread).toEqual(["projects"]);
     });
 
     it("needs the name to have rendered", () => {
@@ -159,18 +168,150 @@ describe("isLoginWall", () => {
     });
 });
 
+
+// ---------- Current markup: anonymised copy of a saved live profile (2026-11) ----------
+
+const LIVE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "__fixtures__/linkedin-profile-2026.html"), "utf8");
+const JORDAN = "https://www.linkedin.com/in/jordan-example";
+
+function live(edit?: (doc: Document) => void) {
+    document.body.innerHTML = LIVE;
+    edit?.(document);
+    return extractProfile(document, JORDAN);
+}
+/** Empties every entry of a card (a card whose markup the parser no longer understands). */
+const breakCard = (view: string) => (doc: Document) =>
+    doc.querySelectorAll(`[data-view-name="${view}"] [componentkey^="entity-collection-item"]`).forEach(el => { el.innerHTML = "<div><div></div></div>"; });
+
+describe("extractProfile (current markup)", () => {
+    it("reads the top card from its h2 and the About text", () => {
+        const { data, topCard } = live();
+        expect(topCard).toBe(true);
+        expect(data.personalInfo).toMatchObject({ name: "Jordan Example", headline: "Student at Northfield University.", location: "Lakeview, Ontario, Canada" });
+        expect(data.personalInfo?.summary).toMatch(/^Materials updated orders/);
+        expect(data.personalInfo?.summary).not.toMatch(/more$/);
+    });
+
+    it("reads every experience entry: title, company without employment type, both date forms, bullets", () => {
+        const jobs = live().data.workExperience ?? [];
+        expect(jobs.map(({ bullets: _, ...rest }) => rest)).toEqual([
+            { title: "Campus Outreach Assistant", company: "Northfield University", startDate: "Mar 2021", endDate: "Present" },
+            { title: "Field Service Technician", company: "Acme Field Services", startDate: "Jun 2022", endDate: "Sep 2023" },
+            { title: "Site Operator: Kiosk Repair Technician", company: "Globex Repair", startDate: "Sep 2022", endDate: "Dec 2022" },
+            { title: "Client Service Associate", company: "Initech Tax Services", startDate: "Jan 2021", endDate: "May 2021" },
+            { title: "Freelance Editor", company: "Self-employed", startDate: "2018", endDate: "Dec 2019" },
+        ]);
+        expect(jobs.map(j => j.bullets.length)).toEqual([6, 4, 3, 3, 3]);
+        expect(jobs[0]?.bullets[0]).toBe("Outreach Assistant, Office of Admissions - Northfield University");
+        // "•" stripped; no "… more", no "X, Y and +N skills", no location or "Present" marker in descriptions.
+        for (const b of jobs.flatMap(j => j.bullets)) expect(b).not.toMatch(/^•|…|more$|\+\d+ skills?|On-site|^Present$/);
+    });
+
+    it("splits several roles at one company (nested list items with their own dates) into one entry each", () => {
+        // Not in the saved page: the grouped shape is assumed from the single-role markup.
+        const role = (title: string, dates: string, text: string) =>
+            `<div role="listitem"><p>${title}</p><p>${dates}</p><p><span data-testid="expandable-text-box">• ${text}<br>• More ${text}</span></p></div>`;
+        const result = live(doc => {
+            const first = doc.querySelector('[data-view-name="profile-card-experience"] [componentkey^="entity-collection-item"]')!;
+            first.innerHTML = `<div><a href="https://www.linkedin.com/company/1/"><p>Globex</p></a><p>Full-time · 5 yrs</p><div role="list">${
+                role("Team Lead", "Mar 2018 - Dec 2020 · 2 yrs 10 mos", "Ran a team") + role("Developer", "2016 – Feb 2018", "Wrote code")}</div></div>`;
+        });
+        expect(result.data.workExperience?.slice(0, 2)).toEqual([
+            { title: "Team Lead", company: "Globex", startDate: "Mar 2018", endDate: "Dec 2020", bullets: ["Ran a team", "More Ran a team"] },
+            { title: "Developer", company: "Globex", startDate: "2016", endDate: "Feb 2018", bullets: ["Wrote code", "More Wrote code"] },
+        ]);
+    });
+
+    it("reads education, certifications, volunteering and the visible skills", () => {
+        const { data } = live();
+        expect(data.education).toEqual([{
+            degree: "Bachelor of Science (BSc) - Computer Science, Business Administration", institution: "Northfield University",
+            startDate: "Sep 2020", endDate: "Jul 2024", gpa: "3.7/4", details: "",
+        }]);
+        expect(data.certifications).toEqual([{ name: "Field Safety Licence", issuer: "OSHB", year: "Sep 2025", credentialId: "FS-100-2000300", expires: "Sep 2030" }]);
+        expect(data.volunteering).toEqual([expect.objectContaining({ role: "Outreach Coordinator", organization: "Students Helping Students (SHS)", startDate: "Oct 2020", endDate: "Dec 2021" })]);
+        expect(data.volunteering?.[0]?.bullets).toHaveLength(3);
+        expect(data.skills).toEqual([{ category: "Skills", items: ["Customer Service", "Data Entry"] }]);
+    });
+
+    it("is confident, and reports the Skills card as cut short (its Show all link, not the edit pencils)", () => {
+        const result = live();
+        expect(result.unread).toEqual([]);
+        expect(needsAnalysis(result)).toBe(false);
+        expect(result.truncated).toEqual({ skills: `${JORDAN}/details/skills/` });
+        expect(result.warnings).toEqual(["Skills may be incomplete: LinkedIn shows only part of it on your profile page."]);
+    });
+
+    it("ignores LinkedIn's own cards and the recommendations aside", () => {
+        const json = JSON.stringify(live().data);
+        expect(json).not.toMatch(/Dashboard|profile views|followers|Following|Connected apps|Connect\b|Show all|Interests/);
+    });
+
+    it("marks a recognised card it cannot read as unread, so the AI fallback runs", () => {
+        const result = live(breakCard("profile-card-experience"));
+        expect(result.data.workExperience).toEqual([]);
+        expect(result.unread).toEqual(["workExperience"]);
+        expect(result.warnings).toContain("Could not read Experience.");
+        expect(result.data.education).toHaveLength(1);
+        expect(needsAnalysis(result)).toBe(true);
+    });
+
+    it("tells a page still loading from a layout it does not recognise", () => {
+        document.body.innerHTML = '<main><div data-testid="lazy-column"><div></div></div></main>';
+        expect(pageState(document)).toBe("loading");
+        expect(() => extractProfile(document)).toThrow(CAPTURE_ERRORS.notLoaded);
+
+        document.body.innerHTML = LIVE;
+        document.querySelectorAll("[data-view-name]").forEach(el => el.removeAttribute("data-view-name"));
+        expect(pageState(document)).toBe("unrecognised");
+        const result = extractProfile(document, JORDAN);
+        expect(result).toMatchObject({ topCard: false, unread: [] });
+        expect(result.data.workExperience).toEqual([]);
+        expect(needsAnalysis(result)).toBe(true);
+    });
+});
+
+describe("detailsUrl", () => {
+    it.each([
+        ["https://www.linkedin.com/in/jordan-example/details/skills/", `${JORDAN}/details/skills/`],
+        ["/in/Jordan-Example/details/experience?x=1", `${JORDAN}/details/experience/`],
+        ["https://linkedin.com/in/jordan-example/details/certifications", `${JORDAN}/details/certifications/`],
+    ])("accepts the profile's own %s", (href, expected) => expect(detailsUrl(href, JORDAN)).toBe(expected));
+
+    it.each([
+        "https://www.linkedin.com/in/someone-else/details/skills/",
+        "https://www.linkedin.com/in/jordan-example/details/education/edit/forms/123/",
+        "https://evil.example/in/jordan-example/details/skills/",
+        "http://www.linkedin.com/in/jordan-example/details/skills/",
+        "https://www.linkedin.com/in/jordan-example/overlay/contact-info/",
+    ])("refuses %s", href => expect(detailsUrl(href, JORDAN)).toBeNull());
+});
+
 describe("captureProfile", () => {
-    const URL_ = "https://www.linkedin.com/in/jane-person";
-    const fakeWindow = (href: string) => ({ location: { href }, document, innerHeight: 800, scrollBy: () => {}, scrollTo: () => {} }) as unknown as Window;
+    const fakeWindow = (href: string) => ({ location: { href }, document, innerHeight: 800, scrollY: 0, scrollBy: () => {}, scrollTo: () => {} }) as unknown as Window;
+    const opts = () => ({ pause: async () => {} });
+    afterEach(() => { vi.restoreAllMocks(); });
 
     it("refuses a tab that is not the expected profile, before reading anything", async () => {
         document.body.innerHTML = PROFILE;
-        await expect(captureProfile(URL_, fakeWindow("https://www.linkedin.com/in/someone-else"))).rejects.toThrow(CAPTURE_ERRORS.mismatch);
-        await expect(captureProfile(URL_, fakeWindow(`${URL_}/details/experience/`))).rejects.toThrow(CAPTURE_ERRORS.mismatch);
+        await expect(captureProfile(JANE, fakeWindow("https://www.linkedin.com/in/someone-else"), opts())).rejects.toThrow(CAPTURE_ERRORS.mismatch);
+        await expect(captureProfile(JANE, fakeWindow(`${JANE}/details/experience/`), opts())).rejects.toThrow(CAPTURE_ERRORS.mismatch);
     });
 
     it("refuses a login wall on the right URL", async () => {
         document.body.innerHTML = '<div class="authwall"></div>';
-        await expect(captureProfile(URL_, fakeWindow(URL_))).rejects.toThrow(CAPTURE_ERRORS.loginWall);
+        await expect(captureProfile(JANE, fakeWindow(JANE), opts())).rejects.toThrow(CAPTURE_ERRORS.loginWall);
+    });
+
+    it("opens only the '… more' controls inside profile cards", async () => {
+        document.body.innerHTML = LIVE;
+        const clicked: Element[] = [];
+        vi.spyOn(HTMLElement.prototype, "click").mockImplementation(function (this: HTMLElement) { clicked.push(this); });
+        await captureProfile(JORDAN, fakeWindow(JORDAN), opts());
+        expect(clicked).toHaveLength(5);
+        for (const el of clicked) {
+            expect(el.getAttribute("data-testid")).toBe("expandable-text-button");
+            expect(el.closest('[data-view-name^="profile-card-"]')).not.toBeNull();
+        }
     });
 });
