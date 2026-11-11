@@ -366,7 +366,7 @@ reviewHash, briefHash, reviewedAt}` (`users.profileReview` for the profile); sta
 model -> `requirements: {name, display, kind, importance: must|nice, yearsMin}`, plus `seniority`, `fitNotes`, `companyDomain`.
 
 **Background enrichment** (`runReconcileJob` via `after()`, max effort, ≤ 250 s; also `POST /api/jobs/reconcile` "Re-check with AI").
-State on `job.match {status, runningUntil, checkedAt, libraryHash, warning}`; the page polls `GET /api/jobs/reconcile?jobId=` every 5 s.
+State on `job.match {status, runningUntil, checkedAt, libraryHash, warning}`; the page polls `GET /api/jobs/reconcile?jobId=` every 4 s (`MATCH_POLL_MS`).
 Failures never block: the job scores on tags.
 
 1. **Semantic evidence** (`lib/match/evidence.ts`): library units (`lib/match/units.ts`: item head + each bullet with title / org / dates
