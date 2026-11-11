@@ -59,7 +59,7 @@
   set text(font: th.body-font, size: pg.size * 1pt, fill: ink)
   set par(leading: pg.leading * 1em, justify: false)
   show link: set text(fill: th.accent)
-  set list(indent: 0pt, body-indent: 6pt, marker: text(fill: th.accent)[▸])
+  set list(indent: 0pt, body-indent: 6pt, marker: box(width: 0.42em, height: 0.5em, baseline: 0.02em, polygon(fill: th.accent, (0pt, 0pt), (0.42em, 0.25em), (0pt, 0.5em))))
 
   let sections = (
     summary: ("Profile", sp => if opt(data.summary) { indented(par(data.summary)) }),
