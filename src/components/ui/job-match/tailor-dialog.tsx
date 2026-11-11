@@ -269,6 +269,7 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
                         <ReviewToolbar
                             ai={ai}
                             pendingCount={pending.length}
+                            suggestedCount={suggestions.length}
                             onAcceptAll={acceptAll}
                             showPreview={showPreview}
                             onTogglePreview={() => setShowPreview(v => !v)}
@@ -298,8 +299,8 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
 
 // ---------- review
 
-function ReviewToolbar({ ai, pendingCount, onAcceptAll, showPreview, onTogglePreview, missingMust }: {
-    ai: TailorAi; pendingCount: number; onAcceptAll: () => void; showPreview: boolean; onTogglePreview: () => void; missingMust: Requirement[];
+function ReviewToolbar({ ai, pendingCount, suggestedCount, onAcceptAll, showPreview, onTogglePreview, missingMust }: {
+    ai: TailorAi; pendingCount: number; suggestedCount: number; onAcceptAll: () => void; showPreview: boolean; onTogglePreview: () => void; missingMust: Requirement[];
 }) {
     return (
         <div className="space-y-2">
@@ -311,6 +312,9 @@ function ReviewToolbar({ ai, pendingCount, onAcceptAll, showPreview, onTogglePre
                         <span className="text-warning">No suggestions: {ai.message}</span>
                     ) : pendingCount > 0 ? (
                         <><Sparkles className="size-3.5 text-fg" aria-hidden /> {pendingCount} {pendingCount === 1 ? "suggestion" : "suggestions"}, outlined below.</>
+                    ) : suggestedCount === 0 ? (
+                        // The AI plan (fitted to a page) equals the selection the window opened with.
+                        <><Sparkles className="size-3.5" aria-hidden /> No changes suggested: your current selection is what the AI would pick.</>
                     ) : (
                         <><Sparkles className="size-3.5" aria-hidden /> No open suggestions.</>
                     )}

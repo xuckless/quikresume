@@ -49,4 +49,12 @@ describe("tailorFlowTransition", () => {
         expect(cleared).toEqual({ ...open, warning: null });
         expect(tailorFlowTransition(cleared, { type: "dismissWarning" })).toBe(cleared);
     });
+
+    it("a review opened from the questions step keeps the suggestions its run settles with", () => {
+        const s: TailorAi = { status: "done", untrimmed: [{ id: "item:p1", kind: "item", itemId: "p1", include: true, reason: "r", source: "ai" }], trimmed: [] };
+        let flow = tailorFlowTransition(TAILOR_QUESTIONS, review(1, "answers saved"));
+        flow = tailorFlowTransition(flow, { type: "reviewed", run: 1, plan: plan("ai"), requirements: [], warning: null });
+        flow = tailorFlowTransition(flow, { type: "settle", run: 1, ai: s, warning: null });
+        expect(flow).toMatchObject({ step: "review", run: 1, ai: s, plan: plan("ai"), warning: "answers saved" });
+    });
 });
