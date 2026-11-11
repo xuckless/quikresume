@@ -197,8 +197,10 @@ Dates: Firestore `Timestamp` at UTC midnight, day 01. Editor model `startDate: "
 2. `DashboardClient` reads `?view=editor|preview|import|jobs` (none = Library; `?view=jobs&job=<id>` = a job's Match page, `jobHref()`)
    and navigates with `router.push`; the page never unmounts. It holds `draft: ResumeData | null`: the editor shows `draft ?? initialResumeData`,
    every other view `initialResumeData`. Opening the editor copies server truth into the draft; the draft is **never re-derived from
-   props**, so revalidations can't clobber edits. Leaving with unsaved changes via the sidebar asks Save & leave / Discard / Keep
-   editing (`lib/ui/leave-guard.ts`); reload / close get the browser prompt; browser Back discards.
+   props**, so revalidations can't clobber edits. A link that would drop an unsaved draft asks Save & leave / Discard / Keep
+   editing (`lib/ui/leave-guard.ts`): any other destination from the editor; from other views only links leaving the dashboard
+   page (the draft survives a view switch), e.g. extension setup from Import. Reload / close get the browser prompt; browser Back
+   discards. Switching to a different view starts at the top of the page.
 3. The editor edits with `onChange(prev => next)`. New items get `tmp-<uuid>` ids; deletes go to `pendingDeletes` and are applied by
    the save, so Discard brings them back. Duplicate inserts a `tmp-` copy after the original.
 4. `saveResumeData(draft, {deleted})` refuses bad dates or a malformed email (`{success: false, error, invalidIds, field?}`, nothing
