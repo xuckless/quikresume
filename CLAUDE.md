@@ -437,6 +437,12 @@ WXT + React + TS, Chrome MV3.
   web origins rejected): `pair`, `me`, `signout`, `jobs` (GET `?url=`, POST import), `jobs/[id]` (summary, PATCH status / variantId),
   `variants`, `tailor`, `tailor/save`, `autofill/{profile,answers,unmapped}`, `resume/pdf`. Summaries (`lib/ext/match-summary.ts`) score
   server-side on the job's variant or the working selection; `asUser(uid, fn)` lets token code reuse the session-based getters.
+- **Tab state** (`lib/tab-state.ts`, `lib/types.ts`): one `TabState` per tab in `chrome.storage.session` under
+  `tab-state:v<STATE_VERSION>:<id>` (bump the version when the shape changes incompatibly; old keys are swept). `save`,
+  `tailor` and `autofill` are the phases of their own operations; `notice` is only the last failure of the small actions
+  (scan, refresh, status, résumé). `getState` applies `settleInterrupted`: a saving / running phase with no live handler in
+  this worker becomes a retryable failure, and an Auto Fill run silent for 45 s closes as complete or "no form". Handlers
+  run through `exclusive()`. The side panel is `checking | unpaired | paired`; links use the build-time `appUrl()`.
 - **Detection** (`lib/extract.ts`): site adapters -> JSON-LD `JobPosting` -> readable-text heuristic. `postingUrl` turns LinkedIn /
   Indeed / Glassdoor list panes into the posting URL (Indeed falls back to the highlighted card's `data-jk`). Indeed search pages read
   the right-hand pane (`vj-job-title`, `company-info-metadata`, `.simple-job-description-html`). `lib/detector.ts` re-checks on SPA
