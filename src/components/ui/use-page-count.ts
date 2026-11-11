@@ -12,33 +12,34 @@ import { compileSvg, ensureTypst } from "@/lib/typst/client";
 
 const DEBOUNCE_MS = 600;
 
-export type PageCount =
-    | { status: "pending"; pages: null; error: false }
-    | { status: "ready"; pages: number; error: false }
-    | { status: "failed"; pages: null; error: true };
-type PageCountResult = { source: string; result: PageCount };
+export interface PageCount {
+    /** Null while counting, and after a failed compile. */
+    pages: number | null;
+    /** The last compile failed (Typst error, wasm failed to load). */
+    error: boolean;
+}
 
 export function useResumePageCount(data: ResumeData): PageCount {
     const docJson = JSON.stringify(toTypstDoc(data));
-    const [state, setState] = useState<PageCountResult>({ source: docJson, result: { status: "pending", pages: null, error: false } });
+    const [state, setState] = useState<PageCount>({ pages: null, error: false });
 
     useEffect(() => {
-        const lifetime = new AbortController();
+        let cancelled = false;
         const timer = setTimeout(async () => {
             try {
                 await ensureTypst();
                 const result = await compileSvg(JSON.parse(docJson) as TypstResumeDoc);
-                if (!lifetime.signal.aborted) setState({ source: docJson, result: { status: "ready", pages: result.pageCount, error: false } });
+                if (!cancelled) setState({ pages: result.pageCount, error: false });
             } catch (err) {
                 console.error("[page-count] compile failed:", err);
-                if (!lifetime.signal.aborted) setState({ source: docJson, result: { status: "failed", pages: null, error: true } });
+                if (!cancelled) setState({ pages: null, error: true });
             }
         }, DEBOUNCE_MS);
         return () => {
-            lifetime.abort();
+            cancelled = true;
             clearTimeout(timer);
         };
     }, [docJson]);
 
-    return state.source === docJson ? state.result : { status: "pending", pages: null, error: false };
+    return state;
 }

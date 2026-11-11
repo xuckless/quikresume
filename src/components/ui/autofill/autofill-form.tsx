@@ -4,8 +4,8 @@
 // Autofill preferences form (meta/autofill). Saved as a whole with saveAutofillPrefs.
 
 import React, { useState } from "react";
-import { useFormsOperation } from "@/lib/ui/use-forms-operation";
 import { useRouter } from "next/navigation";
+import { useOperation } from "@/lib/ui/use-operation";
 import { saveAutofillPrefs } from "@/app/actions/autofill-actions";
 import { EEO_OPTIONS, LIMITS_AUTOFILL, type AutofillEeo, type AutofillPrefs, type YesNo } from "@/lib/autofill/types";
 import { Button, Card, CardBody, CardHeader, Field, Input, NoticeBanner, Select, Textarea } from "@/components/ui/primitives";
@@ -26,36 +26,35 @@ function YesNoField({ label, value, onChange, hint }: { label: string; value: Ye
 export function AutofillForm({ initial }: { initial: AutofillPrefs }) {
     const router = useRouter();
     const [p, setP] = useState(initial);
-    const operation = useFormsOperation<"save", string>();
-    const saving = operation.state.status === "running";
-    const notice = operation.state.status === "succeeded" ? { tone: "success" as const, text: operation.state.result } : operation.state.status === "failed" ? { tone: "danger" as const, text: operation.state.error } : null;
+    const save = useOperation<"save", AutofillPrefs>();
+    const notice = save.state.status === "succeeded" ? { tone: "success" as const, text: "Saved." }
+        : save.error ? { tone: "danger" as const, text: save.error } : null;
     const set = <K extends keyof AutofillPrefs>(k: K, v: AutofillPrefs[K]) => setP(prev => ({ ...prev, [k]: v }));
     const addr = (k: keyof AutofillPrefs["address"], v: string) => setP(prev => ({ ...prev, address: { ...prev.address, [k]: v } }));
     const sal = (k: keyof AutofillPrefs["salary"], v: string) => setP(prev => ({ ...prev, salary: { ...prev.salary, [k]: v } as AutofillPrefs["salary"] }));
     const eeo = (k: keyof AutofillEeo, v: string) => setP(prev => ({ ...prev, eeo: { ...prev.eeo, [k]: v } }));
 
-    const save = async () => {
-        const id = operation.begin("save");
-        if (id === null) return;
-        try {
-            const res = await saveAutofillPrefs(p);
-            if (res.ok) { setP(current => current === p ? res.prefs : current); operation.succeed(id, "Saved."); router.refresh(); }
-            else operation.fail(id, res.error);
-        } catch (err) {
-            operation.fail(id, err instanceof Error ? err.message : "Could not save.");
-        }
+    const onSave = async () => {
+        const sent = p;
+        const done = await save.run("save", async () => {
+            const res = await saveAutofillPrefs(sent);
+            if (!res.ok) throw new Error(res.error);
+            return res.prefs;
+        }, "Could not save.");
+        if (!done?.ok) return;
+        // Edits made while saving win over the server's copy.
+        setP(current => (current === sent ? done.result : current));
+        router.refresh();
     };
 
     const answerFor = (question: string) => {
-        // Called only from click handlers; each saved answer needs a stable local ID.
-        // eslint-disable-next-line react-hooks/purity
-        const id = `a${Date.now().toString(36)}`;
+        const id = `a${crypto.randomUUID().slice(0, 8)}`;
         setP(prev => ({ ...prev, answers: [...prev.answers, { id, question, answer: "" }].slice(0, LIMITS_AUTOFILL.answers), unmapped: prev.unmapped.filter(u => u.label !== question) }));
     };
 
     return (
         <div className="space-y-4">
-            {notice && <NoticeBanner tone={notice.tone} onDismiss={() => operation.reset()}>{notice.text}</NoticeBanner>}
+            {notice && <NoticeBanner tone={notice.tone} onDismiss={() => save.reset()}>{notice.text}</NoticeBanner>}
 
             {p.unmapped.length > 0 && (
                 <Card>
@@ -160,7 +159,7 @@ export function AutofillForm({ initial }: { initial: AutofillPrefs }) {
             </Card>
 
             <div className="sticky bottom-4 flex justify-end">
-                <Button variant="primary" onClick={save} loading={saving}>Save preferences</Button>
+                <Button variant="primary" onClick={() => void onSave()} loading={save.running !== null}>Save preferences</Button>
             </div>
         </div>
     );

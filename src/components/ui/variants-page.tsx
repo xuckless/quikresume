@@ -1,7 +1,6 @@
 // src/components/ui/variants-page.tsx
 "use client";
 
-import { useFormsOperation } from "@/lib/ui/use-forms-operation";
 import React, { useState } from "react";
 import type { ResumeData } from "@/types/schema";
 import type { ResumeVariant } from "@/types/db";
@@ -15,10 +14,13 @@ import { Field, Input } from "@/components/ui/primitives/field";
 import { Card, CardBody, CardHeader } from "@/components/ui/primitives/card";
 import { Badge } from "@/components/ui/primitives/badge";
 import { NoticeBanner } from "@/components/ui/primitives/notice-banner";
+import { useOperation } from "@/lib/ui/use-operation";
 import { EmptyState } from "@/components/ui/primitives/empty-state";
 import { ConfirmDialog } from "@/components/ui/primitives/dialog";
 import { FOCUS_RING } from "@/components/ui/primitives/button";
 import { Layers } from "@/components/ui/primitives/icons";
+
+type VariantAction = "create" | "delete" | `${"load" | "snap" | "rename" | "labels" | "dup"}-${string}`;
 
 interface VariantsPageProps {
     variants: ResumeVariant[];
@@ -34,9 +36,10 @@ export function VariantsPage({ variants, loadedVariantId, data }: VariantsPagePr
     const [labelFilter, setLabelFilter] = useState<string | null>(null);
     const [newName, setNewName] = useState("");
     const [newLabels, setNewLabels] = useState("");
-    const operation = useFormsOperation<"create" | "delete" | `load-${string}` | `snap-${string}` | `rename-${string}` | `labels-${string}` | `dup-${string}`, string | undefined>();
-    const busy = operation.state.status === "running" ? operation.state.operation : null;
-    const error = operation.state.status === "failed" ? operation.state.error : null;
+    // One variant action at a time; the kind names the row so only its buttons spin.
+    const operation = useOperation<VariantAction, string | null>();
+    const busy = operation.running;
+    const error = operation.error;
     const notice = operation.state.status === "succeeded" ? operation.state.result : null;
     const [pendingDelete, setPendingDelete] = useState<ResumeVariant | null>(null);
 
@@ -48,15 +51,8 @@ export function VariantsPage({ variants, loadedVariantId, data }: VariantsPagePr
     );
     const selectedNow = countItems(selectedIds(data));
 
-    const run = async (key: "create" | "delete" | `load-${string}` | `snap-${string}` | `rename-${string}` | `labels-${string}` | `dup-${string}`, fn: () => Promise<void | string>, done?: string) => {
-        const id = operation.begin(key);
-        if (id === null) return;
-        try {
-            const message = await fn();
-            operation.succeed(id, message ?? done);
-        } catch (err) {
-            operation.fail(id, err instanceof Error ? err.message : "Something went wrong.");
-        }
+    const run = async (key: VariantAction, fn: () => Promise<void | string>, done?: string) => {
+        await operation.run(key, async () => (await fn()) ?? done ?? null);
     };
 
     return (

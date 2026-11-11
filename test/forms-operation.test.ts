@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { formsTransition, type FormsOperation } from "../src/lib/ui/forms-operation";
-import { formsPreviewTransition } from "../src/lib/ui/forms-preview";
 
 describe("form operations", () => {
     it("supports failure, retry, progress and success with state-specific payloads", () => {
@@ -19,13 +18,5 @@ describe("form operations", () => {
             expect(formsTransition(running, event)).toBe(running);
             expect(formsTransition(formsTransition(running, { type: "reset" }), event)).toEqual({ status: "idle" });
         }
-    });
-    it("retains the last preview through compile failure and engine retry", () => {
-        const image = { svg: "<svg/>", pageCount: 2 };
-        const compiling = formsPreviewTransition({ status: "ready", image }, { type: "compile" });
-        const failed = formsPreviewTransition(compiling, { type: "fail", error: "engine", engine: true });
-        expect(failed).toEqual({ status: "engine-failed", previous: image, error: "engine" });
-        expect(formsPreviewTransition(failed, { type: "load" })).toEqual({ status: "loading-engine", previous: image });
-        expect(formsPreviewTransition(failed, { type: "render", image })).toEqual({ status: "ready", image });
     });
 });

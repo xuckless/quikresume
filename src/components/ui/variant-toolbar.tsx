@@ -4,7 +4,6 @@
 // Library-view controls for saved variants: which one is loaded, save the
 // current selection as a new one, load another, or update the loaded one.
 
-import { useFormsOperation } from "@/lib/ui/use-forms-operation";
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -12,6 +11,7 @@ import type { ResumeData } from "@/types/schema";
 import type { ResumeVariant } from "@/types/db";
 import { createVariant, loadVariant, resnapshotVariant } from "@/app/actions/variant-actions";
 import { selectionEquals } from "@/lib/variants";
+import { useOperation } from "@/lib/ui/use-operation";
 import { Button } from "@/components/ui/primitives/button";
 import { Input, Select } from "@/components/ui/primitives/field";
 import { Badge } from "@/components/ui/primitives/badge";
@@ -28,23 +28,17 @@ export function VariantToolbar({ variants, loadedVariantId, data, onNotice }: Va
     const router = useRouter();
     const [naming, setNaming] = useState(false);
     const [name, setName] = useState("");
-    const operation = useFormsOperation<"update" | "create" | "load", string>();
-    const busy = operation.state.status === "running" ? operation.state.operation : null;
+    const operation = useOperation<"update" | "create" | "load", string>();
+    const busy = operation.running;
     const loaded = variants.find(v => v.id === loadedVariantId) ?? null;
     const inSync = loaded ? selectionEquals(data, loaded.items, loaded.hidden) : false;
 
+    /** Failures go to the page notice (the single error channel); the operation only guards single flight. */
     const run = async (key: "update" | "create" | "load", fn: () => Promise<string>) => {
-        const id = operation.begin(key);
-        if (id === null) return;
-        try {
-            const message = await fn();
-            operation.succeed(id, message);
-            onNotice(message);
-            router.refresh();
-        } catch (err) {
-            operation.fail(id, err instanceof Error ? err.message : "Something went wrong.");
-            onNotice(err instanceof Error ? err.message : "Something went wrong.", "warn");
-        }
+        const done = await operation.run(key, fn);
+        if (!done) return;
+        onNotice(done.ok ? done.result : done.error, done.ok ? undefined : "warn");
+        if (done.ok) router.refresh();
     };
 
     return (

@@ -94,7 +94,8 @@ type ThumbnailsState = { status: "loading" | "ready" | "failed"; svgs: Partial<R
 type ThumbnailsEvent = { type: "start" | "complete" | "fail" } | { type: "render"; id: TemplateId; svg: string };
 function thumbnailsTransition(state: ThumbnailsState, event: ThumbnailsEvent): ThumbnailsState {
     switch (event.type) {
-        case "start": return { status: "loading", svgs: {} };
+        // Old thumbnails stay up (replaced one by one) while a style change recompiles.
+        case "start": return { ...state, status: "loading" };
         case "complete": return { ...state, status: "ready" };
         case "fail": return { ...state, status: "failed" };
         case "render": return { ...state, svgs: { ...state.svgs, [event.id]: event.svg } };

@@ -2,13 +2,13 @@
 "use client";
 
 import React, { useEffect, useReducer, useState } from "react";
-import { formsPreviewTransition } from "@/lib/ui/forms-preview";
-import { useFormsOperation } from "@/lib/ui/use-forms-operation";
+import { useOperation } from "@/lib/ui/use-operation";
 import type { ResumeData } from "@/types/schema";
 import { pdfFileName, toTypstDoc, type TypstResumeDoc } from "@/lib/typst/doc";
 import { compilePdf, compileSvg, ensureTypst, formatTypstError, isEngineError } from "@/lib/typst/client";
 import { DEFAULT_TEMPLATE, type TemplateId } from "@/lib/typst/templates";
 import { svgLayout } from "@/lib/typst/pages";
+import { INITIAL_PREVIEW, previewImage, previewTransition } from "@/lib/typst/preview-state";
 import { cn } from "@/lib/cn";
 import { Button, IconButton } from "@/components/ui/primitives/button";
 import { Badge } from "@/components/ui/primitives/badge";
@@ -31,6 +31,7 @@ interface ResumePreviewProps {
 
 type Status = "loading-engine" | "compiling" | "ready" | "error" | "engine-failed";
 
+
 const DEBOUNCE_MS = 300;
 
 export function ResumePreview({ resumeData, template: templateOverride, compact = false, onClose, hideDownload = false, onThemeChange }: ResumePreviewProps) {
@@ -40,15 +41,15 @@ export function ResumePreview({ resumeData, template: templateOverride, compact 
     const docJson = JSON.stringify(toTypstDoc(resumeData));
     const template: TemplateId = templateOverride ?? resumeData.layout?.theme?.templateId ?? DEFAULT_TEMPLATE;
 
-    const [preview, dispatch] = useReducer(formsPreviewTransition, { status: "loading-engine", previous: null });
+    const [preview, dispatch] = useReducer(previewTransition, INITIAL_PREVIEW);
     const status = preview.status;
-    const image = preview.status === "ready" ? preview.image : preview.previous;
+    const image = previewImage(preview);
     const svg = image?.svg ?? null;
     const pageCount = image?.pageCount ?? 0;
     const error = "error" in preview ? preview.error : null;
-    const download = useFormsOperation<"pdf">();
-    const downloading = download.state.status === "running";
-    const downloadError = download.state.status === "failed" ? download.state.error : null;
+    const download = useOperation<"pdf">();
+    const downloading = download.running !== null;
+    const downloadError = download.error;
     // Bumped by the Retry button after an engine failure: the loader re-arms itself, the effect re-runs.
     const [attempt, setAttempt] = useState(0);
 
@@ -75,15 +76,10 @@ export function ResumePreview({ resumeData, template: templateOverride, compact 
         };
     }, [docJson, template, attempt]);
 
-    const handleDownload = async () => {
-        const id = download.begin("pdf");
-        if (id === null) return;
+    const handleDownload = () => download.run("pdf", async () => {
         try {
-            const doc = JSON.parse(docJson) as TypstResumeDoc;
-            const bytes = await compilePdf(doc, template);
-            if (!download.active(id)) return;
-            const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
-            const url = URL.createObjectURL(blob);
+            const bytes = await compilePdf(JSON.parse(docJson) as TypstResumeDoc, template);
+            const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
             const a = document.createElement("a");
             a.href = url;
             a.download = pdfFileName(resumeData.personalInfo);
@@ -91,11 +87,10 @@ export function ResumePreview({ resumeData, template: templateOverride, compact 
             a.click();
             a.remove();
             URL.revokeObjectURL(url);
-            download.succeed(id, undefined);
         } catch (err) {
-            download.fail(id, formatTypstError(err));
+            throw new Error(formatTypstError(err));
         }
-    };
+    });
 
     const statusLabel: Record<Status, string> = {
         "loading-engine": "Loading engine…",
@@ -125,7 +120,7 @@ export function ResumePreview({ resumeData, template: templateOverride, compact 
                         <Button size="sm" variant="secondary" icon={RefreshCw} onClick={() => setAttempt(a => a + 1)}>Retry</Button>
                     )}
                     {!hideDownload && (
-                        <Button size="sm" variant={compact ? "secondary" : "primary"} icon={Download} onClick={handleDownload} loading={downloading} disabled={status === "loading-engine" || status === "engine-failed"}>
+                        <Button size="sm" variant={compact ? "secondary" : "primary"} icon={Download} onClick={() => void handleDownload()} loading={downloading} disabled={status === "loading-engine" || status === "engine-failed"}>
                             {downloading ? "Preparing…" : compact ? "PDF" : "Download PDF"}
                         </Button>
                     )}

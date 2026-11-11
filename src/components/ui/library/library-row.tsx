@@ -1,6 +1,5 @@
 "use client";
 
-import { useFormsOperation } from "@/lib/ui/use-forms-operation";
 import React, { startTransition, useOptimistic, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { cn } from "@/lib/cn";
@@ -8,6 +7,7 @@ import type { Tag } from "@/lib/tags/types";
 import { toggleHidden, type SubItem } from "@/lib/sub-items";
 import { SubItemList } from "@/components/ui/sub-item-toggles";
 import { expansion, useExpandedIds } from "@/lib/ui/expansion-store";
+import { useOperation } from "@/lib/ui/use-operation";
 import { ExpandableRow } from "@/components/ui/primitives/expandable-row";
 import { Switch } from "@/components/ui/primitives/switch";
 import { TagChip } from "@/components/ui/primitives/badge";
@@ -103,8 +103,8 @@ export function LibraryRow({ id, title, subtitle, meta, isSelected, active, tags
     };
     const reReview = () => kickReviews({ ids: [id], onDone: r => { if (r.reviewed > 0) coach?.onReviewed(); } });
     const [confirmDelete, setConfirmDelete] = useState(false);
-    const deletion = useFormsOperation<"delete">();
-    const deleting = deletion.state.status === "running";
+    const deletion = useOperation<"delete">();
+    const deleting = deletion.running !== null;
     const name = title || "Untitled";
 
     /** Form action that reports a failure instead of silently reverting. */
@@ -118,18 +118,13 @@ export function LibraryRow({ id, title, subtitle, meta, isSelected, active, tags
     };
 
     const doDelete = async () => {
-        const request = deletion.begin("delete");
-        if (request === null) return;
-        try {
-            await onDelete(id);
-            deletion.succeed(request, undefined);
-            setConfirmDelete(false);
-        } catch (err) {
-            deletion.fail(request, "Delete failed");
-            console.error("[library] delete failed:", err);
+        const done = await deletion.run("delete", () => onDelete(id));
+        if (!done) return;
+        if (!done.ok) {
+            console.error("[library] delete failed:", done.error);
             onError(`Couldn't delete "${name}". Try again.`);
-            setConfirmDelete(false);
         }
+        setConfirmDelete(false);
     };
 
     const summary = (

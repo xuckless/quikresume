@@ -4,13 +4,12 @@
 // or (first time) from the library: dates-based facts at once, AI suggestions when /api/about/prefill
 // answers. Suggested fields are marked until the user edits them. Finish writes the candidate brief.
 
-import { useFormsOperation } from "@/lib/ui/use-forms-operation";
-import { formsTransition } from "@/lib/ui/forms-operation";
-import React, { useEffect, useReducer, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { formatMonthYear } from "@/lib/dates";
 import { readJson } from "@/lib/ui/fetch-json";
+import { useOperation } from "@/lib/ui/use-operation";
 import { coreHash } from "@/lib/about/facts";
 import {
     AUTHORIZATION_OPTIONS, EDUCATION_OPTIONS, RELOCATION_OPTIONS, SENIORITY_OPTIONS, WORK_MODE_OPTIONS, emptyAnswers,
@@ -72,15 +71,15 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
     const [followUps, setFollowUps] = useState<FollowUp[]>(saved.followUps);
     const [followUpsHash, setFollowUpsHash] = useState<string | null>(saved.followUpsHash);
     const [step, setStep] = useState<Step>("core");
-    const [prefill, dispatchPrefill] = useReducer(formsTransition<"prefill", undefined>,
-        fresh && !emptyLibrary ? { status: "running", id: 0, operation: "prefill" } : { status: "idle" });
-    const prefilling = prefill.status === "running";
-    const operation = useFormsOperation<"draft" | "finish" | "skip">();
-    const busy = operation.state.status === "running" ? operation.state.operation : null;
+    const [prefill, setPrefill] = useState<"loading" | "done">(fresh && !emptyLibrary ? "loading" : "done");
+    const prefilling = prefill === "loading";
+    const submit = useOperation<"draft" | "finish" | "skip", string | null>();
+    // After a successful skip the page is navigating away; keep the buttons locked until it does.
+    const busy = submit.running ?? (submit.state.status === "succeeded" && submit.state.kind === "skip" ? "skip" : null);
     // Writing follow-up questions is a background AI call: it never blocks Skip / Save draft / Finish.
-    const questions = useFormsOperation<"generate">();
-    const writingQuestions = questions.state.status === "running";
-    const error = operation.state.status === "failed" ? operation.state.error : questions.state.status === "failed" ? questions.state.error : null;
+    const questions = useOperation<"generate", { questions: FollowUp[]; coreHash: string | null }>();
+    const writingQuestions = questions.running !== null;
+    const error = submit.error ?? questions.error;
     const [notice, setNotice] = useState<{ tone: "success" | "warning"; text: string } | null>(
         saved.briefStale ? { tone: "warning", text: "Your last AI summary could not be written. Finish again to retry." } : null,
     );
@@ -94,7 +93,7 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
             .then(res => readJson<PrefillReply>(res))
             .then(reply => {
                 if (cancelled) return;
-                dispatchPrefill({ type: "succeed", id: 0, result: undefined });
+                setPrefill("done");
                 if (!reply.ok) return;
                 if (reply.warning) setNotice({ tone: "warning", text: reply.warning });
                 const s = reply.suggestions;
@@ -117,14 +116,14 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
                 });
                 setSuggested(prev => new Set([...prev, ...filled]));
             })
-            .catch(() => { if (!cancelled) dispatchPrefill({ type: "succeed", id: 0, result: undefined }); });
+            .catch(() => { if (!cancelled) setPrefill("done"); });
         return () => { cancelled = true; };
         // Runs once on mount: `fresh` and `emptyLibrary` come from the first server render.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const set = <K extends keyof CharacterizationAnswers>(key: K, value: CharacterizationAnswers[K]) => {
-        if (writingQuestions) questions.reset();
+        if (writingQuestions) questions.reset(); // typing supersedes the question run in flight
         setAnswers(prev => ({ ...prev, [key]: value, ...(key === "yearsExperience" ? { yearsSource: "user" as const } : {}) }));
         if (suggested.has(key as SuggestKey)) setSuggested(prev => { const n = new Set(prev); n.delete(key as SuggestKey); return n; });
     };
@@ -132,24 +131,20 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
     const hint = (key: SuggestKey, fallback?: string) => (suggested.has(key) ? (key === "yearsExperience" || key === "educationStatus" || key === "graduationDate" ? "Calculated from your library dates. Change it if it's off." : "Suggested from your library. Edit if it's off.") : fallback);
 
     const generateQuestions = async () => {
-        const id = questions.begin("generate");
-        if (id === null) return;
-        try {
+        const done = await questions.run("generate", async () => {
             const res = await fetch("/api/about/follow-ups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }) });
             const reply = await readJson<{ questions: FollowUp[]; coreHash: string }>(res);
             if (!reply.ok || !reply.questions) throw new Error(reply.error ?? "Could not generate questions.");
-            const generated = reply.questions;
-            if (!questions.active(id)) return;
-            // Keep answers to questions that come back word for word.
-            setFollowUps(current => {
-                const previous = new Map(current.map(f => [f.question, f.answer]));
-                return generated.map(q => ({ ...q, answer: previous.get(q.question) ?? "" }));
-            });
-            setFollowUpsHash(reply.coreHash ?? null);
-            questions.succeed(id, undefined);
-        } catch (err) {
-            questions.fail(id, err instanceof Error ? err.message : "Could not generate questions.");
-        }
+            return { questions: reply.questions, coreHash: reply.coreHash ?? null };
+        }, "Could not generate questions.");
+        if (!done?.ok) return;
+        const { questions: generated, coreHash } = done.result;
+        // Keep answers to questions that come back word for word (including ones typed while this ran).
+        setFollowUps(current => {
+            const previous = new Map(current.map(f => [f.question, f.answer]));
+            return generated.map(q => ({ ...q, answer: previous.get(q.question) ?? "" }));
+        });
+        setFollowUpsHash(coreHash);
     };
 
     const goTo = (next: Step) => {
@@ -158,10 +153,8 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
     };
 
     const save = async (status: "draft" | "complete") => {
-        const id = operation.begin(status === "complete" ? "finish" : "draft");
-        if (id === null) return;
         setNotice(null);
-        try {
+        const done = await submit.run(status === "complete" ? "finish" : "draft", async () => {
             const res = await fetch("/api/about/save", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -169,28 +162,21 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
             });
             const reply = await readJson<{ status: string; briefUpdated: boolean; warning?: string }>(res);
             if (!reply.ok) throw new Error(reply.error ?? "Could not save your answers.");
-            operation.succeed(id, undefined);
-            if (status === "complete" && !reply.warning) {
-                router.push("/dashboard");
-                return;
-            }
-            setNotice(reply.warning ? { tone: "warning", text: reply.warning } : { tone: "success", text: "Draft saved." });
-            router.refresh();
-        } catch (err) {
-            operation.fail(id, err instanceof Error ? err.message : "Could not save your answers.");
+            return reply.warning ?? null;
+        }, "Could not save your answers.");
+        if (!done?.ok) return;
+        const warning = done.result;
+        if (status === "complete" && !warning) {
+            router.push("/dashboard");
+            return;
         }
+        setNotice(warning ? { tone: "warning", text: warning } : { tone: "success", text: "Draft saved." });
+        router.refresh();
     };
 
     const skip = async () => {
-        const id = operation.begin("skip");
-        if (id === null) return;
-        try {
-            await skipCharacterization();
-            operation.succeed(id, undefined);
-            router.push("/dashboard");
-        } catch (err) {
-            operation.fail(id, err instanceof Error ? err.message : "Could not skip.");
-        }
+        const done = await submit.run("skip", async () => { await skipCharacterization(); return null; }, "Could not skip.");
+        if (done?.ok) router.push("/dashboard");
     };
 
     const stepIndex = STEPS.findIndex(s => s.value === step);
@@ -211,7 +197,7 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
             )}
             {prefilling && <NoticeBanner tone="success">Reading your library to suggest answers…</NoticeBanner>}
             {notice && <NoticeBanner tone={notice.tone} onDismiss={() => setNotice(null)}>{notice.text}</NoticeBanner>}
-            {error && <NoticeBanner tone="danger" onDismiss={() => { operation.reset(); questions.reset(); }}>{error}</NoticeBanner>}
+            {error && <NoticeBanner tone="danger" onDismiss={() => { submit.reset(); questions.reset(); }}>{error}</NoticeBanner>}
 
             <div className="border-b border-border">
                 <Tabs items={STEPS} value={step} onChange={goTo} aria-label="Questionnaire steps" />
