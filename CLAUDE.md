@@ -63,6 +63,14 @@ No `typst` CLI: `pip install typst` in a venv gives `typst.compile(...)` with `s
 - Parse dates by parts with `lib/dates.ts`; never `new Date("YYYY-MM-DD")` (UTC parse shifts the month west of UTC).
 - No `setState` from props in effects; key effects on primitive strings; no manual `useMemo` / `useCallback` (React Compiler).
 - Optional strings are stored as `null`, not `""`; mappers default missing fields to `""`.
+- **UI state is explicit, never a pile of booleans.** A single-flight async action (save, delete, download, analyse) uses
+  `useOperation` (`lib/ui/use-operation.ts`: `run(kind, task, fallback)` resolves `{ok, result} | {ok: false, error} | null`,
+  null = not admitted or superseded; `reject` for sync validation; `reset`). A genuinely multi-step flow gets one pure
+  reducer next to its feature, driven by `useReducer` with events dispatched directly: `lib/ui/editor-workflow.ts` (editor
+  save / leave / discard, re-review), `lib/import/import-flow.ts`, `lib/import/linkedin-session.ts`, `lib/match/tailor-flow.ts`,
+  `lib/typst/preview-state.ts`, `lib/ext/pairing-flow.ts`. Stale async results are dropped by the reducer (session id / run
+  number in the event), not by ref checks; no ref mirrors of state, no boolean-setter shims over a reducer. Mount-time loads
+  (script load, prefill) are a small local union, not an operation.
 - Browser-persisted UI state uses `createPersistedStore` + `useSyncExternalStore` (`lib/ui/persisted-store.ts`), never storage reads in effects.
 - **Theme**: light + dark from tokens only (`:root` / `:root[data-theme="dark"]`); never `dark:` variants. `THEME_SCRIPT` in
   `app/layout.tsx` sets `data-theme` before paint from `localStorage["quikresume.theme"]` (`lib/ui/theme-store.ts`) or the OS. The
@@ -70,6 +78,23 @@ No `typst` CLI: `pip install typst` in a venv gives `typst.compile(...)` with `s
 - **Visual rules**: accent = brand green (#003200 light / #5fd38a dark), primary fills only; `accent-text` for links / active nav / scores.
   Scores are one green plus a word band (`scoreBand`), never red/amber/green by value. Colours only through tokens; no `font-black`,
   no uppercase micro-labels, radii ≤ `rounded-lg`, shadows ≤ `shadow-sm`. New UI is built from `components/ui/primitives`.
+- **Motion** follows one vocabulary: tokens in `globals.css` "Motion system" (`--ease-out/-in/-in-out`, `--dur-*`, `--stagger`,
+  `--scale-press`, `--scale-pop`, `--knob-stretch`) mirrored in `lib/ui/motion.ts` (`DUR`, `CSS_EASE`, `staggerDelay`,
+  `rubberBand`, presets via `useMotionPresets()`); `test/motion-tokens.test.ts` keeps them identical. Never inline a duration,
+  curve or scale.
+  - Entrances ease-out; moves ease-in-out (`transition-move`, `t.move`); exits ease-in and 20% shorter (`*-exit` tokens,
+    `rise-out`, `settle-out`). Dialogs / popovers 150-250 ms from scale 0.95, out of and back into their trigger (`<Dialog>`).
+  - No springs, no bounce: `MotionProvider` defaults every `m.*` to the move preset. Use `m.*`, never `motion.*`
+    (`LazyMotion strict` throws).
+  - Pressables get `press` (0.97); full-width rows and large cards don't. Toggles are `<Switch>` (knob stretches 12%).
+  - Lists: `stagger-children` / `rise-in` with `--i` (30 ms). In-place bodies: `<Reveal open>`; native `<details>` get
+    `disclosure`. Swaps overlap: `<Swap>` for icons / labels (blur crossfade), `AnimatePresence mode="popLayout"` + `t.view`
+    for bodies. Success: `NoticeBanner tone="success"` or `<Button succeeded>` (one pulse). Reveals and fills use masks.
+  - Drags follow the pointer 1:1 (no transition while held), rubber-band past bounds, ease back on release. Cards changing
+    container travel on an arc (`useArcMoves`). Shared indicators: `layoutId={useId()}`, `layoutScroll` on scrolling
+    ancestors, `layoutRoot` on sticky / fixed ones.
+  - Reduced motion: the one block in `globals.css` turns everything off except `.animate-spin` and `.toast-countdown`.
+  - The extension cannot import the tokens: `entrypoints/sidepanel/style.css` and `lib/fab.ts` copy the same values.
 - Fetches to route handlers go through `readJson` (`lib/ui/fetch-json.ts`): platform timeouts return HTML, not JSON.
 - `app/privacy/page.tsx` must match what the code does: update it with any new processor, permission or stored field.
 - A new top-level collection keyed by user must be added to account deletion.
@@ -114,7 +139,7 @@ src/
   app/logo/[domain]/route.ts                 company favicons for the tracker
   components/dashboard-client.tsx            view switch, editor draft, leave guard, preview pane
   components/ui/primitives/*                 UI kit (Button, Field, Switch, Badge, Tabs, Segmented, Card, Table, ExpandableRow,
-                                             TopBar, Dialog/ConfirmDialog, Drawer, EmptyState, ScoreRing, NoticeBanner, ChipInput)
+                                             TopBar, Dialog/ConfirmDialog, Drawer, EmptyState, ScoreRing, NoticeBanner, ChipInput, Reveal, Swap)
   components/ui/{library,editor,job-match,job-tracker,review,about,start,landing}/*
   lib/{match,tags,review,about,import,contact,layout,typst,embed,glm,jobs,ext,autofill,guest,demo}/*
   types/schema.ts (editor model ResumeData), types/db.ts (Firestore rows)
@@ -256,7 +281,7 @@ Every list entry also carries `space_after` (pt), `break_before`, `keep` (unbrea
 
 ```
 file --(browser)--> PDF? pages -> JPEG (pdf.js) : as-is --POST /api/import--> DOCX mammoth | TXT | image_url parts
-  --> glm-4.6v (lib/import/prompt.ts) --> parseModelOutput (zod, lenient) --> review step --> mergeImport into the draft --> Save & Exit
+  --> glm-4.6v (lib/import/prompt.ts) --> parseModelOutput (zod, lenient; = JSON extraction + parseImportObject) --> review step --> mergeImport into the draft --> Save & Exit
 ```
 
 - Route handler (bodies > 1 MB, `maxDuration = 120`); nothing persisted until the normal save.
@@ -266,6 +291,32 @@ file --(browser)--> PDF? pages -> JPEG (pdf.js) : as-is --POST /api/import--> DO
   title token Dice ≥ 0.8, work also needs the same start year. `mergeImport` unions bullets / skills and fills empty fields; rows are
   labelled New / Adds detail / Already in library. Several files per session (`combineParsedFiles`). Personal info fills blanks unless
   "Replace my existing details" is ticked.
+
+## LinkedIn import
+
+```
+Import view -> Import from LinkedIn -> extension opens the saved profile URL in a new tab -> side panel Import
+  -> DOM parsed into an ImportEnvelope (extension/lib/profile-extract.ts, no AI) -> page: parseImportObject -> same review step
+```
+
+- One session at a time, one reducer per side: web `lib/import/linkedin-session.ts` (hook + card in
+  `components/ui/linkedin-import.tsx`), extension `extension/lib/linkedin-session.ts` (background driver; `background.ts` only
+  wires it). Every message carries the session id; stale ones are dropped by the reducers. Leaving the Import view cancels.
+- Protocol and validation live in `src/lib/ext/bridge.ts` (`linkedin-start / cancel / received` from the page;
+  `hello{linkedIn}`, `linkedin-started / capturing / captured / capture-failed / ended`, `disconnected` from the extension).
+  The extension imports it, `canonicalProfileUrl` (`lib/import/linkedin.ts`) and `ImportEnvelope` (`lib/import/envelope.ts`)
+  by relative path, so those three files stay import-free plain TS.
+- Missing / unpaired / outdated extension -> notice + `/dashboard/extension?reason=missing|pair|update`. No saved URL ->
+  dialog -> `saveLinkedInUrl` (canonical URL only, returns `{ok, url | error}`; thrown action errors are masked in production).
+- Security: port only from the app origin; paired account === page uid (at start and before every capture); the tab's
+  canonical URL === the saved URL before and after capture; payload ≤ `MAX_PROFILE_JSON`; tab close / page gone / worker
+  restart end the session with a message. Never navigates LinkedIn, never signs in, leaves the tab open; the checkmark shows
+  after the page acknowledges.
+- Parsing anchors on card ids (`#experience`, `#education`, …), outermost `<li>`s and `aria-hidden` text pieces, not class
+  names; each card parser fails alone ("Could not read Projects."), cards cut short ("Show all" -> `/details/`) add a
+  warning. English month names only. Fixtures in `extension/lib/profile-extract.test.ts` are hand-built: re-check against
+  the live site when LinkedIn changes its markup.
+- No AI at import time: nothing is sent to a model until the normal save (tags, review). Privacy page says so.
 
 ## Smart tags
 
