@@ -1,6 +1,6 @@
 // src/app/(auth)/login/page.tsx
 import type { Metadata } from "next"
-import { signIn, signOut, auth } from "@/auth"
+import { signIn, signOut, auth, DEV_LOGIN_ENABLED } from "@/auth"
 import Image from "next/image"
 import { MarketingHeader } from "@/components/marketing-header";
 
@@ -59,6 +59,11 @@ export default async function LoginPage() {
                                     Continue with Google
                                 </button>
                             </form>
+                            {DEV_LOGIN_ENABLED && (
+                                <form action={async () => { "use server"; if (DEV_LOGIN_ENABLED) await signIn("dev-login", { redirectTo: "/dashboard" }) }} className="w-full">
+                                    <button className={SECONDARY}>Dev login (fake account)</button>
+                                </form>
+                            )}
                             <p className="text-xs text-fg-subtle">By signing in, you agree to our Terms of Service and Privacy Policy.</p>
                         </div>
                     )}
