@@ -192,11 +192,14 @@ function DashboardClientInner({
     const previewData = view === "editor" ? editorDraft : { ...initialResumeData, layout: optimisticLayout };
     const dirty = draft !== null && (pendingDeletes.length > 0 || JSON.stringify(draft) !== JSON.stringify(initialResumeData));
 
-    // Sidebar links ask before leaving an editor with unsaved changes; reload / closing the tab gets the browser prompt.
+    // Links ask before unsaved changes are lost; reload / closing the tab gets the browser prompt. In the editor that is
+    // any other destination; in the other views the draft survives a view switch, so only leaving the dashboard page asks
+    // (e.g. Import -> extension setup with imported items waiting in the draft).
     useEffect(() => {
-        if (view !== "editor" || !dirty) return;
+        if (!dirty) return;
         const uninstall = setLeaveGuard(href => {
-            if (href === viewHref("editor")) return false;
+            const staysOnDashboard = new URL(href, window.location.origin).pathname === "/dashboard";
+            if (view === "editor" ? href === viewHref("editor") : staysOnDashboard) return false;
             sendEditor({ type: "leave-requested", target: href });
             return true;
         });
@@ -612,7 +615,7 @@ function DashboardClientInner({
             <Dialog
                 open={pendingLeave !== null}
                 onClose={() => sendEditor({ type: "dismissed" })}
-                title="Leave the editor?"
+                title="Leave without saving?"
                 footer={
                     <>
                         <Button variant="ghost" onClick={() => sendEditor({ type: "dismissed" })}>Keep editing</Button>

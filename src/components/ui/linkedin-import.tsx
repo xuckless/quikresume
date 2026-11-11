@@ -10,6 +10,7 @@ import React, { useEffect, useEffectEvent, useReducer, useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveLinkedInUrl } from "@/app/actions/user-actions";
 import { detectExtension, postToExtension, readExtMessage } from "@/lib/ext/bridge";
+import { interceptNavigation } from "@/lib/ui/leave-guard";
 import { canonicalProfileUrl } from "@/lib/import/linkedin";
 import { linkedInCaptureToFile } from "@/lib/import/linkedin-capture";
 import {
@@ -135,6 +136,11 @@ export function LinkedInImportCard({ linkedIn, savedUrl, disabled }: { linkedIn:
     const router = useRouter();
     const { session, dispatch } = linkedIn;
     const start = () => dispatch({ type: "start", id: crypto.randomUUID() });
+    // Extension setup is another page: an unsaved editor draft gets the leave dialog first.
+    const openSetup = (reason: ExtensionReason) => {
+        const href = `/dashboard/extension?reason=${reason}`;
+        if (!interceptNavigation(href)) router.push(href);
+    };
     const saved = canonicalProfileUrl(savedUrl);
     const busy = sessionBusy(session);
 
@@ -149,7 +155,7 @@ export function LinkedInImportCard({ linkedIn, savedUrl, disabled }: { linkedIn:
                 <CardBody>
                     <NoticeBanner tone="warning">
                         <p>{EXTENSION_NEEDED[session.reason]}</p>
-                        <Button size="sm" className="mt-2" onClick={() => router.push(`/dashboard/extension?reason=${session.reason}`)}>Set up the extension</Button>
+                        <Button size="sm" className="mt-2" onClick={() => openSetup(session.reason)}>Set up the extension</Button>
                     </NoticeBanner>
                 </CardBody>
             )}
@@ -158,7 +164,7 @@ export function LinkedInImportCard({ linkedIn, savedUrl, disabled }: { linkedIn:
                     <NoticeBanner tone="danger">
                         <p>{session.error}</p>
                         {session.fix === "reload" && <Button size="sm" className="mt-2" onClick={() => window.location.reload()}>Reload page</Button>}
-                        {session.fix === "reconnect" && <Button size="sm" className="mt-2" onClick={() => router.push("/dashboard/extension?reason=pair")}>Reconnect the extension</Button>}
+                        {session.fix === "reconnect" && <Button size="sm" className="mt-2" onClick={() => openSetup("pair")}>Reconnect the extension</Button>}
                     </NoticeBanner>
                 </CardBody>
             )}
