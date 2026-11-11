@@ -26,7 +26,7 @@ import { Segmented } from "@/components/ui/primitives/segmented";
 import { EmptyState } from "@/components/ui/primitives/empty-state";
 import { NoticeBanner } from "@/components/ui/primitives/notice-banner";
 import { Table, Td, Th } from "@/components/ui/primitives/table";
-import { Briefcase, ExternalLink, Loader2, MapPin, Plus, Search, Trash2 } from "@/components/ui/primitives/icons";
+import { Briefcase, ExternalLink, GripVertical, Loader2, MapPin, Plus, Search, Trash2 } from "@/components/ui/primitives/icons";
 
 type Layout = "board" | "table";
 const layoutStore = createPersistedStore<Layout>({
@@ -178,17 +178,18 @@ function JobCard({ job, onMove, onOpen }: { job: JobRecord; onMove: (id: string,
             // Held: follows the pointer untweened. Released in place (or nowhere): eases back.
             style={{ transform: CSS.Translate.toString(transform), transition: isDragging ? undefined : `transform ${DUR.move}ms ${CSS_EASE.inOut}` }}
             data-job-card={job.id}
-            className={cn("rounded-md border border-border bg-surface shadow-sm", isDragging && "relative z-10 opacity-90")}
+            className={cn("group/card relative rounded-md border border-border bg-surface shadow-sm", isDragging && "relative z-10 opacity-90")}
         >
-            <div {...listeners} {...attributes} aria-roledescription="Draggable job" className={cn("cursor-grab rounded-md p-2.5 active:cursor-grabbing", FOCUS_RING)}>
+            <div {...listeners} {...attributes} aria-roledescription="Draggable job" title="Drag to move to another column" className={cn("cursor-grab rounded-md p-2.5 active:cursor-grabbing", FOCUS_RING)}>
+                <GripVertical className="pointer-events-none absolute left-0.5 top-3 size-3.5 text-fg-subtle opacity-0 transition-opacity group-hover/card:opacity-100" aria-hidden />
                 <div className="flex items-start gap-2.5">
                     <CompanyLogo job={job} size={32} className="mt-0.5" />
                     <button
                         type="button"
                         onClick={() => onOpen(job.id)}
-                        className={cn("min-w-0 flex-1 text-left", FOCUS_RING)}
-                        // The card itself is the drag handle; the title is the link.
-                        onPointerDown={e => e.stopPropagation()}
+                        className={cn("min-w-0 flex-1 cursor-grab text-left active:cursor-grabbing", FOCUS_RING)}
+                        // The whole card drags, title included: a click opens the job, a 6px move starts the drag
+                        // (dnd-kit then swallows the click that follows the drop).
                     >
                         <span className="block truncate text-13 font-medium text-fg hover:underline">{job.title}</span>
                         <span className="block truncate text-xs text-fg-muted">{job.company || "Unknown company"}</span>
