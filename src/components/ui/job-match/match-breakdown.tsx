@@ -64,6 +64,8 @@ export function ScoreHeadline({ match, provisional = false }: { match: MatchResu
 
 export function SubScoreBars({ subScores, seniority = null }: { subScores: SubScores; seniority?: MatchResult["seniority"] }) {
     const keys = (Object.keys(SUB_LABEL) as (keyof SubScores)[]).filter(k => subScores[k] !== null);
+    // The score re-weights over the sub-scores it has (lib/match/score.ts), so show each one's actual share.
+    const shown = keys.reduce((s, k) => s + SUB_WEIGHTS[k], 0);
     return (
         <div className="grid gap-2">
         <dl className="grid gap-2">
@@ -71,7 +73,7 @@ export function SubScoreBars({ subScores, seniority = null }: { subScores: SubSc
                 const v = subScores[k] ?? 0;
                 return (
                     <div key={k} className="grid grid-cols-[7.5rem_1fr_2.5rem] items-center gap-3" title={SUB_LABEL[k].hint}>
-                        <dt className="text-13 text-fg-muted">{SUB_LABEL[k].label} <span className="text-[11px] text-fg-subtle">{Math.round(SUB_WEIGHTS[k] * 100)}%</span></dt>
+                        <dt className="text-13 text-fg-muted">{SUB_LABEL[k].label} <span className="text-[11px] text-fg-subtle">{Math.round((SUB_WEIGHTS[k] / shown) * 100)}%</span></dt>
                         <dd className="h-1.5 overflow-hidden rounded-full bg-chart-track" aria-hidden>
                             <div className="h-full rounded-full bg-chart-1" style={{ width: `${Math.round(v * 100)}%` }} />
                         </dd>
@@ -168,7 +170,12 @@ export function EvidenceTable({ rows, provisional = false }: { rows: MatchRow[];
                                 )}
                             </Td>
                             <Td className="whitespace-nowrap font-mono text-xs tabular-nums">
-                                {r.years && !pending ? <span className={r.years.have < r.years.need ? "text-warning" : "text-fg-muted"}>{r.years.have}/{r.years.need} y</span> : <span className="text-fg-subtle">–</span>}
+                                {r.years && !pending ? (
+                                    // "10.8 of 8 y", never "10.8/8": the slash form read as a single number.
+                                    <span className={r.years.have < r.years.need ? "text-warning" : "text-fg-muted"} title={`${r.years.have} years evidenced; the posting asks for ${r.years.need}`}>
+                                        {r.years.have} of {r.years.need} y
+                                    </span>
+                                ) : <span className="text-fg-subtle">–</span>}
                             </Td>
                             <Td className="whitespace-nowrap text-xs">
                                 {r.tier === "soft" ? <span className="text-fg-subtle">–</span>

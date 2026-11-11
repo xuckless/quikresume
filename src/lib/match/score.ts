@@ -182,7 +182,8 @@ export function scoreJob(requirements: Requirement[], data: ResumeData, aliases:
         }
 
         let years: MatchRow["years"] = null;
-        if (r.yearsMin) {
+        // Stored jobs are read leniently (lib/db/jobs.ts): a non-positive yearsMin would make Y negative.
+        if (r.yearsMin && r.yearsMin > 0) {
             const spans = evidence.filter(x => x.e >= 0.6 && x.itemId && DATED_WORK.has(selected.get(x.itemId)?.section ?? "skills"))
                 .map(x => itemSpan(data, selected.get(x.itemId)!.section, x.itemId, now)).filter((s): s is [number, number] => s !== null);
             years = { have: Math.round(mergeSpans(spans) * 10) / 10, need: r.yearsMin };

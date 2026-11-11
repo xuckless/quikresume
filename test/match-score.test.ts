@@ -82,6 +82,29 @@ describe("scoreJob v2", () => {
         expect(m.rows[0].years).toEqual({ have: 3.1, need: 5 });
         expect(m.subScores.years).toBeCloseTo(3.1 / 5, 2);
     });
+    it("keeps every sub-score within 0..1 when the candidate exceeds every yearsMin", () => {
+        const tag = (name: string) => ({ name, display: name, kind: "tool-platform" as const });
+        const veteran = data([
+            job({ id: "w1", title: "Senior Engineer", startDate: "2010-01-01", endDate: "Present", tags: [tag("go"), tag("kubernetes")] }),
+            job({ id: "w2", title: "Engineer", startDate: "2004-03-01", endDate: "2009-12-01", tags: [tag("go")] }),
+        ]);
+        const reqs = [req("go", { yearsMin: 1 }), req("kubernetes", { yearsMin: 2, importance: "nice" }), req("sql", { yearsMin: 3 })];
+        const m = scoreJob(reqs, veteran, {}, { now: NOW, titleSim: { w1: 0.97, w2: 0.9 }, seniority: "senior" });
+        expect(m.rows.find(r => r.requirement.name === "go")!.years!.have).toBeGreaterThan(15);
+        for (const v of Object.values(m.subScores)) {
+            if (v === null) continue;
+            expect(v).toBeGreaterThanOrEqual(0);
+            expect(v).toBeLessThanOrEqual(1);
+        }
+        // go and kubernetes are met many times over (each counts 1, never more); sql has no evidence.
+        expect(m.subScores.years).toBeCloseTo((1 + 0.4) / (1 + 0.4 + 1), 5);
+        expect(m.score).toBeLessThanOrEqual(100);
+    });
+    it("ignores a stored yearsMin that is not positive", () => {
+        const m = scoreJob([req("k", { yearsMin: -3, semantic: [hit({ p: 0.95 })] })], data([job()]), {}, { now: NOW });
+        expect(m.rows[0].years).toBeNull();
+        expect(m.subScores.years).toBeNull();
+    });
 });
 
 import { builtinSatisfiers, canonicalKey as canonicalTagName } from "@/lib/tags/normalize";
