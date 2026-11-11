@@ -5,6 +5,8 @@
 // answers. Suggested fields are marked until the user edits them. Finish writes the candidate brief.
 
 import React, { useEffect, useState } from "react";
+import { AnimatePresence, m } from "motion/react";
+import { useMotionPresets } from "@/lib/ui/motion";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { formatMonthYear } from "@/lib/dates";
@@ -22,6 +24,7 @@ import { Checkbox, Field, Input, Label, Select, Textarea } from "@/components/ui
 import { ChipInput } from "@/components/ui/primitives/chip-input";
 import { MonthField } from "@/components/ui/primitives/month-field";
 import { NoticeBanner } from "@/components/ui/primitives/notice-banner";
+import { Reveal } from "@/components/ui/primitives/reveal";
 import { Segmented } from "@/components/ui/primitives/segmented";
 import { Tabs } from "@/components/ui/primitives/tabs";
 import { Sparkles } from "@/components/ui/primitives/icons";
@@ -70,6 +73,7 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
     const [suggested, setSuggested] = useState<ReadonlySet<SuggestKey>>(seed.suggested);
     const [followUps, setFollowUps] = useState<FollowUp[]>(saved.followUps);
     const [followUpsHash, setFollowUpsHash] = useState<string | null>(saved.followUpsHash);
+    const motionT = useMotionPresets();
     const [step, setStep] = useState<Step>("core");
     const [prefill, setPrefill] = useState<"loading" | "done">(fresh && !emptyLibrary ? "loading" : "done");
     const prefilling = prefill === "loading";
@@ -203,6 +207,15 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
                 <Tabs items={STEPS} value={step} onChange={goTo} aria-label="Questionnaire steps" />
             </div>
 
+            {/* Old and new step overlap (crossfade). Answers live in this component, so unmounting a step loses nothing. */}
+            <div className="relative">
+            <AnimatePresence initial={false} mode="popLayout">
+            <m.div
+                key={step}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1, transition: motionT.view }}
+                exit={{ opacity: 0, transition: motionT.viewExit }}
+            >
             {step === "core" && (
                 <Card>
                     <CardHeader title="Where you are" hint="The basics every piece of advice depends on." />
@@ -222,11 +235,11 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
                                 {EDUCATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </Select>
                         </Field>
-                        {(answers.educationStatus === "in-school" || answers.educationStatus === "graduated") && (
+                        <Reveal open={answers.educationStatus === "in-school" || answers.educationStatus === "graduated"} className="md:col-span-2">
                             <Field label={answers.educationStatus === "in-school" ? "Expected graduation" : "Graduated"} htmlFor="about-grad" hint={hint("graduationDate")} className="md:col-span-2">
                                 <MonthField id="about-grad" value={answers.graduationDate} onChange={v => set("graduationDate", v)} className="md:max-w-sm" />
                             </Field>
-                        )}
+                        </Reveal>
                         <Field label="Positions you're looking for" htmlFor="about-roles" hint={hint("targetRoles", "Up to 6 job titles. Press Enter after each.")} className="md:col-span-2">
                             <ChipInput id="about-roles" values={answers.targetRoles} onChange={v => set("targetRoles", v)} placeholder="Backend Engineer" max={6} />
                         </Field>
@@ -273,11 +286,11 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
                                 {AUTHORIZATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </Select>
                         </Field>
-                        {(answers.workAuthorization === "authorized" || answers.workAuthorization === "needs-sponsorship") && (
+                        <Reveal open={answers.workAuthorization === "authorized" || answers.workAuthorization === "needs-sponsorship"}>
                             <Field label="Country" htmlFor="about-country">
                                 <Input id="about-country" value={answers.authorizationCountry} onChange={e => set("authorizationCountry", e.target.value)} placeholder="United States" />
                             </Field>
-                        )}
+                        </Reveal>
                     </CardBody>
                 </Card>
             )}
@@ -347,6 +360,9 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
                     </CardBody>
                 </Card>
             )}
+            </m.div>
+            </AnimatePresence>
+            </div>
 
             <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:items-center">
                 {saved.status !== "complete" && (

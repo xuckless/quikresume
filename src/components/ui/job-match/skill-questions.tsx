@@ -110,7 +110,7 @@ export function SkillQuestions({ gaps, declined, library, onSaved, onSkip, skipL
                                                     aria-checked={a.choice === c}
                                                     onClick={() => set(r.name, { choice: c })}
                                                     className={cn(
-                                                        "h-7 rounded-md border px-2.5 text-xs font-medium transition-colors",
+                                                        "press h-7 rounded-md border px-2.5 text-xs font-medium",
                                                         a.choice === c
                                                             ? c === "yes" ? "border-accent bg-accent text-accent-fg" : c === "no" ? "border-danger-border bg-danger-bg text-danger" : "border-border-strong bg-surface-muted text-fg"
                                                             : "border-border bg-surface text-fg-muted hover:text-fg",

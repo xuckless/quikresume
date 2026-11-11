@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Wordmark } from "@/components/brand";
 import type { Session } from "next-auth";
 
-const BTN = "inline-flex h-9 items-center justify-center rounded-md px-3.5 text-sm font-medium transition-colors";
+const BTN = "press inline-flex h-9 items-center justify-center rounded-md px-3.5 text-sm font-medium";
 
 export function MarketingHeader({ session, backHome = false }: { session: Session | null; backHome?: boolean }) {
     return (

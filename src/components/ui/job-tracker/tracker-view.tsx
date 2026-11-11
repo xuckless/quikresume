@@ -18,6 +18,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { setJobStatus } from "@/app/actions/job-actions";
 import { JOB_STATUS_LABEL, JOB_STATUSES, type JobRecord, type JobStatus } from "@/lib/match/types";
 import { cn } from "@/lib/cn";
+import { CSS_EASE, DUR } from "@/lib/ui/motion";
 import { createPersistedStore } from "@/lib/ui/persisted-store";
 import { Button, FOCUS_RING, IconButton } from "@/components/ui/primitives/button";
 import { Input, Select } from "@/components/ui/primitives/field";
@@ -174,7 +175,8 @@ function JobCard({ job, onMove, onOpen }: { job: JobRecord; onMove: (id: string,
     return (
         <li
             ref={setNodeRef}
-            style={{ transform: CSS.Translate.toString(transform) }}
+            // Held: follows the pointer untweened. Released in place (or nowhere): eases back.
+            style={{ transform: CSS.Translate.toString(transform), transition: isDragging ? undefined : `transform ${DUR.move}ms ${CSS_EASE.inOut}` }}
             data-job-card={job.id}
             className={cn("rounded-md border border-border bg-surface shadow-sm", isDragging && "relative z-10 opacity-90")}
         >
@@ -232,7 +234,7 @@ function JobTable({ jobs, onMove, onOpen, onDelete }: { jobs: JobRecord[]; onMov
                             <Td className="w-20 text-right">
                                 <span className="inline-flex items-center">
                                     {j.url && (
-                                        <a href={j.url} target="_blank" rel="noreferrer noopener" aria-label={`Open the posting for ${j.title}`} className={cn("inline-flex size-7 items-center justify-center rounded-md text-fg-muted hover:bg-surface-muted hover:text-fg", FOCUS_RING)}>
+                                        <a href={j.url} target="_blank" rel="noreferrer noopener" aria-label={`Open the posting for ${j.title}`} className={cn("press inline-flex size-7 items-center justify-center rounded-md text-fg-muted hover:bg-surface-muted hover:text-fg", FOCUS_RING)}>
                                             <ExternalLink className="size-3.5" aria-hidden />
                                         </a>
                                     )}

@@ -61,7 +61,7 @@ export function TemplateGalleryDialog({ open, onClose, resumeData, theme, onChan
                                         title={a.label}
                                         aria-label={a.label}
                                         onClick={() => onChange({ ...theme, accent: id })}
-                                        className={cn("flex size-7 items-center justify-center rounded-full border", on ? "border-fg" : "border-border", FOCUS_RING)}
+                                        className={cn("press flex size-7 items-center justify-center rounded-full border", on ? "border-fg" : "border-border", FOCUS_RING)}
                                         style={a.hex ? { background: a.hex } : undefined}
                                     >
                                         {!a.hex && <span className="text-[10px] font-medium text-fg-muted">Aa</span>}

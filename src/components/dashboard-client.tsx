@@ -553,7 +553,7 @@ function DashboardClientInner({
                 style={paneOpen ? {
                     // While dragging the width is used as-is (the handle rubber-bands it past the limits).
                     gridTemplateColumns: dragWidth !== null ? `minmax(0,1fr) ${dragWidth}px` : `minmax(0,1fr) clamp(${PANE_MIN}px, ${paneWidth}px, 50%)`,
-                    transition: paneSettling ? "grid-template-columns 240ms var(--ease-out)" : undefined,
+                    transition: paneSettling ? "grid-template-columns var(--dur-move) var(--ease-in-out)" : undefined,
                 } : undefined}
             >
                 <main className="min-w-0 p-4 pb-16 md:p-6">

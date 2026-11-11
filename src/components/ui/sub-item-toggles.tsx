@@ -72,7 +72,7 @@ export function SubItemList({ entries, hidden, onToggle, variant, idPrefix, disa
                                 disabled={disabled || lockedKeys.includes(e.key)}
                                 title={lockedKeys.includes(e.key) ? "Names a hard requirement · always shown" : notes[e.key] ?? (on ? "Shown on résumé · click to hide" : "Hidden · click to show")}
                                 className={cn(
-                                    "inline-flex h-7 items-center rounded-md border px-2.5 text-xs font-medium transition-colors",
+                                    "press inline-flex h-7 items-center rounded-md border px-2.5 text-xs font-medium",
                                     highlighted.includes(e.key) && "ai-glow",
                                     on
                                         ? "border-border-strong bg-surface text-fg hover:bg-surface-hover"

@@ -145,7 +145,7 @@ export function StartFlow() {
                     <div className="text-13 text-fg-muted">
                         No résumé handy? Try a sample:{" "}
                         {demoSamples().map((s, i) => (
-                            <React.Fragment key={s.id}>{i > 0 && " · "}<button type="button" className="text-accent-text underline underline-offset-2" onClick={() => loadSample(s.id)}>{s.label}</button></React.Fragment>
+                            <React.Fragment key={s.id}>{i > 0 && " · "}<button type="button" className="press text-accent-text underline underline-offset-2" onClick={() => loadSample(s.id)}>{s.label}</button></React.Fragment>
                         ))}
                     </div>
                 </div>

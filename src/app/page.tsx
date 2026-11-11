@@ -6,8 +6,8 @@ import { LandingDemo } from "@/components/landing/landing-demo";
 import { Upload } from "@/components/ui/primitives/icons";
 import { AUTHOR, SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 
-const PRIMARY = "inline-flex h-10 items-center justify-center rounded-md bg-accent px-4 text-sm font-medium text-accent-fg transition-colors hover:bg-accent-hover";
-const SECONDARY = "inline-flex h-10 items-center justify-center rounded-md border border-border bg-surface px-4 text-sm font-medium text-fg transition-colors hover:bg-surface-hover";
+const PRIMARY = "press inline-flex h-10 items-center justify-center rounded-md bg-accent px-4 text-sm font-medium text-accent-fg hover:bg-accent-hover";
+const SECONDARY = "press inline-flex h-10 items-center justify-center rounded-md border border-border bg-surface px-4 text-sm font-medium text-fg hover:bg-surface-hover";
 
 const FEATURES = [
     { title: "One library, many résumés", body: "Keep every role, licence, project and skill in one place. Switch on what each application should show; nothing is retyped." },
@@ -71,7 +71,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ d
                                 <span className="mt-1 block text-fg-muted">Drop in a PDF or Word file, pick a template, paste a job, and see your match score. No account needed to try.</span>
                             </span>
                         </span>
-                        <span className={PRIMARY + " shrink-0"}>Import my résumé</span>
+                        <span className={PRIMARY.replace("press ", "") + " shrink-0"}>Import my résumé</span>
                     </Link>
                 ) : (
                     <div className="mt-8"><a href="/dashboard" className={PRIMARY}>Go to dashboard</a></div>

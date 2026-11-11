@@ -5,6 +5,7 @@
 
 import { useEffect } from "react";
 import { createPersistedStore } from "./persisted-store";
+import { CSS_EASE, DUR } from "./motion";
 
 export type ThemeChoice = "light" | "dark" | "system";
 
@@ -58,7 +59,7 @@ export function setThemeFrom(choice: ThemeChoice, from: { x: number; y: number }
     vt.ready.then(() => {
         document.documentElement.animate(
             { clipPath: [`circle(0px at ${from.x}px ${from.y}px)`, `circle(${radius}px at ${from.x}px ${from.y}px)`] },
-            { duration: 480, easing: "cubic-bezier(0.23, 1, 0.32, 1)", pseudoElement: "::view-transition-new(root)" },
+            { duration: DUR.theme, easing: CSS_EASE.out, pseudoElement: "::view-transition-new(root)" },
         );
     }).catch(() => { /* transition skipped */ });
 }

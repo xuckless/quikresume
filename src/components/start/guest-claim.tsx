@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { claimGuestDraft, type ClaimResult } from "@/app/actions/guest-actions";
 import { EMPTY_GUEST_DRAFT, guestDraftStore, hasClaimableDraft } from "@/lib/guest/draft-store";
 import { jobHref } from "@/lib/ui/use-dashboard-view";
+import { cn } from "@/lib/cn";
 import { NoticeBanner } from "@/components/ui/primitives";
 
 export function GuestClaim() {
@@ -18,6 +19,8 @@ export function GuestClaim() {
     // One-shot on mount, not a user action, so plain state rather than an operation (whose unmount
     // reset would drop the result when React Strict Mode re-runs effects in development).
     const [result, setResult] = useState<ClaimResult | null>(null);
+    // The success note's countdown ended: play the exit (rise-out) before unmounting.
+    const [leaving, setLeaving] = useState(false);
 
     useEffect(() => {
         if (started.current) return;
@@ -42,7 +45,13 @@ export function GuestClaim() {
             result.jobId && "The job you matched is in your Job Tracker.",
         ].filter(Boolean).join(" ");
     return (
-        <div className="group fixed top-16 right-4 z-50 max-w-md overflow-hidden rounded-md shadow-sm">
+        <div
+            className={cn("group fixed top-16 right-4 z-50 max-w-md overflow-hidden rounded-md shadow-sm", leaving && "rise-out")}
+            inert={leaving || undefined}
+            onAnimationEnd={e => {
+                if (leaving && e.target === e.currentTarget && e.animationName === "rise-out") { setResult(null); setLeaving(false); }
+            }}
+        >
             <NoticeBanner tone={result.ok ? "success" : "danger"} onDismiss={() => setResult(null)}>
                 {text}{" "}
                 {result.jobId && <Link className="font-medium underline underline-offset-2" href={jobHref(result.jobId)}>Open the full review</Link>}
@@ -52,7 +61,7 @@ export function GuestClaim() {
             {result.ok && (
                 <span
                     aria-hidden
-                    onAnimationEnd={() => setResult(null)}
+                    onAnimationEnd={() => setLeaving(true)}
                     className="toast-countdown absolute inset-x-0 bottom-0 h-0.5 origin-left bg-success/40 group-hover:[animation-play-state:paused] group-focus-within:[animation-play-state:paused]"
                 />
             )}

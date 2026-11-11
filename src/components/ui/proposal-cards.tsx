@@ -86,9 +86,9 @@ export function ProposalCards({ proposals, requirementDisplay, busyId, onApply, 
 
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
     return (
-        <details className="group rounded-lg border border-border bg-surface-muted/50 px-4 py-2">
+        <details className="group disclosure rounded-lg border border-border bg-surface-muted/50 px-4 py-2">
             <summary className="flex cursor-pointer list-none items-center gap-2 text-13 text-fg-muted [&::-webkit-details-marker]:hidden">
-                <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden />
+                <ChevronDown className="size-3.5 transition-move group-open:rotate-180" aria-hidden />
                 {label}
             </summary>
             <ul className="mt-2 divide-y divide-border">{children}</ul>

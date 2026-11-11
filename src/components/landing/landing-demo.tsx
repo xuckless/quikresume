@@ -160,7 +160,7 @@ export function LandingDemo() {
                         <WhatIfList rows={match.rows} limit={4} />
                     </div>
                     <p className="text-xs text-fg-subtle">Try switching off an item that carries a must-have and watch the score drop.</p>
-                    <Link href="/start" className="inline-flex h-9 items-center rounded-md bg-accent px-3.5 text-13 font-medium text-accent-fg hover:bg-accent-hover">Try it with your résumé</Link>
+                    <Link href="/start" className="press inline-flex h-9 items-center rounded-md bg-accent px-3.5 text-13 font-medium text-accent-fg hover:bg-accent-hover">Try it with your résumé</Link>
                 </section>
             </div>
         </div>

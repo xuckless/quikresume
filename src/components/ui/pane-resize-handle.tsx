@@ -6,6 +6,7 @@
 
 import React, { useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { DUR, rubberBand } from "@/lib/ui/motion";
 import { PANE_DEFAULT, PANE_MIN, setPreviewPaneWidth } from "@/lib/ui/preview-pane-store";
 
 interface PaneResizeHandleProps {
@@ -15,11 +16,6 @@ interface PaneResizeHandleProps {
     /** Live width while dragging (null when idle). `settle` asks the layout to ease to it (after release). */
     onDrag: (px: number | null, settle?: boolean) => void;
 }
-
-/** Past a limit the pane gives a little, with growing resistance, like pulling rubber. */
-const RUBBER_RANGE = 120;
-const rubber = (over: number) => RUBBER_RANGE * (1 - 1 / (over / RUBBER_RANGE * 0.55 + 1));
-const SETTLE_MS = 240;
 
 const STEP = 16;
 const BIG_STEP = 64;
@@ -50,7 +46,7 @@ export function PaneResizeHandle({ containerRef, width, onDrag }: PaneResizeHand
         const raw = rect.right - e.clientX;
         latest.current = clamp(raw);
         const max = maxWidth();
-        const shown = raw > max ? max + rubber(raw - max) : raw < PANE_MIN ? PANE_MIN - rubber(PANE_MIN - raw) : raw;
+        const shown = raw > max ? max + rubberBand(raw - max) : raw < PANE_MIN ? PANE_MIN - rubberBand(PANE_MIN - raw) : raw;
         cancelAnimationFrame(frame.current);
         frame.current = requestAnimationFrame(() => onDrag(shown));
     };
@@ -66,7 +62,7 @@ export function PaneResizeHandle({ containerRef, width, onDrag }: PaneResizeHand
         // Released past a limit: ease back to it, then hand the width back to the stored value.
         const target = latest.current;
         onDrag(target, true);
-        window.setTimeout(() => onDrag(null), SETTLE_MS);
+        window.setTimeout(() => onDrag(null), DUR.move);
     };
 
     const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {

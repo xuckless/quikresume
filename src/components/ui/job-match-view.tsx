@@ -32,6 +32,8 @@ import { EvidenceTable, ScoreHeadline, SubScoreBars, WhatIfList } from "@/compon
 import { Segmented } from "@/components/ui/primitives/segmented";
 import { GuidelineRow } from "@/components/ui/primitives/guideline-row";
 import { Card, CardBody, CardHeader } from "@/components/ui/primitives/card";
+import { Reveal } from "@/components/ui/primitives/reveal";
+import { Swap } from "@/components/ui/primitives/swap";
 import { Badge } from "@/components/ui/primitives/badge";
 import { NoticeBanner } from "@/components/ui/primitives/notice-banner";
 import { ChevronDown } from "@/components/ui/primitives/icons";
@@ -507,9 +509,9 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                     <CardHeader
                         title="Evidence by requirement"
                         hint="Direct = a skill on the item or confirmed by the AI check · Related = an equivalent skill · Semantic = a line that means it · Keyword only = printed but not shown in your work."
-                        action={<Button size="sm" variant="ghost" onClick={() => setShowAts(v => !v)} aria-expanded={showAts}>{showAts ? "Hide" : "Show"}<ChevronDown className={cn("size-3.5 transition-transform", showAts && "rotate-180")} /></Button>}
+                        action={<Button size="sm" variant="ghost" onClick={() => setShowAts(v => !v)} aria-expanded={showAts}><Swap swapKey={showAts ? "hide" : "show"}>{showAts ? "Hide" : "Show"}</Swap><ChevronDown className={cn("size-3.5 transition-move", showAts && "rotate-180")} /></Button>}
                     />
-                    {showAts && <EvidenceTable rows={match.rows} provisional={matchRunning} />}
+                    <Reveal open={showAts}><EvidenceTable rows={match.rows} provisional={matchRunning} /></Reveal>
                 </div>
             </Card>
 
@@ -601,7 +603,7 @@ function JobTrackingStrip({ job, onError }: { job: JobRecord; onError: (e: strin
                         if (notes !== job.notes) void save(() => updateJobMeta(job.id, { notes }));
                     }} />
                     {job.url && (
-                        <a href={job.url} target="_blank" rel="noreferrer noopener" className={cn("inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 text-13 text-fg-muted hover:bg-surface-hover hover:text-fg", FOCUS_RING)}>
+                        <a href={job.url} target="_blank" rel="noreferrer noopener" className={cn("press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 text-13 text-fg-muted hover:bg-surface-hover hover:text-fg", FOCUS_RING)}>
                             <ExternalLink className="size-3.5" aria-hidden />Posting
                         </a>
                     )}

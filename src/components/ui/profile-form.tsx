@@ -10,6 +10,7 @@ import type { PersonalInfo } from "@/types/schema";
 import { updateProfileFields, updateUserProfile } from "@/app/actions/user-actions";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/primitives/button";
+import { Swap } from "@/components/ui/primitives/swap";
 import { Field, Input, Textarea } from "@/components/ui/primitives/field";
 import { summaryWordCount, wordCaution } from "@/lib/text/word-count";
 import { Card, CardBody, CardHeader } from "@/components/ui/primitives/card";
@@ -164,9 +165,9 @@ export function ProfileForm({ initial, initialLinks, account, linkChecks, review
                     </div>
                     <div className="flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-end">
                         <span className={cn("text-13", status === "saved" ? "text-success" : "text-fg-subtle")} aria-live="polite">
-                            {status === "saved" ? "Saved" : dirty ? "Unsaved changes" : ""}
+                            <Swap swapKey={status === "saved" ? "saved" : dirty ? "dirty" : "none"}>{status === "saved" ? "Saved" : dirty ? "Unsaved changes" : ""}</Swap>
                         </span>
-                        <Button type="submit" variant="primary" loading={status === "saving"} disabled={Boolean(blocking) || (!dirty && status !== "error")} title={blocking ? blocking.message : undefined}>
+                        <Button type="submit" variant="primary" succeeded={status === "saved"} loading={status === "saving"} disabled={Boolean(blocking) || (!dirty && status !== "error")} title={blocking ? blocking.message : undefined}>
                             Save profile
                         </Button>
                     </div>

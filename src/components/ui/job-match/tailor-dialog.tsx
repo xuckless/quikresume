@@ -32,6 +32,7 @@ import { cn } from "@/lib/cn";
 import { Dialog } from "@/components/ui/primitives/dialog";
 import { Button, FOCUS_RING } from "@/components/ui/primitives/button";
 import { Checkbox, Input } from "@/components/ui/primitives/field";
+import { Reveal } from "@/components/ui/primitives/reveal";
 import { Switch } from "@/components/ui/primitives/switch";
 import { Badge } from "@/components/ui/primitives/badge";
 import { NoticeBanner } from "@/components/ui/primitives/notice-banner";
@@ -342,8 +343,8 @@ function SuggestionLine({ s, onAccept, onDismiss, subject }: { s: TailorSuggesti
                 <span>{s.source === "trim" ? "To fit one page, suggests" : "AI suggests"} {verb}{subject ? ` ${subject}` : ""}: <span className="text-fg-muted">{s.reason}</span></span>
             </span>
             <span className="inline-flex gap-1">
-                <button type="button" onClick={onAccept} className={cn("rounded-sm px-1.5 py-0.5 font-medium text-fg underline-offset-2 hover:underline", FOCUS_RING)}>Accept</button>
-                <button type="button" onClick={onDismiss} className={cn("rounded-sm px-1.5 py-0.5 text-fg-muted underline-offset-2 hover:text-fg hover:underline", FOCUS_RING)}>Dismiss</button>
+                <button type="button" onClick={onAccept} className={cn("press rounded-sm px-1.5 py-0.5 font-medium text-fg underline-offset-2 hover:underline", FOCUS_RING)}>Accept</button>
+                <button type="button" onClick={onDismiss} className={cn("press rounded-sm px-1.5 py-0.5 text-fg-muted underline-offset-2 hover:text-fg hover:underline", FOCUS_RING)}>Dismiss</button>
             </span>
         </span>
     );
@@ -433,15 +434,15 @@ function ReviewList({ plan, library, sel, onChange, pending, onAccept, onDismiss
                                                     type="button"
                                                     onClick={() => setExpanded(prev => { const n = new Set(prev); if (n.has(d.id)) n.delete(d.id); else n.add(d.id); return n; })}
                                                     aria-expanded={isOpen}
-                                                    className={cn("inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-fg-muted hover:bg-surface-hover hover:text-fg", subSuggestions.length > 0 && "text-fg ring-1 ring-accent", FOCUS_RING)}
+                                                    className={cn("press inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-fg-muted hover:bg-surface-hover hover:text-fg", subSuggestions.length > 0 && "text-fg ring-1 ring-accent", FOCUS_RING)}
                                                 >
                                                     {noun}
                                                     {subSuggestions.length > 0 && <span className="inline-flex items-center gap-0.5 tabular-nums"><Sparkles className="size-3" aria-hidden />{subSuggestions.length}</span>}
-                                                    <ChevronDown className={cn("size-3.5 transition-transform", isOpen && "rotate-180")} aria-hidden />
+                                                    <ChevronDown className={cn("size-3.5 transition-move", isOpen && "rotate-180")} aria-hidden />
                                                 </button>
                                             )}
                                         </div>
-                                        {isOpen && on && entries.length > 0 && (
+                                        <Reveal open={isOpen && on && entries.length > 0}>
                                             <div className="mt-3 space-y-2 pl-11 text-13">
                                                 <SubItemList
                                                     idPrefix={`tailor-${d.id}`}
@@ -469,7 +470,7 @@ function ReviewList({ plan, library, sel, onChange, pending, onAccept, onDismiss
                                                     </div>
                                                 )}
                                             </div>
-                                        )}
+                                        </Reveal>
                                         </>)}
                                     </SortableBlock>
                                 );

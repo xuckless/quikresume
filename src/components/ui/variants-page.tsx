@@ -102,7 +102,7 @@ export function VariantsPage({ variants, loadedVariantId, data }: VariantsPagePr
                                         type="button"
                                         aria-pressed={on}
                                         onClick={() => setLabelFilter(on ? null : l)}
-                                        className={cn("h-6 rounded-sm px-2 text-xs font-medium transition-colors", on ? "bg-accent text-accent-fg" : "bg-surface-muted text-fg-muted hover:text-fg", FOCUS_RING)}
+                                        className={cn("press h-6 rounded-sm px-2 text-xs font-medium", on ? "bg-accent text-accent-fg" : "bg-surface-muted text-fg-muted hover:text-fg", FOCUS_RING)}
                                     >
                                         {l}
                                     </button>
@@ -203,7 +203,7 @@ function VariantRow({ variant: v, data, loaded, busy, onLoad, onUpdateSelection,
             <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                     {editing === "name" ? inlineInput("Variant name", "max-w-xs") : (
-                        <button type="button" onClick={() => { setDraft(v.name); setEditing("name"); }} className={cn("truncate rounded-sm text-left text-sm font-medium text-fg hover:underline underline-offset-2", FOCUS_RING)} title="Rename">
+                        <button type="button" onClick={() => { setDraft(v.name); setEditing("name"); }} className={cn("press truncate rounded-sm text-left text-sm font-medium text-fg hover:underline underline-offset-2", FOCUS_RING)} title="Rename">
                             {v.name}
                         </button>
                     )}
@@ -211,7 +211,7 @@ function VariantRow({ variant: v, data, loaded, busy, onLoad, onUpdateSelection,
                     {editing === "labels" ? inlineInput("comma-separated labels", "w-64") : (
                         <>
                             {v.labels.map(l => <Badge key={l}>{l}</Badge>)}
-                            <button type="button" onClick={() => { setDraft(v.labels.join(", ")); setEditing("labels"); }} className={cn("rounded-sm text-xs text-fg-subtle hover:text-fg", FOCUS_RING)}>
+                            <button type="button" onClick={() => { setDraft(v.labels.join(", ")); setEditing("labels"); }} className={cn("press rounded-sm text-xs text-fg-subtle hover:text-fg", FOCUS_RING)}>
                                 {v.labels.length ? "Edit labels" : "+ Add label"}
                             </button>
                         </>

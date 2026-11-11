@@ -20,7 +20,7 @@ export default function DashboardError({ error, reset }: { error: Error & { dige
                     actions={
                         <>
                             <Button variant="primary" onClick={reset}>Try again</Button>
-                            <Link href="/dashboard" className="inline-flex h-9 items-center rounded-md border border-border bg-surface px-3.5 text-sm font-medium text-fg hover:bg-surface-hover">
+                            <Link href="/dashboard" className="press inline-flex h-9 items-center rounded-md border border-border bg-surface px-3.5 text-sm font-medium text-fg hover:bg-surface-hover">
                                 Back to library
                             </Link>
                         </>
