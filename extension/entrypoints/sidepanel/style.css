@@ -1,5 +1,9 @@
 /* Tokens mirror src/app/globals.css in the app (light + dark). */
+/* Motion mirrors the app's system (src/app/globals.css): one ease-out curve, 120 ms press, 220 ms entrances,
+   list rows 30 ms apart, a single 520 ms success ring pulse, all off under prefers-reduced-motion (spinners stay). */
 :root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --dur-press: 120ms; --dur-enter: 220ms; --stagger: 30ms; --dur-pulse: 520ms;
   --bg: #fafafa; --surface: #ffffff; --surface-muted: #f4f4f5; --border: #e4e4e7; --fg: #0a0a0a; --fg-muted: #525252;
   --fg-subtle: #6e6e6e; --accent: #003200; --accent-fg: #ffffff; --accent-text: #1a6e38; --accent-subtle: #e8f3ec;
   --warning: #92400e; --warning-bg: #fef3c7; --danger: #b91c1c; --chart-track: #e7ece8;
@@ -22,6 +26,7 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 .brand .r { color: var(--accent-text); }
 main { flex: 1; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
 footer { padding: 10px 14px; border-top: 1px solid var(--border); color: var(--fg-subtle); font-size: 11px; text-align: center; }
+.card, .notice { animation: rise-in var(--dur-enter) var(--ease-out) backwards; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
 .card h2 { margin: 0 0 2px; font-size: 14px; font-weight: 600; }
 .muted { color: var(--fg-muted); }
@@ -31,7 +36,9 @@ footer { padding: 10px 14px; border-top: 1px solid var(--border); color: var(--f
 .stack { display: flex; flex-direction: column; gap: 8px; }
 button, select, input { font: inherit; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); cursor: pointer; }
+.btn { transition: background-color var(--dur-press) var(--ease-out), filter var(--dur-press) var(--ease-out), transform var(--dur-press) var(--ease-out); }
 .btn:hover { background: var(--surface-muted); }
+.btn:active:not(:disabled) { transform: scale(0.97); }
 .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
 .btn.primary:hover { filter: brightness(1.1); }
 .btn.ghost { border-color: transparent; background: transparent; }
@@ -43,7 +50,8 @@ input.code { font: 600 16px ui-monospace, "SF Mono", Menlo, monospace; letter-sp
 input.text { width: 100%; }
 input[type="checkbox"] { height: auto; margin-top: 3px; }
 .score { display: flex; align-items: center; gap: 12px; }
-.ring { position: relative; width: 64px; height: 64px; flex: none; }
+.ring { position: relative; width: 64px; height: 64px; flex: none; border-radius: 50%; }
+.ring.pulse { animation: pulse-success var(--dur-pulse) var(--ease-out) var(--dur-enter) 1; }
 .ring svg { transform: rotate(-90deg); }
 .ring span { position: absolute; inset: 0; display: grid; place-items: center; font: 600 18px ui-monospace, "SF Mono", Menlo, monospace; }
 .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }
@@ -52,14 +60,22 @@ input[type="checkbox"] { height: auto; margin-top: 3px; }
 .notice { border-radius: 6px; padding: 8px 10px; font-size: 12px; background: var(--warning-bg); color: var(--warning); }
 .notice.err { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
 ul.plain { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+ul.plain > li { animation: rise-in var(--dur-enter) var(--ease-out) backwards; }
+ul.plain > li:nth-child(2) { animation-delay: calc(var(--stagger) * 1); }
+ul.plain > li:nth-child(3) { animation-delay: calc(var(--stagger) * 2); }
+ul.plain > li:nth-child(4) { animation-delay: calc(var(--stagger) * 3); }
+ul.plain > li:nth-child(5) { animation-delay: calc(var(--stagger) * 4); }
+ul.plain > li:nth-child(n + 6) { animation-delay: calc(var(--stagger) * 5); }
+/* A button label that changes (idle <-> busy) fades in instead of snapping. */
+.swap { display: inline-flex; align-items: center; gap: 6px; animation: fade-in 160ms var(--ease-out); }
 .gain { color: var(--accent-text); }
 a { color: var(--accent-text); }
 .spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fade-in { from { opacity: 0; } }
 .switch { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
-/* Import from LinkedIn (LinkedInImportCard.tsx). Entrances ease-out, rows 30 ms apart, one success pulse. */
-:root { --ease-out: cubic-bezier(0.23, 1, 0.32, 1); }
+/* Import from LinkedIn (LinkedInImportCard.tsx). */
 @keyframes rise-in { from { opacity: 0; transform: translateY(4px); } }
 @keyframes mark-in { from { opacity: 0; transform: scale(0.9); } }
 @keyframes pulse-success {
@@ -67,11 +83,11 @@ a { color: var(--accent-text); }
   to { box-shadow: 0 0 0 7px color-mix(in oklab, var(--accent-text) 0%, transparent); }
 }
 ol.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-ol.steps li { display: flex; align-items: center; gap: 8px; color: var(--fg-muted); animation: rise-in 220ms var(--ease-out) backwards; }
-ol.steps li:nth-child(2) { animation-delay: 30ms; }
-ol.steps li:nth-child(3) { animation-delay: 60ms; }
+ol.steps li { display: flex; align-items: center; gap: 8px; color: var(--fg-muted); animation: rise-in var(--dur-enter) var(--ease-out) backwards; }
+ol.steps li:nth-child(2) { animation-delay: var(--stagger); }
+ol.steps li:nth-child(3) { animation-delay: calc(var(--stagger) * 2); }
 ol.steps li.done { color: var(--fg); }
-ol.steps .dot { display: grid; place-items: center; width: 18px; height: 18px; flex: none; border-radius: 50%; border: 1px solid var(--border); font-size: 11px; transition: background-color 200ms var(--ease-out), color 200ms var(--ease-out); }
+ol.steps .dot { display: grid; place-items: center; width: 18px; height: 18px; flex: none; border-radius: 50%; border: 1px solid var(--border); font-size: 11px; transition: background-color var(--dur-enter) var(--ease-out), color var(--dur-enter) var(--ease-out); }
 ol.steps li.done .dot { background: var(--accent-subtle); border-color: transparent; color: var(--accent-text); }
 dl.urls { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; font-size: 12px; }
 dl.urls dt { color: var(--fg-subtle); }
@@ -81,8 +97,10 @@ dl.urls dd.err { color: var(--danger); }
 .notice .link, button.link { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }
 .li-done { align-items: center; text-align: center; padding: 20px 12px; }
 .li-done p { margin: 0; }
-.done-mark { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; background: var(--accent-subtle); animation: mark-in 240ms var(--ease-out) both, pulse-success 520ms var(--ease-out) 240ms 1; }
+.done-mark { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; background: var(--accent-subtle); animation: mark-in var(--dur-enter) var(--ease-out) both, pulse-success var(--dur-pulse) var(--ease-out) var(--dur-enter) 1; }
 .done-mark svg { width: 40px; height: 40px; fill: none; stroke: var(--accent-text); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 @media (prefers-reduced-motion: reduce) {
-  ol.steps li, .done-mark { animation: none; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .btn:active:not(:disabled) { transform: none; }
+  .spinner { animation: spin .8s linear infinite !important; }
 }
