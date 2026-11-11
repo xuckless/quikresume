@@ -1,12 +1,5 @@
-import { expect, it } from 'vitest';
+import { expect, it } from "vitest";
 import { editorTransition as reduce, initialEditorWorkflow, initialReReviewWorkflow, reReviewTransition, type EditorEvent } from "@/lib/ui/editor-workflow";
-import { analysisDialogTransition } from '@/lib/ui/job-analysis-dialog';
-it('does not reopen the analysis dialog when request cleanup follows success', () => {
-    const running = analysisDialogTransition({ phase: 'editing' }, { type: 'processing' });
-    expect(analysisDialogTransition(running, { type: 'close' })).toBe(running);
-    const completed = analysisDialogTransition(running, { type: 'analyzed' });
-    expect(analysisDialogTransition(completed, { type: 'settled' })).toBe(completed);
-});
 it("keeps editor confirmations exclusive and accepts only the outcome while saving", () => {
     const leaving = reduce(initialEditorWorkflow, { type: "leave-requested", target: "/dashboard/profile" });
     expect(leaving).toEqual({ phase: "confirm-leave", target: "/dashboard/profile" });

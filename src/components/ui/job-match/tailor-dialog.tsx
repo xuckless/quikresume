@@ -19,6 +19,7 @@ import {
     acceptSuggestion, applySelection, buildTailorPlan, diffSuggestions, fitToOnePage, isPending, planSelection, selectionOf, setHidden, setInclude,
     subEntriesOf, TRIM_ITEM_REASON, TRIM_KEY_REASON, overrideWarnings, type TailorPlan, type TailorSelection, type TailorSuggestion,
 } from "@/lib/match/auto-tailor";
+import { TAILOR_QUESTIONS, tailorFlowTransition, type TailorAi } from "@/lib/match/tailor-flow";
 import { selectedHidden, selectedIds, selectionEquals } from "@/lib/variants";
 import { pdfFileName, toTypstDoc } from "@/lib/typst/doc";
 import { compilePdf, compileSvg, ensureTypst, formatTypstError } from "@/lib/typst/client";
@@ -39,13 +40,11 @@ import { ChevronDown, Download, Eye, Loader2, Lock, Sparkles } from "@/component
 import { SubItemList } from "@/components/ui/sub-item-toggles";
 import { ResumePreview } from "@/components/ui/resume-preview";
 import { useResumePageCount } from "@/components/ui/use-page-count";
+import { useOperation } from "@/lib/ui/use-operation";
 import { SkillQuestions } from "./skill-questions";
 
-import { useJobOperation } from "@/lib/ui/job-use-operation";
-import { tailorReviewTransition, type TailorReviewState, type TailorAiState } from "@/lib/ui/job-tailor-state";
-
-type Busy = null | "close" | "save" | "download" | "fit";
-type AiState = TailorAiState;
+/** Footer actions; one at a time. */
+type Action = "close" | "save" | "download" | "fit";
 type TrimNotes = { items: Record<string, string>; keys: Record<string, Record<string, string>> };
 
 interface TailorDialogProps {
@@ -61,44 +60,37 @@ interface TailorDialogProps {
 
 const pagesOf = (lib: ResumeData) => async (sel: TailorSelection) => (await compileSvg(toTypstDoc(applySelection(lib, sel)))).pageCount;
 
-/** Mount with a `key` per opening so every run starts clean. */
+/** Mount fresh per opening so every run starts clean. */
 export function TailorDialog({ job, resumeData, declined: initialDeclined, aliases, caps, onClose }: TailorDialogProps) {
     const router = useRouter();
-    const [library, setLibrary] = useState(resumeData);
     const [declined, setDeclined] = useState(initialDeclined);
     const gaps = uncoveredRequirements(job.requirements, resumeData, aliases);
     const hasQuestions = gaps.length > 0;
 
-    const [review, dispatchReview] = useReducer(tailorReviewTransition, hasQuestions ? { step: "questions" } : { step: "review", run: 0, ai: { status: "running" } } as TailorReviewState);
-    const step = review.step;
-    const ai: AiState = review.step === "review" ? review.ai : { status: "running" };
-    const [requirements, setRequirements] = useState<Requirement[]>(job.requirements);
-    const [plan, setPlan] = useState<TailorPlan>(() => buildTailorPlan(job.requirements, resumeData, caps, aliases));
+    // Nothing to ask: the review (run 1) is open from the first render and the effect below starts its AI.
+    const [flow, dispatch] = useReducer(tailorFlowTransition, null, () => hasQuestions ? TAILOR_QUESTIONS : tailorFlowTransition(TAILOR_QUESTIONS, {
+        type: "review", run: 1, library: resumeData, plan: buildTailorPlan(job.requirements, resumeData, caps, aliases), requirements: job.requirements, warning: null,
+    }));
+    const review = flow.step === "review" ? flow : null;
+    const library = review?.library ?? resumeData;
+    const requirements = review?.requirements ?? job.requirements;
+    const ai: TailorAi = review?.ai ?? { status: "running" };
     const [sel, setSel] = useState<TailorSelection>(() => selectionOf(resumeData));
     const [dismissed, setDismissed] = useState<Set<string>>(new Set());
     const [trimNotes, setTrimNotes] = useState<TrimNotes>({ items: {}, keys: {} });
     const [allowMultiPage, setAllowMultiPage] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
     const [name, setName] = useState([job.company, job.title].filter(Boolean).join(" · ") || "Tailored résumé");
-    const operationController = useJobOperation<NonNullable<Busy> | "compile-download" | "save-download">();
-    const operation = operationController.state;
-    const busy: Busy = operation.status === "running" ? (operation.operation === "compile-download" || operation.operation === "save-download" ? "download" : operation.operation) : null;
-    const error = operation.status === "failed" ? operation.message : null;
-    const [warning, setWarning] = useState<string | null>(null);
+    // Only Save returns something: the PDF bytes (download) and how many items were skipped.
+    const action = useOperation<Action, { bytes: Uint8Array | null; missing: number } | void>();
+    const lastRun = useRef(flow.run);
     const started = useRef(false);
-    const runId = useRef(0);
+    // Skips the page fitting (a burst of Typst compiles) once the dialog is gone; the reducer drops late results anyway.
+    const mounted = useRef(true);
 
-    /** Opens the review on `lib`'s working selection and starts the AI in the background. */
-    const startReview = async (lib: ResumeData) => {
-        const id = ++runId.current;
+    /** Background AI pass for review `run`: plan from the model, then fitted suggestions. */
+    const runAi = async (run: number, lib: ResumeData, tagPlan: TailorPlan) => {
         const base = selectionOf(lib);
-        const tagPlan = buildTailorPlan(job.requirements, lib, caps, aliases);
-        setLibrary(lib);
-        setSel(base);
-        setPlan(tagPlan);
-        dispatchReview({ type: "review", run: id });
-        setDismissed(new Set());
-
         let reviewed = tagPlan;
         let failure: string | null = null;
         try {
@@ -109,121 +101,114 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
                 | null;
             if (!json) throw new Error(`The AI review failed (${res.status}).`);
             if (!json.ok) throw new Error(json.error);
-            if (runId.current !== id) return;
             reviewed = json.plan;
-            setPlan(json.plan);
-            setRequirements(json.requirements);
-            if (json.warning) setWarning(json.warning);
+            dispatch({ type: "reviewed", run, plan: json.plan, requirements: json.requirements, warning: json.warning ?? null });
         } catch (err) {
             failure = `${err instanceof Error ? err.message : "The AI review failed."} Suggestions come from tag matching only.`;
         }
 
-        if (runId.current !== id) return;
+        if (!mounted.current || run !== lastRun.current) return;
         try {
             await ensureTypst();
             const target = { ...planSelection(reviewed), layout: base.layout };
             const fitted = await fitToOnePage(reviewed, target, lib, pagesOf(lib));
-            if (runId.current !== id) return;
-            dispatchReview({ type: "settle", run: id, ai: {
-                status: "done",
-                untrimmed: diffSuggestions(reviewed, target, base),
-                trimmed: diffSuggestions(reviewed, fitted.selection, base, fitted.trim),
-            } });
-            if (failure) setWarning(failure);
+            dispatch({
+                type: "settle", run, warning: failure, ai: {
+                    status: "done",
+                    untrimmed: diffSuggestions(reviewed, target, base),
+                    trimmed: diffSuggestions(reviewed, fitted.selection, base, fitted.trim),
+                },
+            });
         } catch (err) {
-            if (runId.current !== id) return;
-            dispatchReview({ type: "settle", run: id, ai: { status: "failed", message: failure ?? formatTypstError(err) } });
+            dispatch({ type: "settle", run, warning: null, ai: { status: "failed", message: failure ?? formatTypstError(err) } });
         }
     };
 
-    // Nothing to ask: open the review straight away (once per mount; the ref survives Strict Mode's double effect).
+    /** Leaves the questions for the review on `lib`'s working selection. */
+    const startReview = (lib: ResumeData, warning: string | null) => {
+        const run = ++lastRun.current;
+        const tagPlan = buildTailorPlan(job.requirements, lib, caps, aliases);
+        dispatch({ type: "review", run, library: lib, plan: tagPlan, requirements: job.requirements, warning });
+        setSel(selectionOf(lib));
+        setDismissed(new Set());
+        void runAi(run, lib, tagPlan);
+    };
+
     useEffect(() => {
-        if (started.current || hasQuestions) return;
-        started.current = true;
-        void startReview(resumeData);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        mounted.current = true;
+        return () => { mounted.current = false; };
     }, []);
 
-    useEffect(() => () => { runId.current++; started.current = false; }, []);
+    // Start run 1's AI once per mount (the ref survives Strict Mode's double effect).
+    useEffect(() => {
+        if (started.current || !review) return;
+        started.current = true;
+        void runAi(review.run, review.library, review.plan);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const applied = applySelection(library, sel);
     const suggestions = ai.status === "done" ? (allowMultiPage ? ai.untrimmed : ai.trimmed) : [];
     const pending = suggestions.filter(s => !dismissed.has(s.id) && isPending(s, sel));
-    const warnings = overrideWarnings(plan, sel, library, requirements);
 
     const accept = (s: TailorSuggestion) => setSel(prev => acceptSuggestion(prev, s));
     const dismiss = (s: TailorSuggestion) => setDismissed(prev => new Set(prev).add(s.id));
     const acceptAll = () => setSel(prev => pending.reduce(acceptSuggestion, prev));
 
-    const fit = async () => {
-        const run = operationController.start("fit");
-        if (!run) return;
-        try {
-            await ensureTypst();
-            const result = await fitToOnePage(plan, sel, library, pagesOf(library));
-            if (!run.active()) return;
-            setSel({ ...result.selection, layout: sel.layout });
-            setTrimNotes(prev => {
-                const next: TrimNotes = { items: { ...prev.items }, keys: { ...prev.keys } };
-                for (const id of result.trim.items) next.items[id] = TRIM_ITEM_REASON;
-                for (const [id, keys] of Object.entries(result.trim.keys)) next.keys[id] = { ...next.keys[id], ...Object.fromEntries(keys.map(k => [k, TRIM_KEY_REASON])) };
-                return next;
-            });
-            // Trimming is done: the remaining one-page suggestions no longer apply.
-            setDismissed(prev => new Set([...prev, ...suggestions.filter(s => s.source === "trim").map(s => s.id)]));
-            if (result.pages > 1) run.fail("Could not fit one page without removing locked content. Switch something off or allow more pages.");
-        } catch (err) {
-            run.fail(formatTypstError(err));
-        } finally {
-            run.complete();
-        }
-    };
+    const fit = (plan: TailorPlan) => void action.run("fit", async () => {
+        const result = await ensureTypst()
+            .then(() => fitToOnePage(plan, sel, library, pagesOf(library)))
+            .catch((err: unknown) => { throw new Error(formatTypstError(err)); });
+        setSel({ ...result.selection, layout: sel.layout });
+        setTrimNotes(prev => {
+            const next: TrimNotes = { items: { ...prev.items }, keys: { ...prev.keys } };
+            for (const id of result.trim.items) next.items[id] = TRIM_ITEM_REASON;
+            for (const [id, keys] of Object.entries(result.trim.keys)) next.keys[id] = { ...next.keys[id], ...Object.fromEntries(keys.map(k => [k, TRIM_KEY_REASON])) };
+            return next;
+        });
+        // Trimming is done: the remaining one-page suggestions no longer apply.
+        setDismissed(prev => new Set([...prev, ...suggestions.filter(s => s.source === "trim").map(s => s.id)]));
+        // The trim above stays applied; the message says why it is still over a page.
+        if (result.pages > 1) throw new Error("Could not fit one page without removing locked content. Switch something off or allow more pages.");
+    });
 
     const close = async () => {
-        const run = operationController.start("close");
-        if (!run) return;
+        if (action.running) return;
         const layoutChanged = JSON.stringify(applied.layout) !== JSON.stringify(library.layout);
-        if (step !== "review" || (!layoutChanged && selectionEquals(library, selectedIds(applied), selectedHidden(applied)))) { runId.current++; onClose(); return; }
-
-        try {
+        if (!review || (!layoutChanged && selectionEquals(library, selectedIds(applied), selectedHidden(applied)))) { onClose(); return; }
+        const settled = await action.run("close", async () => {
             await applyWorkingSelection({ items: selectedIds(applied), hidden: selectedHidden(applied), layout: layoutChanged ? applied.layout : undefined });
-            if (!run.active()) return;
-            runId.current++;
-            router.refresh();
-            onClose("Applied your changes to the working selection.");
-        } catch (err) {
-            run.fail(err instanceof Error ? err.message : "Could not apply the selection.");
-            run.complete();
-        }
+        }, "Could not apply the selection.");
+        if (!settled?.ok) return;
+        router.refresh();
+        onClose("Applied your changes to the working selection.");
     };
 
     const save = async (download: boolean) => {
-        const run = operationController.start(download ? "compile-download" : "save");
-        if (!run) return;
-        try {
-            // Compile first so a Typst error leaves nothing half-saved.
-            const bytes = download ? await compilePdf(toTypstDoc(applied)) : null;
-            if (!run.active()) return;
-            if (download) run.advance("save-download");
-            const r = await createVariantFromPlan({ name, labels: [job.company].filter(Boolean), items: selectedIds(applied), hidden: selectedHidden(applied), layout: applied.layout });
-            if (!run.active()) return;
-            if (bytes) {
-                const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = pdfFileName(library.personalInfo);
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                URL.revokeObjectURL(url);
+        const settled = await action.run(download ? "download" : "save", async () => {
+            try {
+                // Compile first so a Typst error leaves nothing half-saved.
+                const bytes = download ? await compilePdf(toTypstDoc(applied)) : null;
+                const r = await createVariantFromPlan({ name, labels: [job.company].filter(Boolean), items: selectedIds(applied), hidden: selectedHidden(applied), layout: applied.layout });
+                return { bytes, missing: r.missing };
+            } catch (err) {
+                throw download ? new Error(formatTypstError(err)) : err;
             }
-            runId.current++;
-            router.refresh();
-            onClose(`Created and loaded "${name}"${bytes ? " and downloaded the PDF" : ""}.${r.missing ? ` ${r.missing} items no longer existed and were skipped.` : ""}`);
-        } catch (err) {
-            run.fail(err instanceof Error ? (download ? formatTypstError(err) : err.message) : "Could not create the variant.");
-            run.complete();
+        }, "Could not create the variant.");
+        if (!settled?.ok || !settled.result) return;
+        const { bytes, missing } = settled.result;
+        if (bytes) {
+            const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = pdfFileName(library.personalInfo);
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
         }
+        router.refresh();
+        onClose(`Created and loaded "${name}"${bytes ? " and downloaded the PDF" : ""}.${missing ? ` ${missing} items no longer existed and were skipped.` : ""}`);
     };
 
     return (
@@ -232,8 +217,8 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
             onClose={() => void close()}
             size="lg"
             title={`Tailor résumé for ${job.title}`}
-            description={step === "questions" ? "Step 1 of 2 · requirements your library doesn't show yet" : "Step 2 of 2 · pick what goes on the résumé"}
-            footer={step === "review" ? (
+            description={!review ? "Step 1 of 2 · requirements your library doesn't show yet" : "Step 2 of 2 · pick what goes on the résumé"}
+            footer={review ? (
                 <ReviewFooter
                     scoreOpts={scoreOptionsFor(job)}
                     library={library}
@@ -244,8 +229,8 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
                     onAllowMultiPage={setAllowMultiPage}
                     name={name}
                     onName={setName}
-                    busy={busy}
-                    onFit={fit}
+                    busy={action.running}
+                    onFit={() => fit(review.plan)}
                     onClose={close}
                     onSave={() => void save(false)}
                     onDownload={() => void save(true)}
@@ -255,28 +240,27 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
             )}
         >
             <div className="space-y-4">
-                {error && <NoticeBanner tone="danger" onDismiss={() => operationController.dismiss()}>{error}</NoticeBanner>}
-                {warning && step === "review" && <NoticeBanner tone="warning" onDismiss={() => setWarning(null)}>{warning}</NoticeBanner>}
+                {action.error && <NoticeBanner tone="danger" onDismiss={action.reset}>{action.error}</NoticeBanner>}
+                {review?.warning && <NoticeBanner tone="warning" onDismiss={() => dispatch({ type: "dismissWarning" })}>{review.warning}</NoticeBanner>}
 
-                {step === "questions" && (
+                {!review && (
                     <SkillQuestions
                         gaps={gaps}
                         declined={declined}
                         library={library}
                         saveLabel="Save & continue"
                         skipLabel="Skip"
-                        onSkip={() => void startReview(library)}
+                        onSkip={() => startReview(library, null)}
                         onSaved={(r) => {
                             // Keep the working selection flags from the dashboard; take new content/tags from the server.
                             setDeclined(r.declined);
-                            if (r.warning) setWarning(r.warning);
                             router.refresh();
-                            void startReview(mergeSelection(r.resume, library));
+                            startReview(mergeSelection(r.resume, library), r.warning ?? null);
                         }}
                     />
                 )}
 
-                {step === "review" && (
+                {review && (
                     <>
                         <ReviewToolbar
                             ai={ai}
@@ -290,14 +274,14 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
                             <ResumePreview resumeData={applied} hideDownload />
                         ) : (
                             <ReviewList
-                                plan={plan}
+                                plan={review.plan}
                                 library={library}
                                 sel={sel}
                                 onChange={setSel}
                                 pending={pending}
                                 onAccept={accept}
                                 onDismiss={dismiss}
-                                warnings={warnings}
+                                warnings={overrideWarnings(review.plan, sel, library, requirements)}
                                 trimNotes={trimNotes}
                             />
                         )}
@@ -321,7 +305,7 @@ function mergeSelection(server: ResumeData, client: ResumeData): ResumeData {
 // ---------- review
 
 function ReviewToolbar({ ai, pendingCount, onAcceptAll, showPreview, onTogglePreview, missingMust }: {
-    ai: AiState; pendingCount: number; onAcceptAll: () => void; showPreview: boolean; onTogglePreview: () => void; missingMust: Requirement[];
+    ai: TailorAi; pendingCount: number; onAcceptAll: () => void; showPreview: boolean; onTogglePreview: () => void; missingMust: Requirement[];
 }) {
     return (
         <div className="space-y-2">
@@ -513,7 +497,7 @@ function ReviewFooter({
 }: {
     scoreOpts: ScoreOptions; library: ResumeData; applied: ResumeData; requirements: Requirement[]; aliases: AliasMap;
     allowMultiPage: boolean; onAllowMultiPage: (v: boolean) => void; name: string; onName: (v: string) => void;
-    busy: Busy; onFit: () => void; onClose: () => void; onSave: () => void; onDownload: () => void;
+    busy: Action | null; onFit: () => void; onClose: () => void; onSave: () => void; onDownload: () => void;
 }) {
     const score = scoreJob(requirements, applied, aliases, scoreOpts).score;
     const before = scoreJob(requirements, library, aliases, scoreOpts).score;

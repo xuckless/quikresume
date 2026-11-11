@@ -7,7 +7,7 @@
 // remembered and warned about on later jobs until answered Yes. Saved through
 // /api/jobs/skill-answers.
 
-import React, { useReducer, useState } from "react";
+import React, { useState } from "react";
 import type { ResumeData } from "@/types/schema";
 import type { DeclinedSkill, Requirement } from "@/lib/match/types";
 import { requirementTier } from "@/lib/match/score";
@@ -17,8 +17,7 @@ import { Button, FOCUS_RING } from "@/components/ui/primitives/button";
 import { Input, Select } from "@/components/ui/primitives/field";
 import { Badge } from "@/components/ui/primitives/badge";
 import { NoticeBanner } from "@/components/ui/primitives/notice-banner";
-
-import { jobOperationTransition, type JobOperationState } from "@/lib/ui/job-operation-state";
+import { useOperation } from "@/lib/ui/use-operation";
 
 type Choice = "yes" | "no" | "skip";
 interface Answer { choice: Choice; example: string; itemId: string; categoryId: string }
@@ -52,9 +51,8 @@ export function SkillQuestions({ gaps, declined, library, onSaved, onSkip, skipL
 
     const [answers, setAnswers] = useState<Record<string, Answer>>({});
     const [reopened, setReopened] = useState<Set<string>>(new Set());
-    const [operation, dispatch] = useReducer(jobOperationTransition<"save">, { status: "idle" } as JobOperationState<"save">);
-    const saving = operation.status === "running";
-    const error = operation.status === "failed" ? operation.message : null;
+    const saveOp = useOperation<"save", SkillsSaved>();
+    const saving = saveOp.running !== null;
 
     const evidenceItems = EVIDENCE_SECTIONS.flatMap(key => library[key].map(item => ({ id: item.id, label: `${SECTION_LABEL[key]} · ${itemTitle(key, item)}` })));
     const categories = library.skills.filter(s => s.category.trim().toLowerCase() !== SOFT_CATEGORY);
@@ -66,30 +64,25 @@ export function SkillQuestions({ gaps, declined, library, onSaved, onSkip, skipL
     const hasHard = rows.some(r => requirementTier(r) === "hard");
 
     const save = async () => {
-        if (saving) return;
-        dispatch({ type: "start", operation: "save" });
-        try {
-            const payload = decided.map(r => {
-                const a = answerOf(r.name);
-                const yes = a.choice === "yes";
-                const hard = requirementTier(r) === "hard";
-                return { name: r.name, display: r.display, kind: r.kind, hard, have: yes, categoryId: yes && hard ? a.categoryId : "", example: yes ? a.example : "", itemId: yes ? a.itemId : "" };
-            });
+        const payload = decided.map(r => {
+            const a = answerOf(r.name);
+            const yes = a.choice === "yes";
+            const hard = requirementTier(r) === "hard";
+            return { name: r.name, display: r.display, kind: r.kind, hard, have: yes, categoryId: yes && hard ? a.categoryId : "", example: yes ? a.example : "", itemId: yes ? a.itemId : "" };
+        });
+        const settled = await saveOp.run("save", async () => {
             const res = await fetch("/api/jobs/skill-answers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers: payload }) });
             const json = (await res.json().catch(() => null)) as ({ ok: true } & SkillsSaved) | { ok: false; error: string } | null;
             if (!json) throw new Error(`Saving failed (${res.status}).`);
             if (!json.ok) throw new Error(json.error);
-            onSaved({ resume: json.resume, declined: json.declined, warning: json.warning });
-        } catch (err) {
-            dispatch({ type: "fail", message: err instanceof Error ? err.message : "Could not save your answers." });
-        } finally {
-            dispatch({ type: "complete" });
-        }
+            return { resume: json.resume, declined: json.declined, warning: json.warning };
+        }, "Could not save your answers.");
+        if (settled?.ok) onSaved(settled.result);
     };
 
     return (
         <div className="space-y-4">
-            {error && <NoticeBanner tone="danger" onDismiss={() => dispatch({ type: "dismiss" })}>{error}</NoticeBanner>}
+            {saveOp.error && <NoticeBanner tone="danger" onDismiss={saveOp.reset}>{saveOp.error}</NoticeBanner>}
 
             {rows.length > 0 ? (
                 <>

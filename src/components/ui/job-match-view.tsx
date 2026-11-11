@@ -6,9 +6,7 @@
 // inspect the ATS keyword table, and tailor the résumé (tailor-dialog.tsx). The AI proposals
 // card is hidden (SHOW_SUGGESTIONS).
 
-import { jobDetailDialogTransition, type JobDetailDialog } from "@/lib/ui/job-detail-state";
-import { useJobOperation } from "@/lib/ui/job-use-operation";
-import React, { useEffect, useReducer, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ResumeData } from "@/types/schema";
 import type { ResumeVariant } from "@/types/db";
@@ -44,6 +42,7 @@ import { TrackerView } from "@/components/ui/job-tracker/tracker-view";
 import { TailorDialog } from "@/components/ui/job-match/tailor-dialog";
 import { SkillQuestions } from "@/components/ui/job-match/skill-questions";
 import { readJson } from "@/lib/ui/fetch-json";
+import { useOperation } from "@/lib/ui/use-operation";
 
 /** The Suggestions card (AI proposals) is hidden from the UI; its code paths stay for later. */
 const SHOW_SUGGESTIONS = false;
@@ -71,21 +70,28 @@ interface JobMatchViewProps {
     onExternalResume: (r: ExternalResume | null) => void;
 }
 
-import { jobOperationTransition, type JobOperationState } from "@/lib/ui/job-operation-state";
-import { deleteTransition } from "@/lib/ui/job-delete-state";
-import { analysisDialogTransition } from "@/lib/ui/job-analysis-dialog";
-
 export function JobMatchView(props: JobMatchViewProps) {
     const { jobs, selectedJobId, onSelectJob } = props;
     const router = useRouter();
     const [error, setError] = useState<string | null>(null);
-    const [deletion, dispatchDelete] = useReducer(deleteTransition, { status: "closed" });
-    const pendingDelete = deletion.status === "closed" ? null : deletion.job;
-    const deleting = deletion.status === "deleting";
-    const deleteError = deletion.status === "failed" ? deletion.message : null;
-    const setPendingDelete = (job: JobRecord) => dispatchDelete({ type: "open", job });
-    const [analysisDialog, sendAnalysisDialog] = useReducer(analysisDialogTransition, { phase: "closed" });
+    const [analysing, setAnalysing] = useState(false);
+    // Delete: pick a job (confirm) -> deleting -> closed, or failed with the dialog still open for a retry.
+    const [pendingDelete, setPendingDelete] = useState<JobRecord | null>(null);
+    const deletion = useOperation<"delete">();
     const selected = jobs.find(j => j.id === selectedJobId) ?? null;
+
+    const askDelete = (job: JobRecord) => {
+        if (deletion.running) return;
+        deletion.reset();
+        setPendingDelete(job);
+    };
+    const confirmDelete = async (job: JobRecord) => {
+        const settled = await deletion.run("delete", () => deleteJob(job.id), "Could not delete the job.");
+        if (!settled?.ok) return;
+        if (selectedJobId === job.id) onSelectJob(null);
+        setPendingDelete(null);
+        router.refresh();
+    };
 
     return (
         // Container queries, not viewport breakpoints: the width left over depends on the sidebar and the resizable preview pane.
@@ -94,96 +100,80 @@ export function JobMatchView(props: JobMatchViewProps) {
             {selected ? (
                 <section className="@container min-w-0 space-y-4">
                     <Button size="sm" variant="ghost" icon={ArrowLeft} onClick={() => onSelectJob(null)}>All jobs</Button>
-                    <JobDetail key={selected.id} job={selected} {...props} onDelete={() => setPendingDelete(selected)} onError={setError} />
+                    <JobDetail key={selected.id} job={selected} {...props} onDelete={() => askDelete(selected)} onError={setError} />
                 </section>
             ) : (
-                <TrackerView jobs={jobs} onOpen={onSelectJob} onAnalyse={() => sendAnalysisDialog({ type: "open" })} onDelete={setPendingDelete} />
+                <TrackerView jobs={jobs} onOpen={onSelectJob} onAnalyse={() => setAnalysing(true)} onDelete={askDelete} />
             )}
 
-            <Dialog open={analysisDialog.phase !== "closed"} onClose={() => sendAnalysisDialog({ type: "close" })} title="Analyse a job" description="Paste a job description or upload it. We extract its requirements and score your résumé against them.">
-                <AnalyzeForm
-                    resumeData={props.resumeData}
-                    onAnalyzed={(job) => { sendAnalysisDialog({ type: "analyzed" }); onSelectJob(job.id); router.refresh(); }}
-                    onBusyChange={busy => sendAnalysisDialog({ type: busy ? "processing" : "settled" })}
-                />
-            </Dialog>
+            <AnalyzeDialog
+                open={analysing}
+                onClose={() => setAnalysing(false)}
+                resumeData={props.resumeData}
+                onAnalyzed={(job) => { setAnalysing(false); onSelectJob(job.id); router.refresh(); }}
+            />
 
             <ConfirmDialog
                 open={pendingDelete !== null}
                 title={`Delete "${pendingDelete?.title ?? "job"}"?`}
                 confirmLabel="Delete"
                 danger
-                busy={deleting}
-                onCancel={() => dispatchDelete({ type: "cancel" })}
-                onConfirm={async () => {
-                    if (!pendingDelete || deleting) return;
-                    dispatchDelete({ type: "start" });
-                    try {
-                        await deleteJob(pendingDelete.id);
-                        if (selectedJobId === pendingDelete.id) onSelectJob(null);
-                        dispatchDelete({ type: "complete" });
-                        router.refresh();
-                    } catch (err) {
-                        dispatchDelete({ type: "fail", message: err instanceof Error ? err.message : "Could not delete the job." });
-                    }
-                }}
+                busy={deletion.running !== null}
+                onCancel={() => { if (!deletion.running) setPendingDelete(null); }}
+                onConfirm={() => { if (pendingDelete) void confirmDelete(pendingDelete); }}
             >
                 <p>The analysis, its suggestions and the tracker entry are removed. Your library is not affected.</p>
-                {deleteError && <p role="alert" className="text-danger">{deleteError}</p>}
+                {deletion.error && <p role="alert" className="text-danger">{deletion.error}</p>}
             </ConfirmDialog>
         </div>
     );
 }
 
-// ---------- Analyse form
+// ---------- Analyse dialog
 
 const ACCEPT = ".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp";
+const ANALYSIS_LABEL = { preparing: "Preparing file…", extracting: "Extracting requirements…" } as const;
 
-function AnalyzeForm({ resumeData, onAnalyzed, onBusyChange }: { resumeData: ResumeData; onAnalyzed: (job: JobRecord) => void; onBusyChange: (busy: boolean) => void }) {
+/**
+ * Closed / editing / processing: the parent owns open, the running analysis owns processing (the
+ * dialog won't close mid-request). Stays mounted while closed, so a draft survives reopening.
+ */
+function AnalyzeDialog({ open, onClose, resumeData, onAnalyzed }: { open: boolean; onClose: () => void; resumeData: ResumeData; onAnalyzed: (job: JobRecord) => void }) {
     const [text, setText] = useState("");
     const [file, setFile] = useState<File | null>(null);
-    const [analysis, dispatchAnalysis] = useReducer(jobOperationTransition<"preparing" | "extracting">, { status: "idle" } as JobOperationState<"preparing" | "extracting">);
-    const busy = analysis.status === "running" ? (analysis.operation === "preparing" ? "Preparing file…" : "Extracting requirements…") : null;
-    const error = analysis.status === "failed" ? analysis.message : null;
-    const setError = (message: string) => dispatchAnalysis({ type: "fail", message });
-    const begin = (operation: "preparing" | "extracting") => {
-        dispatchAnalysis({ type: "start", operation });
-        onBusyChange(true);
-    };
+    const analysis = useOperation<keyof typeof ANALYSIS_LABEL, JobRecord>();
+    const busy = analysis.running ? ANALYSIS_LABEL[analysis.running] : null;
 
     const submit = async () => {
-        if (busy) return;
-        try {
+        const input: { text: string } | { file: File } | null = text.trim() ? { text } : file ? { file } : null;
+        if (!input) return;
+        const settled = await analysis.run("text" in input ? "extracting" : "preparing", async (op) => {
             let body: FormData;
-            if (text.trim()) {
+            if ("text" in input) {
                 body = new FormData();
-                body.set("text", text);
-            } else if (file) {
-                begin("preparing");
-                body = await documentFormData(file);
-            } else return;
+                body.set("text", input.text);
+            } else {
+                body = await documentFormData(input.file);
+                op.step("extracting");
+            }
             // The working selection rides along so the server can reconcile the requirements
             // against the whole library (semantic matches: degree levels, implied skills, fields).
             body.set("resume", JSON.stringify(resumeData));
-            if (file && !text.trim()) dispatchAnalysis({ type: "advance", operation: "extracting" });
-            else begin("extracting");
             const res = await fetch("/api/jobs/analyze", { method: "POST", body });
             const json = (await res.json().catch(() => null)) as { ok: boolean; error?: string; job?: JobRecord } | null;
             if (!json) throw new Error(`Analysis failed (${res.status}).`);
             if (!json.ok || !json.job) throw new Error(json.error ?? "Analysis failed.");
-            setText("");
-            setFile(null);
-            onAnalyzed(json.job);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : "Analysis failed.");
-        } finally {
-            dispatchAnalysis({ type: "complete" });
-            onBusyChange(false);
-        }
+            return json.job;
+        }, "Analysis failed.");
+        if (!settled?.ok) return;
+        setText("");
+        setFile(null);
+        onAnalyzed(settled.result);
     };
 
     return (
-        <div className="space-y-3">
+        <Dialog open={open} onClose={() => { if (!busy) onClose(); }} title="Analyse a job" description="Paste a job description or upload it. We extract its requirements and score your résumé against them.">
+            <div className="space-y-3">
                 <Textarea value={text} onChange={e => setText(e.target.value)} rows={7} placeholder="Paste the job description here…" disabled={busy !== null} />
                 <div className="flex items-center gap-3 text-xs text-fg-subtle">
                     <span className="h-px flex-1 bg-border" />or upload<span className="h-px flex-1 bg-border" />
@@ -196,22 +186,25 @@ function AnalyzeForm({ resumeData, onAnalyzed, onBusyChange }: { resumeData: Res
                         disabled={busy !== null}
                         onChange={e => {
                             const f = e.target.files?.[0] ?? null;
-                            if (f && f.size > MAX_FILE_BYTES) { dispatchAnalysis({ type: "invalid", message: "That file is over 10 MB." }); return; }
+                            if (f && f.size > MAX_FILE_BYTES) { analysis.reject("preparing", "That file is over 10 MB."); return; }
                             setFile(f);
                             e.target.value = "";
                         }}
                     />
                     {file ? file.name : "PDF · DOCX · TXT · image"}
                 </label>
-                {error && <p role="alert" className="text-13 text-danger">{error}</p>}
+                {analysis.error && <p role="alert" className="text-13 text-danger">{analysis.error}</p>}
                 <Button variant="primary" className="w-full" onClick={submit} disabled={!text.trim() && !file} loading={busy !== null}>
                     {busy ?? "Analyse"}
                 </Button>
-        </div>
+            </div>
+        </Dialog>
     );
 }
 
 // ---------- Job detail
+
+const UPLOAD_LABEL = { reading: "Reading resume…", tagging: "Analysing skills…" } as const;
 
 type DetailProps = JobMatchViewProps & { job: JobRecord; onDelete: () => void; onError: (e: string | null) => void };
 
@@ -221,11 +214,12 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
     const [proposals, setProposals] = useState<Proposal[]>(job.proposals);
     const [muted, setMuted] = useState<MuteRule[]>(preferences.mutedProposals);
     const [caps, setCaps] = useState(preferences.caps);
-    const detailOperation = useJobOperation<"recheck" | "suggest" | `apply:${string}` | "reading" | "tagging">();
-    const busy = detailOperation.state.status === "running" ? detailOperation.state.operation : null;
-    const uploading = busy === "reading" ? "Reading resume…" : busy === "tagging" ? "Analysing skills…" : null;
-    const detailError = detailOperation.state.status === "failed" ? detailOperation.state.message : null;
-    useEffect(() => { if (detailError) onError(detailError); }, [detailError, onError]);
+    // Independent actions, each single-flight; failures go to the page banner (onError) where they happen.
+    // Suggest and apply share one: both rewrite the proposals list. Upload and re-check touch nothing else.
+    const upload = useOperation<keyof typeof UPLOAD_LABEL, ExternalResume>();
+    const recheckOp = useOperation<"recheck">();
+    const proposalsOp = useOperation<"suggest" | "apply">();
+    const [applyingId, setApplyingId] = useState<string | null>(null);
     const [showAts, setShowAts] = useState(true);
     const [showCaps, setShowCaps] = useState(false);
 
@@ -239,71 +233,53 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
     const reqDisplay = (name: string) => job.requirements.find(r => r.name === name)?.display ?? name;
 
     const uploadResume = async (file: File) => {
-        const run = detailOperation.start("reading");
-        if (!run) return;
+        if (file.size > MAX_FILE_BYTES) { onError("That file is over 10 MB."); return; }
         onError(null);
-        try {
-            if (file.size > MAX_FILE_BYTES) throw new Error("That file is over 10 MB.");
-
+        const settled = await upload.run("reading", async (op) => {
             const res = await fetch("/api/import", { method: "POST", body: await documentFormData(file) });
             const json = (await res.json().catch(() => null)) as ImportResponse | null;
             if (!json) throw new Error(`Import failed (${res.status}).`);
             if (!json.ok) throw new Error(json.error);
-            if (!run.active()) return;
-            run.advance("tagging");
+            op.step("tagging");
             const tagRes = await fetch("/api/tags/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: allInputs(json.data), context: tagContext(json.data) }) });
             const tagJson = (await tagRes.json().catch(() => null)) as { ok: boolean; error?: string; tagsById?: Record<string, ResumeData["profileTags"]> } | null;
             if (!tagJson?.ok) throw new Error(tagJson?.error ?? "Skill analysis failed.");
-            if (!run.active()) return;
-            const data = applyTags(json.data, tagJson.tagsById ?? {});
-            onExternalResume({ fileName: json.fileName, data });
-            setSource({ kind: "upload", fileName: json.fileName });
-        } catch (err) {
-            if (!run.active()) return;
-            run.fail(err instanceof Error ? err.message : "Could not read that resume.");
-        } finally {
-            run.complete();
-        }
+            return { fileName: json.fileName, data: applyTags(json.data, tagJson.tagsById ?? {}) };
+        }, "Could not read that resume.");
+        // null: this job page is gone (another job opened), so the result no longer belongs anywhere.
+        if (!settled) return;
+        if (!settled.ok) { onError(settled.error); return; }
+        onExternalResume(settled.result);
+        setSource({ kind: "upload", fileName: settled.result.fileName });
     };
 
     /** Re-runs the broader-context pass against the resume being scored (any source). */
     const recheck = async () => {
-        const run = detailOperation.start("recheck");
-        if (!run) return;
+        if (recheckOp.running) return;
         onError(null);
-
-        try {
+        const settled = await recheckOp.run("recheck", async () => {
             const res = await fetch("/api/jobs/reconcile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobId: job.id, resume }) });
             const json = (await res.json().catch(() => null)) as { ok: boolean; error?: string } | null;
             if (!json?.ok) throw new Error(json?.error ?? "The AI match check failed.");
-            // The pass itself runs in the background; the refresh picks up "running" and starts the poll.
-            router.refresh();
-        } catch (err) {
-            if (!run.active()) return;
-            run.fail(err instanceof Error ? err.message : "The AI match check failed.");
-        } finally {
-            run.complete();
-        }
+        }, "The AI match check failed.");
+        if (!settled) return;
+        if (!settled.ok) { onError(settled.error); return; }
+        // The pass itself runs in the background; the refresh picks up "running" and starts the poll.
+        router.refresh();
     };
 
     const getSuggestions = async () => {
-        const run = detailOperation.start("suggest");
-        if (!run) return;
+        if (proposalsOp.running) return;
         onError(null);
-
-        try {
+        const settled = await proposalsOp.run("suggest", async () => {
             const res = await fetch("/api/jobs/proposals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobId: job.id, resume }) });
             const json = (await res.json().catch(() => null)) as { ok: boolean; error?: string; proposals?: Proposal[] } | null;
             if (!json?.ok || !json.proposals) throw new Error(json?.error ?? "Could not get suggestions.");
-            if (!run.active()) return;
             setProposals(json.proposals);
-            router.refresh();
-        } catch (err) {
-            if (!run.active()) return;
-            run.fail(err instanceof Error ? err.message : "Could not get suggestions.");
-        } finally {
-            run.complete();
-        }
+        }, "Could not get suggestions.");
+        if (!settled) return;
+        if (!settled.ok) { onError(settled.error); return; }
+        router.refresh();
     };
 
     const setStatus = async (p: Proposal, status: Proposal["status"]) => {
@@ -317,17 +293,13 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
 
     const apply = async (p: Proposal) => {
         if (source.kind === "upload") { onError("Suggestions can only be applied to your own library. Import the uploaded resume first."); return; }
-        const run = detailOperation.start(`apply:${p.id}`);
-        if (!run) return;
-        try {
+        if (proposalsOp.running) return;
+        setApplyingId(p.id);
+        const settled = await proposalsOp.run("apply", async () => {
             await onApplyProposal(job, p);
             await setStatus(p, "applied");
-        } catch (err) {
-            if (!run.active()) return;
-            run.fail(err instanceof Error ? err.message : "Could not apply the suggestion.");
-        } finally {
-            run.complete();
-        }
+        }, "Could not apply the suggestion.");
+        if (settled && !settled.ok) onError(settled.error);
     };
 
     const ignoreSimilar = async (p: Proposal) => {
@@ -345,7 +317,8 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
     // Library-wide (every item on): requirements answered "No" in the questionnaire that this job needs.
     const declinedNames = new Set(preferences.declinedSoftSkills.map(d => d.name));
     const declinedNeeded = uncoveredRequirements(job.requirements, resumeData, aliases).filter(r => declinedNames.has(r.name));
-    const [detailDialog, changeDetailDialog] = useReducer(jobDetailDialogTransition, "closed" as JobDetailDialog);
+    // One dialog at a time; each opening mounts it fresh (TailorDialog starts its AI run on mount).
+    const [dialog, setDialog] = useState<"closed" | "tailor" | "answers">("closed");
     const [editingTitle, setEditingTitle] = useState<string | null>(null);
 
     const commitTitle = async () => {
@@ -445,7 +418,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                     hint={<>{job.company || "Unknown company"}{job.source.fileName ? ` · from ${job.source.fileName}` : ""}</>}
                     action={
                         <>
-                            <Button size="sm" variant="primary" icon={Wand2} onClick={() => changeDetailDialog("tailor")} title="Pick what goes on your résumé for this job, with AI suggestions">
+                            <Button size="sm" variant="primary" icon={Wand2} onClick={() => setDialog("tailor")} title="Pick what goes on your résumé for this job, with AI suggestions">
                                 Tailor résumé
                             </Button>
                             <Button size="sm" variant="danger" onClick={onDelete}>Delete</Button>
@@ -479,9 +452,9 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                         )}
                         {source.kind === "upload" && (
                             <div className="flex flex-wrap items-center gap-2">
-                                <label className={cn("inline-flex h-8 cursor-pointer items-center rounded-md border border-border bg-surface px-2.5 text-13 font-medium hover:bg-surface-hover", busy && "pointer-events-none opacity-50")}>
+                                <label className={cn("inline-flex h-8 cursor-pointer items-center rounded-md border border-border bg-surface px-2.5 text-13 font-medium hover:bg-surface-hover", upload.running && "pointer-events-none opacity-50")}>
                                     <input type="file" accept={ACCEPT} className="sr-only" onChange={e => { const f = e.target.files?.[0]; if (f) uploadResume(f); e.target.value = ""; }} />
-                                    {uploading ?? (externalResume ? `Replace ${externalResume.fileName}` : "Upload a résumé")}
+                                    {upload.running ? UPLOAD_LABEL[upload.running] : (externalResume ? `Replace ${externalResume.fileName}` : "Upload a résumé")}
                                 </label>
                                 {externalResume && <Button size="sm" onClick={() => onImportExternal(externalResume)}>Import into library</Button>}
                             </div>
@@ -499,7 +472,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                                     <dd className={cn("tabular-nums", pages !== null && pages > 1 && "text-warning")}>{pages === null ? (pageError ? "Couldn't measure length" : "…") : `${pages} ${pages === 1 ? "page" : "pages"}${pages > 1 ? " · over one page" : ""}`}</dd>
                                 </dl>
                                 <div className="@2xl:ml-auto">
-                                    <Button size="sm" onClick={recheck} loading={busy === "recheck" || matchRunning} title="Re-run semantic matching and the AI check against your whole library: equivalent degrees, implied skills, related projects.">
+                                    <Button size="sm" onClick={recheck} loading={recheckOp.running !== null || matchRunning} title="Re-run semantic matching and the AI check against your whole library: equivalent degrees, implied skills, related projects.">
                                         Re-check with AI
                                     </Button>
                                 </div>
@@ -523,7 +496,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                     missingMust={match.missingMust}
                     keywordGaps={match.keywordGaps}
                     declinedNeeded={declinedNeeded}
-                    onAnswerDeclined={() => changeDetailDialog("answers")}
+                    onAnswerDeclined={() => setDialog("answers")}
                     showScoreSource={source.kind !== "selection"}
                     fitNotes={fitNotes}
                     provisional={matchRunning}
@@ -548,7 +521,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                     action={
                         <>
                             <Button size="sm" variant="ghost" onClick={() => setShowCaps(v => !v)} aria-expanded={showCaps}>Section limits</Button>
-                            <Button size="sm" variant="primary" onClick={getSuggestions} loading={busy === "suggest"} disabled={source.kind === "upload" || busy !== null}>
+                            <Button size="sm" variant="primary" onClick={getSuggestions} loading={proposalsOp.running === "suggest"} disabled={source.kind === "upload" || proposalsOp.running !== null}>
                                 {proposals.length ? "Refresh" : "Get suggestions"}
                             </Button>
                         </>
@@ -562,7 +535,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                     <ProposalCards
                         proposals={proposals}
                         requirementDisplay={reqDisplay}
-                        busyId={busy?.startsWith("apply:") ? busy.slice(6) : null}
+                        busyId={proposalsOp.running === "apply" ? applyingId : null}
                         onApply={apply}
                         onSkip={p => setStatus(p, "skipped")}
                         onIgnoreSimilar={ignoreSimilar}
@@ -573,26 +546,26 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                 </CardBody>
             </Card>}
 
-            {detailDialog === "tailor" && (
+            {dialog === "tailor" && (
                 <TailorDialog
                     job={job}
                     resumeData={resumeData}
                     declined={preferences.declinedSoftSkills}
                     aliases={aliases}
                     caps={caps}
-                    onClose={(message) => { changeDetailDialog("closed"); if (message) setNotice(message); }}
+                    onClose={(message) => { setDialog("closed"); if (message) setNotice(message); }}
                 />
             )}
 
-            {detailDialog === "answers" && (
-                <Dialog open onClose={() => changeDetailDialog("closed")} size="lg" title="Skills you said you don't have" description="Changed your mind? Add them and the warning goes away.">
+            {dialog === "answers" && (
+                <Dialog open onClose={() => setDialog("closed")} size="lg" title="Skills you said you don't have" description="Changed your mind? Add them and the warning goes away.">
                     <SkillQuestions
                         gaps={declinedNeeded}
                         declined={preferences.declinedSoftSkills}
                         library={resumeData}
-                        onSkip={() => changeDetailDialog("closed")}
+                        onSkip={() => setDialog("closed")}
                         skipLabel="Close"
-                        onSaved={(r) => { changeDetailDialog("closed"); setNotice(r.warning ? `Saved. ${r.warning}` : "Saved to your library."); router.refresh(); }}
+                        onSaved={(r) => { setDialog("closed"); setNotice(r.warning ? `Saved. ${r.warning}` : "Saved to your library."); router.refresh(); }}
                     />
                 </Dialog>
             )}
@@ -606,33 +579,26 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
 function JobTrackingStrip({ job, onError }: { job: JobRecord; onError: (e: string | null) => void }) {
     const router = useRouter();
     const [notes, setNotes] = useState(job.notes);
-    const statusOperation = useJobOperation<"save">();
-    const dateOperation = useJobOperation<"save">();
-    const notesOperation = useJobOperation<"save">();
-    const save = async (operation: typeof statusOperation, fn: () => Promise<void>) => {
-        const run = operation.start("save");
-        if (!run) return;
-        try { await fn(); if (run.active()) router.refresh(); }
-        catch (err) { if (run.active()) onError(err instanceof Error ? err.message : "Could not save."); }
-        finally { run.complete(); }
+    const save = async (fn: () => Promise<void>) => {
+        try { await fn(); router.refresh(); } catch (err) { onError(err instanceof Error ? err.message : "Could not save."); }
     };
     return (
         <div className="grid gap-3 border-b border-border px-4 py-3 @2xl:grid-cols-[10rem_10rem_minmax(0,1fr)]">
             <Field label="Status" htmlFor={`status-${job.id}`}>
-                <Select id={`status-${job.id}`} value={job.status} disabled={statusOperation.state.status === "running"} onChange={e => void save(statusOperation, () => setJobStatus(job.id, e.target.value as JobStatus))}>
+                <Select id={`status-${job.id}`} value={job.status} onChange={e => void save(() => setJobStatus(job.id, e.target.value as JobStatus))}>
                     {JOB_STATUSES.map(st => <option key={st} value={st}>{JOB_STATUS_LABEL[st]}</option>)}
                 </Select>
             </Field>
             <Field label="Applied" htmlFor={`applied-${job.id}`}>
-                <Input id={`applied-${job.id}`} type="date" disabled={dateOperation.state.status === "running"} defaultValue={job.appliedAt ?? ""} onBlur={e => {
+                <Input id={`applied-${job.id}`} type="date" defaultValue={job.appliedAt ?? ""} onBlur={e => {
                     const v = e.target.value || null;
-                    if (v !== job.appliedAt) void save(dateOperation, () => updateJobMeta(job.id, { appliedAt: v }));
+                    if (v !== job.appliedAt) void save(() => updateJobMeta(job.id, { appliedAt: v }));
                 }} />
             </Field>
             <Field label="Notes" htmlFor={`notes-${job.id}`} hint={job.url ? undefined : "Private to you."}>
                 <div className="flex items-center gap-2">
-                    <Input id={`notes-${job.id}`} value={notes} disabled={notesOperation.state.status === "running"} placeholder="Recruiter name, referral, next step…" onChange={e => setNotes(e.target.value)} onBlur={() => {
-                        if (notes !== job.notes) void save(notesOperation, () => updateJobMeta(job.id, { notes }));
+                    <Input id={`notes-${job.id}`} value={notes} placeholder="Recruiter name, referral, next step…" onChange={e => setNotes(e.target.value)} onBlur={() => {
+                        if (notes !== job.notes) void save(() => updateJobMeta(job.id, { notes }));
                     }} />
                     {job.url && (
                         <a href={job.url} target="_blank" rel="noreferrer noopener" className={cn("inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 text-13 text-fg-muted hover:bg-surface-hover hover:text-fg", FOCUS_RING)}>
@@ -732,8 +698,7 @@ function GuidelinesSection({ missingMust, keywordGaps, declinedNeeded, onAnswerD
 }
 
 function CapsEditor({ caps, onChange, onSave }: { caps: Preferences["caps"]; onChange: (c: Preferences["caps"]) => void; onSave: () => Promise<void> }) {
-    const capsOperation = useJobOperation<"save">();
-    const saving = capsOperation.state.status === "running";
+    const save = useOperation<"save">();
     return (
         <div className="space-y-3 rounded-md border border-border bg-surface-muted/50 p-3">
             <p className="text-13 text-fg-muted">Maximum items per section in a recommended selection. Leave empty for no limit.</p>
@@ -752,7 +717,7 @@ function CapsEditor({ caps, onChange, onSave }: { caps: Preferences["caps"]; onC
                     </label>
                 ))}
             </div>
-            <Button size="sm" variant="primary" loading={saving} onClick={async () => { const run = capsOperation.start("save"); if (!run) return; try { await onSave(); } finally { run.complete(); } }}>Save limits</Button>
+            <Button size="sm" variant="primary" loading={save.running !== null} onClick={() => void save.run("save", onSave)}>Save limits</Button>
         </div>
     );
 }
