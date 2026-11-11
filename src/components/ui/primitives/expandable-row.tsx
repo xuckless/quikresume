@@ -4,6 +4,7 @@ import React from "react";
 import { cn } from "@/lib/cn";
 import { ChevronDown } from "./icons";
 import { FOCUS_RING } from "./button";
+import { Reveal } from "./reveal";
 
 interface ExpandableRowProps {
     open: boolean;
@@ -25,7 +26,12 @@ interface ExpandableRowProps {
     style?: React.CSSProperties;
 }
 
-/** A list row whose header toggles a body. Controls are siblings of the button, never inside it. */
+/**
+ * A list row whose header toggles a body. Controls are siblings of the button, never inside it.
+ *
+ * Motion: the chevron turns ease-in-out (`transition-move`); the body opens and closes through `Reveal`
+ * (mask + settle in, faster mask out). The whole row is not press-scaled (too wide to shrink).
+ */
 export function ExpandableRow({ open, onToggle, summary, controls, children, className, id, muted, as: Tag = "li", leading, rowRef, style }: ExpandableRowProps) {
     const bodyId = `${id}-body`;
     return (
@@ -39,15 +45,12 @@ export function ExpandableRow({ open, onToggle, summary, controls, children, cla
                     onClick={onToggle}
                     className={cn("flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 pr-2 text-left", FOCUS_RING, "focus-visible:ring-inset focus-visible:ring-offset-0")}
                 >
-                    <ChevronDown className={cn("size-4 shrink-0 text-fg-subtle transition-transform duration-[240ms] ease-in-out", open && "rotate-180")} aria-hidden />
+                    <ChevronDown className={cn("transition-move size-4 shrink-0 text-fg-subtle", open && "rotate-180")} aria-hidden />
                     <div className={cn("min-w-0 flex-1", muted && "opacity-60")}>{summary}</div>
                 </button>
                 {controls && <div className="flex shrink-0 items-center gap-2 pr-4 pl-1">{controls}</div>}
             </div>
-            {/* Details settle: revealed top-down through a mask, children arriving 30 ms apart. */}
-            <div id={bodyId} hidden={!open} className="pb-4 pl-11 pr-4">
-                {open && <div className="settle">{children}</div>}
-            </div>
+            <Reveal open={open} id={bodyId} className="pb-4 pl-11 pr-4">{children}</Reveal>
         </Tag>
     );
 }

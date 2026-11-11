@@ -37,7 +37,7 @@ export function ChipInput({ id, values, onChange, placeholder, max = 10, classNa
             {values.map(v => (
                 <span key={v} className="inline-flex h-6 items-center gap-1 rounded-sm bg-surface-muted pl-2 pr-1 text-13 text-fg">
                     {v}
-                    <button type="button" aria-label={`Remove ${v}`} onClick={() => onChange(values.filter(x => x !== v))} className={cn("flex size-4 items-center justify-center rounded-sm text-fg-subtle hover:text-fg", FOCUS_RING)}>
+                    <button type="button" aria-label={`Remove ${v}`} onClick={() => onChange(values.filter(x => x !== v))} className={cn("press flex size-4 items-center justify-center rounded-sm text-fg-subtle hover:text-fg", FOCUS_RING)}>
                         <X className="size-3" aria-hidden />
                     </button>
                 </span>

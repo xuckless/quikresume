@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { cubicBezier } from "motion/react";
+import { DUR, EASE_IN_OUT, prefersReducedMotion } from "@/lib/ui/motion";
 import { Swap } from "./swap";
 
 // One green for every score (brand rule: colour never grades the user); the word band carries the meaning.
@@ -16,9 +18,12 @@ export function scoreColor(score: number) {
     return "var(--chart-1)";
 }
 
+const easeInOut = cubicBezier(...EASE_IN_OUT);
+
 /**
- * The number eases to a new score (ease-out, 320 ms) instead of jumping, so a change such as a preliminary
- * score being confirmed reads as an update. The first render shows the real value (no count from 0).
+ * The number eases to a new score instead of jumping, in step with the ring (`.score-arc`: a move, so
+ * ease-in-out over DUR.score), so a change such as a preliminary score being confirmed reads as an update.
+ * The first render shows the real value (no count from 0).
  */
 function useCountTo(target: number): number {
     const [shown, setShown] = useState(target);
@@ -28,12 +33,12 @@ function useCountTo(target: number): number {
         from.current = target;
         if (start === target) return;
         // Reduced motion: lands on the first frame.
-        const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 320;
+        const duration = prefersReducedMotion() ? 0 : DUR.score;
         const t0 = performance.now();
         let raf = 0;
         const tick = (now: number) => {
             const p = duration === 0 ? 1 : Math.min(1, (now - t0) / duration);
-            const eased = 1 - Math.pow(1 - p, 3);
+            const eased = easeInOut(p);
             setShown(Math.round(start + (target - start) * eased));
             if (p < 1) raf = requestAnimationFrame(tick);
         };
@@ -43,6 +48,7 @@ function useCountTo(target: number): number {
     return shown;
 }
 
+/** Motion: the arc draws in on mount and eases to a new value; the number counts with it; the band word crossfades. */
 export function ScoreRing({ score, size = 40, className, showBand = false }: { score: number; size?: number; className?: string; showBand?: boolean }) {
     const shown = useCountTo(score);
     const stroke = Math.max(3, Math.round(size / 10));

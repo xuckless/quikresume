@@ -6,7 +6,10 @@ import { cn } from "@/lib/cn";
 import { useMotionPresets } from "@/lib/ui/motion";
 import { FOCUS_RING } from "./button";
 
-/** Segmented control: the selected thumb slides between options (one shared layoutId per control). */
+/**
+ * Segmented control. Motion: options scale to 0.97 while pressed; the selected thumb slides ease-in-out
+ * between options (one layoutId per control instance, so two controls never trade thumbs).
+ */
 export function Segmented<T extends string>({ value, onChange, options, className }: { value: T; onChange: (v: T) => void; options: { value: T; label: string }[]; className?: string }) {
     const thumbId = useId();
     const t = useMotionPresets();

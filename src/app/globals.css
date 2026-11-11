@@ -243,37 +243,65 @@ dialog::backdrop {
   background: var(--overlay);
 }
 
+
 /* ── Motion system ─────────────────────────────────────────────────────────────────────────────────
- * One vocabulary for every animation (see lib/ui/motion.ts for the JS side, same values):
+ * One vocabulary for every animation. lib/ui/motion.ts mirrors every value below (test/motion-tokens.test.ts
+ * keeps them identical), so components never carry their own numbers:
  *   entrances ease-out · moves ease-in-out · exits ease-in and 20% shorter than their entrance ·
- *   popovers/dialogs/dropdowns 150-250 ms and start at scale 0.95 · list rows stagger 30 ms ·
- *   no overshoot on everyday UI. Users who ask the OS for reduced motion get none (bottom of this block).
+ *   popovers / dialogs / dropdowns 150-250 ms, from scale 0.95, out of and back into their trigger ·
+ *   pressables 0.97 · moving knobs stretch 12% · list rows and settling details 30 ms apart ·
+ *   reveals and colour changes through masks · nothing tweens while the pointer holds it ·
+ *   no overshoot or bounce anywhere. Reduced motion turns all of it off (bottom of this block).
  */
 @theme {
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  /* Plain `transition` / `transition-colors` (hover, focus, state colours) use the entrance curve too. */
+  --default-transition-timing-function: var(--ease-out);
+  --default-transition-duration: var(--dur-hover);
 }
 
 :root {
-  --dur-press: 120ms;
-  --dur-pop: 200ms;
-  --dur-pop-exit: 160ms; /* 20% shorter */
-  --dur-move: 240ms;
-  --dur-reveal: 220ms;
+  --dur-hover: 150ms;        /* colour / hover state changes */
+  --dur-press: 120ms;        /* into the pressed scale */
+  --dur-pop: 200ms;          /* popovers, menus, dialogs, view crossfades */
+  --dur-pop-exit: 160ms;     /* = pop × 0.8 */
+  --dur-swap: 180ms;         /* icon / label crossfade */
+  --dur-swap-exit: 144ms;
+  --dur-move: 240ms;         /* something sliding to a new place (indicators, knobs, chevrons, rows making room) */
+  --dur-reveal: 220ms;       /* rows rising in, details settling, notices */
   --dur-reveal-exit: 176ms;
+  --dur-drawer: 260ms;       /* off-canvas panel */
+  --dur-drawer-exit: 208ms;
+  --dur-arc: 420ms;          /* a card travelling between columns */
+  --dur-pulse: 520ms;        /* success confirmation */
+  --dur-score: 420ms;        /* a score easing to its new value */
+  --dur-score-draw: 600ms;   /* a score ring drawing in on mount */
+  --dur-theme: 480ms;        /* full-screen theme reveal */
   --stagger: 30ms;
+  --scale-press: 0.97;
+  --scale-pop: 0.95;
+  --knob-stretch: 1.12;
 }
 
-/* Press: everything clickable scales to 0.97 while pressed. */
+/* Press: everything clickable scales to 0.97 while pressed (controls, chips, icon buttons, nav items; not
+ * full-width rows or cards, which use their hover / active background instead). */
 @utility press {
   transition-property: color, background-color, border-color, box-shadow, opacity, transform;
-  transition-duration: 150ms;
+  transition-duration: var(--dur-hover);
   transition-timing-function: var(--ease-out);
-  &:active:not(:disabled) {
-    transform: scale(0.97);
+  &:active:not(:disabled, [aria-disabled="true"]) {
+    transform: scale(var(--scale-press));
     transition-duration: var(--dur-press);
   }
+}
+
+/* Moves: a transform / rotate between two resting states (chevrons turning, a thumb sliding by CSS). */
+@utility transition-move {
+  transition-property: transform, translate, scale, rotate;
+  transition-duration: var(--dur-move);
+  transition-timing-function: var(--ease-in-out);
 }
 
 /* List rows: rise in, 30 ms apart (index in --i, capped so long lists still land fast). */
@@ -283,9 +311,39 @@ dialog::backdrop {
     transform: translateY(4px);
   }
 }
+@keyframes rise-out {
+  to {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
 @utility rise-in {
   animation: rise-in var(--dur-reveal) var(--ease-out) backwards;
   animation-delay: calc(min(var(--i, 0), 12) * var(--stagger));
+}
+/* The exit of rise-in: back the way it came, ease-in, 20% shorter. Hold it until animationend, then unmount. */
+@utility rise-out {
+  animation: rise-out var(--dur-reveal-exit) var(--ease-in) forwards;
+}
+
+/* List rows rise in 30 ms apart, in DOM order (capped at the 12th so long lists land fast). Backwards
+ * fill only: once a row has arrived, inline transforms (drag and drop) apply untouched. */
+@utility stagger-children {
+  & > * {
+    animation: rise-in var(--dur-reveal) var(--ease-out) backwards;
+  }
+  & > :nth-child(2) { animation-delay: calc(1 * var(--stagger)); }
+  & > :nth-child(3) { animation-delay: calc(2 * var(--stagger)); }
+  & > :nth-child(4) { animation-delay: calc(3 * var(--stagger)); }
+  & > :nth-child(5) { animation-delay: calc(4 * var(--stagger)); }
+  & > :nth-child(6) { animation-delay: calc(5 * var(--stagger)); }
+  & > :nth-child(7) { animation-delay: calc(6 * var(--stagger)); }
+  & > :nth-child(8) { animation-delay: calc(7 * var(--stagger)); }
+  & > :nth-child(9) { animation-delay: calc(8 * var(--stagger)); }
+  & > :nth-child(10) { animation-delay: calc(9 * var(--stagger)); }
+  & > :nth-child(11) { animation-delay: calc(10 * var(--stagger)); }
+  & > :nth-child(12) { animation-delay: calc(11 * var(--stagger)); }
+  & > :nth-child(n + 13) { animation-delay: calc(12 * var(--stagger)); }
 }
 
 /* Details settle: an opened body is revealed top-down through a mask, its children arrive in sequence. */
@@ -295,6 +353,14 @@ dialog::backdrop {
   }
   to {
     clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes mask-hide {
+  from {
+    clip-path: inset(0 0 0 0);
+  }
+  to {
+    clip-path: inset(0 0 100% 0);
   }
 }
 @keyframes settle-in {
@@ -314,6 +380,23 @@ dialog::backdrop {
   & > :nth-child(5) { animation-delay: calc(4 * var(--stagger)); }
   & > :nth-child(n + 6) { animation-delay: calc(5 * var(--stagger)); }
 }
+/* Its exit: the mask closes bottom-up, ease-in, 20% shorter (ExpandableRow unmounts the body on animationend). */
+@utility settle-out {
+  animation: mask-hide var(--dur-reveal-exit) var(--ease-in) forwards;
+}
+
+/* Native <details>: the same settle when it opens (the first child is the <summary>). Closing is instant:
+ * the browser removes the content before any exit could play. */
+@utility disclosure {
+  &[open] > :not(summary) {
+    animation:
+      mask-reveal var(--dur-reveal) var(--ease-out) both,
+      settle-in var(--dur-reveal) var(--ease-out) both;
+  }
+  &[open] > :nth-child(3) { animation-delay: calc(1 * var(--stagger)); }
+  &[open] > :nth-child(4) { animation-delay: calc(2 * var(--stagger)); }
+  &[open] > :nth-child(n + 5) { animation-delay: calc(3 * var(--stagger)); }
+}
 
 /* Success: one soft ring pulse. */
 @keyframes pulse-success {
@@ -325,7 +408,14 @@ dialog::backdrop {
   }
 }
 @utility pulse-success {
-  animation: pulse-success 520ms var(--ease-out) 1;
+  animation: pulse-success var(--dur-pulse) var(--ease-out) 1;
+}
+
+/* A success notice rises in, then pulses once to confirm. */
+@utility notice-in-success {
+  animation:
+    rise-in var(--dur-reveal) var(--ease-out) both,
+    pulse-success var(--dur-pulse) var(--ease-out) 140ms 1;
 }
 
 /* Fade for content that swaps in place (view bodies, skeleton -> page). */
@@ -345,7 +435,7 @@ dialog::backdrop {
  */
 dialog.motion-pop {
   opacity: 0;
-  transform: scale(0.95);
+  transform: scale(var(--scale-pop));
   transform-origin: var(--origin, 50% 50%);
   transition:
     opacity var(--dur-pop-exit) var(--ease-in),
@@ -362,21 +452,21 @@ dialog.motion-pop[open] {
 @starting-style {
   dialog.motion-pop[open] {
     opacity: 0;
-    transform: scale(0.95);
+    transform: scale(var(--scale-pop));
   }
 }
 
-/* Mobile navigation drawer: slides from the left edge, where its menu button is. */
+/* Mobile navigation drawer: slides from the left edge, where its menu button is, and back out to it. */
 dialog.motion-drawer {
   transform: translateX(-100%);
   transition:
-    transform var(--dur-reveal-exit) var(--ease-in),
-    overlay var(--dur-reveal-exit) var(--ease-in) allow-discrete,
-    display var(--dur-reveal-exit) var(--ease-in) allow-discrete;
+    transform var(--dur-drawer-exit) var(--ease-in),
+    overlay var(--dur-drawer-exit) var(--ease-in) allow-discrete,
+    display var(--dur-drawer-exit) var(--ease-in) allow-discrete;
 }
 dialog.motion-drawer[open] {
   transform: translateX(0);
-  transition-duration: 260ms;
+  transition-duration: var(--dur-drawer);
   transition-timing-function: var(--ease-out);
 }
 @starting-style {
@@ -410,63 +500,16 @@ dialog.motion-drawer[open]::backdrop {
  * would outrank the animation in the cascade); two names so every toggle restarts it. */
 @keyframes knob-stretch-on {
   from { transform: translate(var(--knob-from), -50%); }
-  50% { transform: translate(var(--knob-mid), -50%) scaleX(1.12); }
+  50% { transform: translate(var(--knob-mid), -50%) scaleX(var(--knob-stretch)); }
   to { transform: translate(var(--knob-to), -50%); }
 }
 @keyframes knob-stretch-off {
   from { transform: translate(var(--knob-from), -50%); }
-  50% { transform: translate(var(--knob-mid), -50%) scaleX(1.12); }
+  50% { transform: translate(var(--knob-mid), -50%) scaleX(var(--knob-stretch)); }
   to { transform: translate(var(--knob-to), -50%); }
 }
 
-/* Reduced motion: no animation at all (the user's choice). Loading spinners keep turning: they say
- * "working", and a frozen spinner reads as a hang. */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after,
-  ::backdrop {
-    animation-duration: 0.01ms !important;
-    animation-delay: 0ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    transition-delay: 0ms !important;
-    scroll-behavior: auto !important;
-  }
-  .animate-spin {
-    animation-duration: 1s !important;
-    animation-iteration-count: infinite !important;
-  }
-}
-
-/* A success notice rises in, then pulses once to confirm. */
-@utility notice-in-success {
-  animation:
-    rise-in var(--dur-reveal) var(--ease-out) both,
-    pulse-success 520ms var(--ease-out) 140ms 1;
-}
-
-/* List rows rise in 30 ms apart, in DOM order (capped at the 12th so long lists land fast). Backwards
- * fill only: once a row has arrived, inline transforms (drag and drop) apply untouched. */
-@utility stagger-children {
-  & > * {
-    animation: rise-in var(--dur-reveal) var(--ease-out) backwards;
-  }
-  & > :nth-child(2) { animation-delay: calc(1 * var(--stagger)); }
-  & > :nth-child(3) { animation-delay: calc(2 * var(--stagger)); }
-  & > :nth-child(4) { animation-delay: calc(3 * var(--stagger)); }
-  & > :nth-child(5) { animation-delay: calc(4 * var(--stagger)); }
-  & > :nth-child(6) { animation-delay: calc(5 * var(--stagger)); }
-  & > :nth-child(7) { animation-delay: calc(6 * var(--stagger)); }
-  & > :nth-child(8) { animation-delay: calc(7 * var(--stagger)); }
-  & > :nth-child(9) { animation-delay: calc(8 * var(--stagger)); }
-  & > :nth-child(10) { animation-delay: calc(9 * var(--stagger)); }
-  & > :nth-child(11) { animation-delay: calc(10 * var(--stagger)); }
-  & > :nth-child(12) { animation-delay: calc(11 * var(--stagger)); }
-  & > :nth-child(n + 13) { animation-delay: calc(12 * var(--stagger)); }
-}
-
-/* Skeleton shimmer: a soft highlight sweeps across, then rests before the next pass. */
+/* Skeleton shimmer: a soft highlight sweeps across, then rests before the next pass (a loop, not a move). */
 @keyframes shimmer {
   0% { background-position: 150% 0; }
   60%, 100% { background-position: -50% 0; }
@@ -485,8 +528,8 @@ dialog.motion-drawer[open]::backdrop {
   }
 }
 @utility score-arc {
-  animation: score-draw 600ms var(--ease-out) backwards;
-  transition: stroke-dashoffset 420ms var(--ease-in-out);
+  animation: score-draw var(--dur-score-draw) var(--ease-out) backwards;
+  transition: stroke-dashoffset var(--dur-score) var(--ease-in-out);
 }
 
 /* Theme switch reveal (setThemeFrom): the new snapshot is unmasked by script; no default crossfade. */
@@ -504,7 +547,26 @@ dialog.motion-drawer[open]::backdrop {
 @utility toast-countdown {
   animation: toast-countdown 12s linear forwards;
 }
+
+/* Reduced motion: no animation at all (the user's choice). Loading spinners keep turning: they say
+ * "working", and a frozen spinner reads as a hang. Exit animations still end (0.01 ms), so components
+ * that unmount on animationend keep working. */
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after,
+  ::backdrop {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-spin {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
   /* A timer, not decoration: keep its real length or the toast would vanish at once. */
   .toast-countdown {
     animation-duration: 12s !important;

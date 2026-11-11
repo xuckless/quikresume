@@ -3,7 +3,11 @@
 import React, { useEffect, useRef } from "react";
 import { cn } from "@/lib/cn";
 
-/** Left-anchored off-canvas panel on the native <dialog> (mobile navigation). */
+/**
+ * Left-anchored off-canvas panel on the native <dialog> (mobile navigation). Motion (globals.css
+ * `dialog.motion-drawer`): slides in from the left edge, where its menu button sits, ease-out 260 ms, and back
+ * out to it, ease-in 208 ms (20% shorter); the backdrop fades with it.
+ */
 export function Drawer({ open, onClose, children, label }: { open: boolean; onClose: () => void; children: React.ReactNode; label: string }) {
     const ref = useRef<HTMLDialogElement>(null);
 
@@ -22,7 +26,6 @@ export function Drawer({ open, onClose, children, label }: { open: boolean; onCl
             onClick={e => { if (e.target === e.currentTarget) onClose(); }}
             className={cn(
                 "motion-drawer fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-72 max-w-[85vw] border-r border-border bg-surface p-0 text-fg",
-                "backdrop:bg-black/35",
             )}
         >
             <div className="flex h-full flex-col">{children}</div>

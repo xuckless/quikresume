@@ -4,17 +4,34 @@
 // which returns the row ref / transform style and a DragHandle. Only the
 // handle starts a drag (pointer after 4px, or Space/Enter + arrow keys), so
 // clicks on row toggles and inputs are unaffected.
+//
+// Motion: the held row follows the pointer 1:1 (no transition while dragging), locked to the vertical axis;
+// past the first / last row it gives way like rubber (`rubberBand`) and eases back on release. Rows making
+// room, and the dropped row settling into its slot, move ease-in-out (`DUR.move`).
 
 import React, { useId } from "react";
 import {
     closestCenter, DndContext, KeyboardSensor, MeasuringStrategy, PointerSensor, useSensor, useSensors,
-    type Announcements, type DragEndEvent, type DragStartEvent,
+    type Announcements, type DragEndEvent, type DragStartEvent, type Modifier,
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/cn";
+import { CSS_EASE, DUR, rubberBand } from "@/lib/ui/motion";
 import { FOCUS_RING } from "./button";
 import { GripVertical } from "./icons";
+
+/** Vertical only, and rubber-banded past the list's own box (the row's parent element). */
+const rubberBandInList: Modifier = ({ transform, draggingNodeRect, containerNodeRect }) => {
+    if (!draggingNodeRect || !containerNodeRect) return { ...transform, x: 0 };
+    const min = containerNodeRect.top - draggingNodeRect.top;
+    const max = containerNodeRect.bottom - draggingNodeRect.bottom;
+    // A row taller than its list (e.g. while other rows collapse) has no room to give: leave it free.
+    if (min > max) return { ...transform, x: 0 };
+    const y = transform.y < min ? min - rubberBand(min - transform.y) : transform.y > max ? max + rubberBand(transform.y - max) : transform.y;
+    return { ...transform, x: 0, y };
+};
+const MODIFIERS = [rubberBandInList];
 
 export function SortableList({ ids, onMove, onDragStart, onDragDone, labelOf, children }: {
     ids: string[];
@@ -48,6 +65,7 @@ export function SortableList({ ids, onMove, onDragStart, onDragDone, labelOf, ch
             id={contextId}
             sensors={sensors}
             collisionDetection={closestCenter}
+            modifiers={MODIFIERS}
             // Rows can change height mid-drag (sections collapse to their headers), so keep re-measuring.
             measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
             onDragStart={({ active }: DragStartEvent) => onDragStart?.(String(active.id))}
@@ -63,7 +81,7 @@ export function SortableList({ ids, onMove, onDragStart, onDragDone, labelOf, ch
 export function useSortableRow(id: string, label: string, disabled = false) {
     // Rows making room move ease-in-out; the held row follows the pointer with no easing at all.
     const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
-        id, disabled, transition: { duration: 240, easing: "cubic-bezier(0.77, 0, 0.175, 1)" },
+        id, disabled, transition: { duration: DUR.move, easing: CSS_EASE.inOut },
     });
     const style: React.CSSProperties = {
         transform: CSS.Translate.toString(transform),
@@ -78,7 +96,7 @@ export function useSortableRow(id: string, label: string, disabled = false) {
             {...attributes}
             {...listeners}
             aria-label={`Drag to reorder ${label}`}
-            className={cn("flex size-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-fg-subtle hover:bg-surface-muted hover:text-fg active:cursor-grabbing", FOCUS_RING)}
+            className={cn("press flex size-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-fg-subtle hover:bg-surface-muted hover:text-fg active:cursor-grabbing", FOCUS_RING)}
         >
             <GripVertical className="size-4" aria-hidden />
         </button>

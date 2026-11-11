@@ -20,7 +20,12 @@ interface TabsProps<T extends string> {
     "aria-label"?: string;
 }
 
-/** Underline tabs. Scrolls horizontally when it overflows; arrow keys move between tabs. */
+/**
+ * Underline tabs. Scrolls horizontally when it overflows; arrow keys move between tabs.
+ * Motion: tabs scale to 0.97 while pressed; the underline is one element (a layoutId unique to this tab
+ * list) that slides ease-in-out to the new tab. `layoutScroll` lets it measure correctly while the list is
+ * scrolled sideways.
+ */
 export function Tabs<T extends string>({ items, value, onChange, className, "aria-label": ariaLabel }: TabsProps<T>) {
     const listRef = useRef<HTMLDivElement>(null);
     // The underline is one element that slides between tabs.
@@ -40,7 +45,7 @@ export function Tabs<T extends string>({ items, value, onChange, className, "ari
     };
 
     return (
-        <div ref={listRef} role="tablist" aria-label={ariaLabel} onKeyDown={onKeyDown} className={cn("no-scrollbar -mb-px flex items-end gap-1 overflow-x-auto", className)}>
+        <m.div layoutScroll ref={listRef} role="tablist" aria-label={ariaLabel} onKeyDown={onKeyDown} className={cn("no-scrollbar -mb-px flex items-end gap-1 overflow-x-auto", className)}>
             {items.map(t => {
                 const active = t.value === value;
                 return (
@@ -66,6 +71,6 @@ export function Tabs<T extends string>({ items, value, onChange, className, "ari
                     </button>
                 );
             })}
-        </div>
+        </m.div>
     );
 }

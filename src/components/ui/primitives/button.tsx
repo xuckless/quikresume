@@ -27,9 +27,15 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
     size?: ButtonSize;
     loading?: boolean;
     icon?: LucideIcon;
+    /** True right after the action this button ran succeeded: the button pulses once to confirm (rule 8). */
+    succeeded?: boolean;
 }
 
-export function Button({ variant = "secondary", size = "md", loading = false, icon: Icon, className, children, disabled, type = "button", ...rest }: ButtonProps) {
+/**
+ * Motion: scales to 0.97 while pressed (`press`); the icon and the loading spinner crossfade with a blur
+ * (`Swap`), and a spinner on an icon-less button blurs in rather than popping; `succeeded` pulses once.
+ */
+export function Button({ variant = "secondary", size = "md", loading = false, icon: Icon, succeeded = false, className, children, disabled, type = "button", ...rest }: ButtonProps) {
     return (
         <button
             type={type}
@@ -40,12 +46,14 @@ export function Button({ variant = "secondary", size = "md", loading = false, ic
                 FOCUS_RING,
                 VARIANT[variant],
                 SIZE[size],
+                succeeded && "pulse-success",
                 className,
             )}
             {...rest}
         >
             {(loading || Icon) && (
-                <Swap swapKey={loading ? "loading" : "icon"}>
+                // Without an icon the Swap mounts with the spinner, so let that first one animate in.
+                <Swap swapKey={loading ? "loading" : "icon"} appear={!Icon}>
                     {loading ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : Icon ? <Icon className="size-3.5" aria-hidden /> : null}
                 </Swap>
             )}
@@ -63,6 +71,7 @@ export interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonEl
     loading?: boolean;
 }
 
+/** Square icon-only button. Changing `icon` (Copy -> Check) crossfades the two with a blur. */
 export function IconButton({ icon: Icon, variant = "ghost", size = "sm", loading, className, disabled, type = "button", ...rest }: IconButtonProps) {
     return (
         <button

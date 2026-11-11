@@ -14,6 +14,7 @@ import { useMediaQuery, XL } from "@/lib/ui/use-media-query";
 import { setPreviewPane, togglePreviewPane, usePreviewPane } from "@/lib/ui/preview-pane-store";
 import { interceptNavigation } from "@/lib/ui/leave-guard";
 import { FOCUS_RING } from "@/components/ui/primitives/button";
+import { Swap } from "@/components/ui/primitives/swap";
 import { Monitor, Moon, Sun, Compass, Eye, Layers, Library, ListChecks, LogOut, PenLine, Puzzle, Target, Upload, User, type LucideIcon } from "@/components/ui/primitives/icons";
 
 export interface ShellUser { name: string; email: string; image: string | null }
@@ -132,7 +133,7 @@ export function SidebarNav({ user, signOutAction, onNavigate }: { user: ShellUse
                     <button type="button" onClick={() => { togglePreviewPane(); onNavigate?.(); }} aria-pressed={paneOpen} className={cn(ITEM, "w-full", IDLE, FOCUS_RING)}>
                         <Icon className="size-4 shrink-0" aria-hidden />
                         <span className="flex-1 text-left">Preview</span>
-                        <span className={cn("text-xs", paneOpen ? "text-accent-text" : "text-fg-subtle")}>{paneOpen ? "On" : "Off"}</span>
+                        <Swap swapKey={paneOpen ? "on" : "off"} className={cn("text-xs", paneOpen ? "text-accent-text" : "text-fg-subtle")}>{paneOpen ? "On" : "Off"}</Swap>
                     </button>
                 </li>
             );
@@ -149,21 +150,23 @@ export function SidebarNav({ user, signOutAction, onNavigate }: { user: ShellUse
         );
     };
 
+    // layoutRoot: the sidebar is sticky (and the drawer copy fixed), so the pill must not read a page scroll
+    // that happens with the navigation (Next scrolls to the top) as movement. layoutScroll: the nav scrolls.
     return (
-        <div className="flex h-full flex-col">
+        <m.div layoutRoot className="flex h-full flex-col">
             <div className="flex h-14 items-center px-4">
                 <Link href="/dashboard" onClick={follow("/dashboard")} className={cn("flex items-center gap-2 rounded-md", FOCUS_RING)}>
                     <Wordmark className="text-[17px]" />
                 </Link>
             </div>
-            <nav className="flex-1 overflow-y-auto px-3 py-2" aria-label="Main">
+            <m.nav layoutScroll className="flex-1 overflow-y-auto px-3 py-2" aria-label="Main">
                 {GROUPS.map((g, i) => (
                     <div key={g.label} className={cn(i > 0 && "mt-4")}>
                         <p className="px-2.5 pb-1 text-xs font-medium text-fg-subtle">{g.label}</p>
                         <ul className="space-y-0.5">{g.items.map(render)}</ul>
                     </div>
                 ))}
-            </nav>
+            </m.nav>
             <div className="border-t border-border px-3 pt-3">
                 <ThemeToggle />
             </div>
@@ -178,11 +181,11 @@ export function SidebarNav({ user, signOutAction, onNavigate }: { user: ShellUse
                     <p className="truncate text-xs text-fg-subtle">{user.email}</p>
                 </div>
                 <form action={signOutAction}>
-                    <button type="submit" title="Sign out" aria-label="Sign out" className={cn("flex size-8 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg", FOCUS_RING)}>
+                    <button type="submit" title="Sign out" aria-label="Sign out" className={cn("press flex size-8 items-center justify-center rounded-md text-fg-muted hover:bg-surface-hover hover:text-fg", FOCUS_RING)}>
                         <LogOut className="size-4" aria-hidden />
                     </button>
                 </form>
             </div>
-        </div>
+        </m.div>
     );
 }

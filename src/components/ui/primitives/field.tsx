@@ -51,5 +51,5 @@ export function Field({ label, htmlFor, hint, warning, error, children, classNam
 }
 
 export function Checkbox({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
-    return <input type="checkbox" {...props} className={cn("size-4 shrink-0 rounded-sm accent-accent cursor-pointer disabled:cursor-not-allowed", FOCUS_RING, className)} />;
+    return <input type="checkbox" {...props} className={cn("press size-4 shrink-0 rounded-sm accent-accent cursor-pointer disabled:cursor-not-allowed", FOCUS_RING, className)} />;
 }
