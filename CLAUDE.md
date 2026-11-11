@@ -302,27 +302,41 @@ file --(browser)--> PDF? pages -> JPEG (pdf.js) : as-is --POST /api/import--> DO
 
 ```
 Import view -> Import from LinkedIn -> extension opens the saved profile URL in a new tab -> side panel Import
-  -> DOM parsed into an ImportEnvelope (extension/lib/profile-extract.ts, no AI) -> page: parseImportObject -> same review step
+  -> DOM parsed into an ImportEnvelope (extension/lib/profile-extract.ts) + "Show all" /details/ pages
+  -> parser unsure? visible text -> POST /api/ext/profile/analyse (AI fills the gaps, lib/profile-merge.ts)
+  -> page: parseImportObject -> same review step
 ```
 
 - One session at a time, one reducer per side: web `lib/import/linkedin-session.ts` (hook + card in
   `components/ui/linkedin-import.tsx`), extension `extension/lib/linkedin-session.ts` (background driver; `background.ts` only
   wires it). Every message carries the session id; stale ones are dropped by the reducers. Leaving the Import view cancels.
+  Extension phases: waiting -> capturing -> (analysing) -> sending -> done; the web mirrors analysing as a flag on capturing.
 - Protocol and validation live in `src/lib/ext/bridge.ts` (`linkedin-start / cancel / received` from the page;
-  `hello{linkedIn}`, `linkedin-started / capturing / captured / capture-failed / ended`, `disconnected` from the extension).
-  The extension imports it, `canonicalProfileUrl` (`lib/import/linkedin.ts`) and `ImportEnvelope` (`lib/import/envelope.ts`)
-  by relative path, so those three files stay import-free plain TS.
+  `hello{linkedIn}`, `linkedin-started / capturing / analysing / captured / capture-failed / ended`, `disconnected` from the
+  extension). The extension imports it, `canonicalProfileUrl` (`lib/import/linkedin.ts`) and `ImportEnvelope`
+  (`lib/import/envelope.ts`) by relative path, so those three files stay import-free plain TS.
 - Missing / unpaired / outdated extension -> notice + `/dashboard/extension?reason=missing|pair|update`. No saved URL ->
   dialog -> `saveLinkedInUrl` (canonical URL only, returns `{ok, url | error}`; thrown action errors are masked in production).
 - Security: port only from the app origin; paired account === page uid (at start and before every capture); the tab's
-  canonical URL === the saved URL before and after capture; payload ≤ `MAX_PROFILE_JSON`; tab close / page gone / worker
-  restart end the session with a message. Never navigates LinkedIn, never signs in, leaves the tab open; the checkmark shows
-  after the page acknowledges.
-- Parsing anchors on card ids (`#experience`, `#education`, …), outermost `<li>`s and `aria-hidden` text pieces, not class
-  names; each card parser fails alone ("Could not read Projects."), cards cut short ("Show all" -> `/details/`) add a
-  warning. English month names only. Fixtures in `extension/lib/profile-extract.test.ts` are hand-built: re-check against
-  the live site when LinkedIn changes its markup.
-- No AI at import time: nothing is sent to a model until the normal save (tags, review). Privacy page says so.
+  canonical URL === the saved URL before and after capture; payload ≤ `MAX_PROFILE_JSON`, AI text ≤ `MAX_PROFILE_TEXT`; only
+  `/in/<same slug>/details/<section>/` is ever fetched (same-origin, DOMParser, 3 at a time, 10 s); tab close / page gone /
+  worker restart end the session with a message. Never navigates LinkedIn, never signs in, clicks only
+  `expandable-text-button` ("… more") inside profile cards, leaves the tab open; the checkmark shows after the page acknowledges.
+- Parsing (current server-driven markup, checked against a saved live profile 2026-11): cards are
+  `[data-view-name="profile-card-<section>"]` (top card `profile-top-card`, name in its h2), entries the outermost
+  `[componentkey^="entity-collection-item"]`, descriptions `[data-testid="expandable-text-box"]`, "X and +N skills" lines
+  dropped; the old 2024-25 markup (`#experience` anchors, `<li>`, `aria-hidden` pieces) is a fallback. Never class names.
+  Each card parser fails alone ("Could not read Projects.") and reports `unread`; `topCard` says whether the name was read.
+  Cut-short cards are completed from their details page, else warn "may be incomplete" (the details-page markup is not yet
+  verified against the live site). English month names only. Tests: `extension/lib/profile-extract.test.ts` on the anonymised
+  `__fixtures__/linkedin-profile-2026.html` (+ hand-built old markup). Re-save and re-anonymise a live page when LinkedIn
+  changes its markup; never commit a real profile.
+- AI fallback (`needsAnalysis`: no top card, an unread card, or nothing but the name; also an unrecognised layout): the
+  content script adds `profileText` (top card + profile cards, headings kept, LinkedIn's own cards out), the background
+  calls `/api/ext/profile/analyse` (`guardExtension`, `RATE.extProfile`, AI budget, glm-5.3-flash low, import prompt via
+  `lib/import/model-import.ts`, shared with `/api/import` and `/api/guest/import`), and `mergeAnalysis` fills only unread /
+  empty parts ("Read with AI: …" warning). AI failure keeps a partial capture with a warning; an empty one fails with a
+  retryable error. Confident captures never call the AI. Privacy page says so.
 
 ## Smart tags
 
@@ -445,7 +459,7 @@ WXT + React + TS, Chrome MV3.
   cache 30 s).
 - **API** (`src/app/api/ext/*`, `guardExtension`: Bearer token, rate limit, AI budget, CORS only for `chrome-extension://<EXTENSION_IDS>`,
   web origins rejected): `pair`, `me`, `signout`, `jobs` (GET `?url=`, POST import), `jobs/[id]` (summary, PATCH status / variantId),
-  `variants`, `tailor`, `tailor/save`, `autofill/{profile,answers,unmapped}`, `resume/pdf`. Summaries (`lib/ext/match-summary.ts`) score
+  `variants`, `tailor`, `tailor/save`, `autofill/{profile,answers,unmapped}`, `resume/pdf`, `profile/analyse` (LinkedIn AI fallback). Summaries (`lib/ext/match-summary.ts`) score
   server-side on the job's variant or the working selection; `asUser(uid, fn)` lets token code reuse the session-based getters.
 - **Tab state** (`lib/tab-state.ts`, `lib/types.ts`): one `TabState` per tab in `chrome.storage.session` under
   `tab-state:v<STATE_VERSION>:<id>` (bump the version when the shape changes incompatibly; old keys are swept). `save`,
