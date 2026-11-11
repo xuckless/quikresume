@@ -1,17 +1,18 @@
 // src/components/ui/resume-import.tsx
-// Resume import flow: pick one or more files -> (PDF: render pages in the
-// browser) -> POST /api/import per file -> combined review -> hand the
-// selection to the dashboard, which merges it into the editor draft.
-// Nothing is persisted here.
+// The Import view: files (PDF pages rendered in the browser, then POST /api/import one at a time) or a
+// LinkedIn profile (components/ui/linkedin-import.tsx) -> one review step -> the dashboard merges the
+// selection into the editor draft. Flow: lib/import/import-flow.ts. Nothing is persisted here.
 "use client";
 
-import { LinkedInImport } from "./linkedin-import";
-import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import React, { useEffect, useReducer, useState } from "react";
 import type { PersonalInfo, ResumeData, ResumeListKey } from "@/types/schema";
-import { emptyResumeData, RESUME_LIST_KEYS } from "@/types/schema";
-import { combineParsedFiles, classifyIncoming, type CombinedImport, type ImportSelection, type ParsedFile } from "@/lib/import/merge";
-import { MAX_PDF_PAGES, type ImportResponse } from "@/lib/import/types";
+import { RESUME_LIST_KEYS } from "@/types/schema";
+import { classifyIncoming, type CombinedImport, type ImportSelection } from "@/lib/import/merge";
+import { currentFileIndex, importReducer, initialImportState, MAX_FILES, type FileStatus } from "@/lib/import/import-flow";
+import { sessionBusy } from "@/lib/import/linkedin-session";
+import { MAX_PDF_PAGES } from "@/lib/import/types";
 import { documentFormData } from "@/lib/import/pdf-pages";
+import { readJson } from "@/lib/ui/fetch-json";
 import { itemLabel, itemTitle, SECTION_LABEL } from "@/lib/sections";
 import { validateItemDates } from "@/lib/validation/dates";
 import { cn } from "@/lib/cn";
@@ -21,171 +22,137 @@ import { Card, CardBody, CardHeader, SectionHeader } from "@/components/ui/primi
 import { Badge } from "@/components/ui/primitives/badge";
 import { NoticeBanner } from "@/components/ui/primitives/notice-banner";
 import { Loader2, Upload } from "@/components/ui/primitives/icons";
-
-import { selectedImportCount, type ImportJob, type ImportQueueEvent } from "@/lib/import/queue";
+import { LinkedInImportCard, useLinkedInImport } from "./linkedin-import";
 
 interface ResumeImportProps {
-    jobs: ImportJob[];
-    onQueueEvent: (event: ImportQueueEvent) => void;
     /** What the library (or the open draft) currently holds; drives the New / Merges / Already labels. */
     current: ResumeData;
+    /** Signed-in user and the LinkedIn URL saved on their profile, for Import from LinkedIn. */
+    uid: string;
+    savedLinkedIn: string;
     onImport: (selection: ImportSelection, meta: { fileNames: string[] }) => void;
-    onSavedLinkedInUrl: (url: string) => void;
+    onLinkedInSaved: (url: string) => void;
     onCancel: () => void;
 }
 
-import { initialImportState, importTransition, type FileStatus } from "@/lib/ui/resume-import-state";
-
 const ACCEPT = ".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp";
-const MAX_FILES = 6;
 
-export function ResumeImport({ current, onImport, onCancel, onSavedLinkedInUrl, jobs, onQueueEvent }: ResumeImportProps) {
-    const [stage, dispatch] = useReducer(importTransition, initialImportState);
+export function ResumeImport({ current, uid, savedLinkedIn, onImport, onLinkedInSaved, onCancel }: ResumeImportProps) {
+    const [stage, dispatch] = useReducer(importReducer, initialImportState);
     const [dragOver, setDragOver] = useState(false);
-    const active = useRef<AbortController | null>(null);
-    const run = useRef(0);
-    useEffect(() => () => { active.current?.abort(); run.current++; }, []);
-    const queue = stage.step === "review" ? [] : stage.queue;
-    const onLinkedInParsed = useCallback((file: ParsedFile, meta: { id: string }) => onQueueEvent({ type: "parsed", id: meta.id, file }), [onQueueEvent]);
-    const addFiles = (list: FileList | File[] | null | undefined) => {
-        if (list) dispatch({ type: "add", files: Array.from(list) });
-    };
-    const removeFile = (name: string) => dispatch({ type: "remove", name });
-    const analyze = async () => {
-        if (stage.step !== "pick" || !queue.length || active.current) return;
-        const controller = new AbortController();
-        active.current = controller;
-        const id = ++run.current;
-        dispatch({ type: "start", run: id });
-        const parsed: ParsedFile[] = [];
-        for (const [index, q] of queue.entries()) {
-            if (controller.signal.aborted) return;
-            try {
-                dispatch({ type: "progress", run: id, index, status: "rendering" });
-                const body = await documentFormData(q.file);
-                if (controller.signal.aborted) return;
-                dispatch({ type: "progress", run: id, index, status: "reading" });
-                const res = await fetch("/api/import", { method: "POST", body, signal: controller.signal });
-                const json = (await res.json().catch(() => null)) as ImportResponse | null;
-                if (controller.signal.aborted) return;
-                if (!json) throw new Error(`Import failed (${res.status}).`);
-                if (!json.ok) throw new Error(json.error);
-                parsed.push({ fileName: json.fileName, data: json.data, warnings: json.warnings });
-                dispatch({ type: "progress", run: id, index, status: "done" });
-            } catch (err) {
-                if (controller.signal.aborted) return;
-                dispatch({ type: "failed", run: id, index, error: err instanceof Error ? err.message : "Import failed." });
-            }
-        }
-        if (!controller.signal.aborted) dispatch({ type: "complete", run: id, parsed });
-        if (active.current === controller) active.current = null;
-    };
+    const linkedIn = useLinkedInImport({
+        uid,
+        savedUrl: savedLinkedIn,
+        onResult: file => dispatch({ type: "linkedin", file }),
+        onUrlSaved: onLinkedInSaved,
+    });
 
-    const reviewingJob = jobs.find(job => job.phase === "reviewing");
-    // Keep capture mounted while another queued job is reviewed or files are analyzed.
-    const capture = <div hidden={reviewingJob?.phase === "reviewing" || stage.step !== "pick"}>
-        <LinkedInImport url={current.personalInfo.linkedin} onSavedUrl={onSavedLinkedInUrl} onParsed={onLinkedInParsed} onProgress={progress => onQueueEvent({ type: "progress", ...progress })} />
-    </div>;
-    if (reviewingJob?.phase === "reviewing") {
-        return <>{capture}<ReviewStep key={reviewingJob.id} result={combineParsedFiles([reviewingJob.file], emptyResumeData())} current={current}
-            onRestart={() => onQueueEvent({ type: "close-review", id: reviewingJob.id })}
-            onConfirm={selection => {
-                onQueueEvent({ type: "accept", id: reviewingJob.id, acceptedCount: selectedImportCount(selection) });
-                onImport(selection, { fileNames: [reviewingJob.file.fileName] });
-            }} /></>;
-    }
+    // The working run handles one file at a time; leaving the view aborts it.
+    const runId = stage.step === "working" ? stage.run : "";
+    const index = currentFileIndex(stage);
+    const file = stage.step === "working" && index >= 0 ? stage.queue[index].file : null;
+    useEffect(() => {
+        if (!runId || !file) return;
+        const abort = new AbortController();
+        void (async () => {
+            try {
+                dispatch({ type: "file-status", run: runId, index, status: "rendering" });
+                const body = await documentFormData(file);
+                if (abort.signal.aborted) return;
+                dispatch({ type: "file-status", run: runId, index, status: "reading" });
+                const res = await fetch("/api/import", { method: "POST", body, signal: abort.signal });
+                const json = await readJson<{ data: ResumeData; warnings: string[]; fileName: string }>(res);
+                if (abort.signal.aborted) return;
+                if (!json.ok || !json.data) throw new Error(json.error ?? "Import failed.");
+                dispatch({ type: "file-done", run: runId, index, parsed: { fileName: json.fileName ?? file.name, data: json.data, warnings: json.warnings ?? [] } });
+            } catch (err) {
+                if (abort.signal.aborted) return;
+                dispatch({ type: "file-failed", run: runId, index, error: err instanceof Error ? err.message : "Import failed." });
+            }
+        })();
+        return () => abort.abort();
+    }, [runId, index, file]);
+
     if (stage.step === "review") {
         return (
-            <>{capture}<ReviewStep
+            <ReviewStep
                 key={stage.result.fileNames.join("|")}
                 result={stage.result}
                 current={current}
                 onConfirm={(sel) => onImport(sel, { fileNames: stage.result.fileNames })}
                 onRestart={() => dispatch({ type: "restart" })}
-            /></>
+            />
         );
     }
 
     const working = stage.step === "working";
+    const linkedInBusy = sessionBusy(linkedIn.session);
+    const queue = stage.queue;
+    const addFiles = (list: FileList | null) => {
+        if (list) dispatch({ type: "add", files: Array.from(list) });
+    };
 
     return (
-        <>{capture}<Card>
-            <CardHeader
-                title="Import existing résumés"
-                hint="Upload PDFs, Word documents, text files or photos. GLM-4.6V reads each one and sorts everything into your library sections. Duplicates across files are merged, and you review before anything is saved."
-            />
-            <CardBody className="space-y-4">
-                {stage.step === "pick" && stage.error && <NoticeBanner tone="danger">{stage.error}</NoticeBanner>}
+        <div className="space-y-4">
+            <Card>
+                <CardHeader
+                    title="Import existing résumés"
+                    hint="Upload PDFs, Word documents, text files or photos. Each one is sorted into your library sections, duplicates are merged, and you review everything before it is added."
+                />
+                <CardBody className="space-y-4">
+                    {stage.step === "pick" && stage.error && <NoticeBanner tone="danger">{stage.error}</NoticeBanner>}
 
-                {working && <NoticeBanner tone="success">Processing your files. Each file’s progress is shown below. Next you’ll review new items and duplicates before adding anything to your editor draft.</NoticeBanner>}
+                    <label
+                        onDragOver={(e) => { e.preventDefault(); if (!working) setDragOver(true); }}
+                        onDragLeave={() => setDragOver(false)}
+                        onDrop={(e) => { e.preventDefault(); setDragOver(false); if (!working) addFiles(e.dataTransfer.files); }}
+                        className={cn(
+                            "block cursor-pointer rounded-lg border border-dashed p-8 text-center transition-colors md:p-12",
+                            dragOver ? "border-fg bg-surface-muted" : "border-border-strong bg-surface-muted/50 hover:border-fg-subtle",
+                            working && "pointer-events-none opacity-60",
+                        )}
+                    >
+                        <input type="file" multiple accept={ACCEPT} className="sr-only" disabled={working} onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+                        <div className="mx-auto mb-3 flex size-10 items-center justify-center rounded-md bg-surface border border-border">
+                            <Upload className="size-5 text-fg-muted" />
+                        </div>
+                        <p className="text-sm font-medium text-fg">{queue.length ? "Add another file" : "Drop your résumés here, or click to browse"}</p>
+                        <p className="mt-1 text-13 text-fg-subtle">PDF · DOCX · TXT · PNG / JPG · up to 10 MB and {MAX_PDF_PAGES} pages each · {MAX_FILES} files max</p>
+                    </label>
 
-                {jobs.length > 0 && <section aria-label="LinkedIn import jobs" className="space-y-3" aria-live="polite">
-                    <h3 className="text-sm font-medium">LinkedIn import jobs</h3>
-                    {jobs.map(job => <div key={job.id} className="rounded-lg border border-border p-4 space-y-2">
-                        <p className="text-sm font-medium">LinkedIn profile import</p>
-                        {job.url && <p className="break-all text-xs text-fg-subtle">{job.url}</p>}
-                        <p className="text-sm text-fg-muted">{job.phase === "ready" ? "Ready to review. Nothing has been added yet." : job.phase === "saved" ? `${job.acceptedCount} selected items saved to your library.` : job.phase === "accepted" ? `${job.acceptedCount} selected items added to your editor draft. Save & Exit to save to your library.` : job.phase === "error" ? job.error : job.phase === "capture-error" ? `${job.error} Retry Import profile in the extension.` : job.phase === "cancelled" ? "Import cancelled. Start a new import to try again." : job.phase === "waiting" ? "Waiting for the extension to capture your profile…" : job.phase === "capturing" ? "Capturing your profile…" : job.phase === "analyzing" ? "Processing captured profile content…" : "Preparing profile import…"}</p>
-                        {job.phase === "ready" && <>
-                            <JobCounts current={current} file={job.file} />
-                            <Button size="sm" onClick={() => onQueueEvent({ type: "review", id: job.id })}>Review import</Button>
-                        </>}
-                    </div>)}
-                </section>}
-
-                <label
-                    onDragOver={(e) => { e.preventDefault(); if (!working) setDragOver(true); }}
-                    onDragLeave={() => setDragOver(false)}
-                    onDrop={(e) => { e.preventDefault(); setDragOver(false); if (!working) addFiles(e.dataTransfer.files); }}
-                    className={cn(
-                        "block cursor-pointer rounded-lg border border-dashed p-8 text-center transition-colors md:p-12",
-                        dragOver ? "border-fg bg-surface-muted" : "border-border-strong bg-surface-muted/50 hover:border-fg-subtle",
-                        working && "pointer-events-none opacity-60",
+                    {queue.length > 0 && (
+                        <ul className="divide-y divide-border rounded-lg border border-border" aria-live="polite">
+                            {queue.map((q, i) => (
+                                <li key={q.file.name} className="rise-in flex items-center gap-3 px-3 py-2.5" style={{ "--i": i } as React.CSSProperties}>
+                                    <StatusDot status={q.status} />
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-medium text-fg">{q.file.name}</p>
+                                        <p className={cn("text-xs", q.status === "failed" ? "text-danger" : "text-fg-subtle")}>
+                                            {q.status === "queued" && `${(q.file.size / 1024).toFixed(0)} KB · waiting`}
+                                            {q.status === "rendering" && "Rendering pages…"}
+                                            {q.status === "reading" && "Reading… up to a minute"}
+                                            {q.status === "done" && "Done"}
+                                            {q.status === "failed" && q.error}
+                                        </p>
+                                    </div>
+                                    {!working && <Button size="sm" variant="ghost" onClick={() => dispatch({ type: "remove", name: q.file.name })}>Remove</Button>}
+                                </li>
+                            ))}
+                        </ul>
                     )}
-                >
-                    <input type="file" multiple accept={ACCEPT} className="sr-only" disabled={working} onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
-                    <div className="mx-auto mb-3 flex size-10 items-center justify-center rounded-md bg-surface border border-border">
-                        <Upload className="size-5 text-fg-muted" />
+
+                    <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+                        <Button variant="ghost" onClick={onCancel} disabled={working}>Cancel</Button>
+                        <Button variant="primary" onClick={() => dispatch({ type: "start", run: crypto.randomUUID() })} disabled={queue.length === 0 || linkedInBusy} loading={working}>
+                            {working ? "Analysing" : queue.length > 1 ? `Analyse ${queue.length} files` : "Analyse résumé"}
+                        </Button>
                     </div>
-                    <p className="text-sm font-medium text-fg">{queue.length ? "Add another file" : "Drop your résumés here, or click to browse"}</p>
-                    <p className="mt-1 text-13 text-fg-subtle">PDF · DOCX · TXT · PNG / JPG · up to 10 MB and {MAX_PDF_PAGES} pages each · {MAX_FILES} files max</p>
-                </label>
+                </CardBody>
+            </Card>
 
-                {queue.length > 0 && (
-                    <ul className="divide-y divide-border rounded-lg border border-border" aria-live="polite">
-                        {queue.map(q => (
-                            <li key={q.file.name} className="flex items-center gap-3 px-3 py-2.5">
-                                <StatusDot status={q.status} />
-                                <div className="min-w-0 flex-1">
-                                    <p className="truncate text-sm font-medium text-fg">{q.file.name}</p>
-                                    <p className={cn("text-xs", q.status === "failed" ? "text-danger" : "text-fg-subtle")}>
-                                        {q.status === "queued" && `${(q.file.size / 1024).toFixed(0)} KB · waiting`}
-                                        {q.status === "rendering" && "Rendering pages…"}
-                                        {q.status === "reading" && "Reading with GLM-4.6V… up to a minute"}
-                                        {q.status === "done" && "Done"}
-                                        {q.status === "failed" && (q.error ?? "Failed")}
-                                    </p>
-                                </div>
-                                {!working && <Button size="sm" variant="ghost" onClick={() => removeFile(q.file.name)}>Remove</Button>}
-                            </li>
-                        ))}
-                    </ul>
-                )}
-
-                <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
-                    <Button variant="ghost" onClick={onCancel} disabled={working}>Cancel</Button>
-                    <Button variant="primary" onClick={analyze} disabled={queue.length === 0} loading={working}>
-                        {working ? "Analysing" : queue.length > 1 ? `Analyse ${queue.length} files` : "Analyse résumé"}
-                    </Button>
-                </div>
-            </CardBody>
-        </Card></>
+            <LinkedInImportCard linkedIn={linkedIn} savedUrl={savedLinkedIn} disabled={working} />
+        </div>
     );
-}
-
-function JobCounts({ current, file }: { current: ResumeData; file: ParsedFile }) {
-    const counts = { new: 0, merge: 0, same: 0 };
-    for (const key of RESUME_LIST_KEYS) for (const item of file.data[key]) counts[classifyIncoming(current, key, item).kind]++;
-    return <p className="text-xs text-fg-subtle">{counts.new} new · {counts.merge} with new details to merge · {counts.same} already there (filtered by default). Review to inspect all items.</p>;
 }
 
 function StatusDot({ status }: { status: FileStatus }) {
@@ -259,21 +226,17 @@ function ReviewStep({ result, current, onConfirm, onRestart }: ReviewStepProps) 
                     {counts.new > 0 && ` ${counts.new} new.`}
                     {counts.merge > 0 && ` ${counts.merge} will add detail to items you already have.`}
                     {counts.same > 0 && ` ${counts.same} already in your library (unticked).`}
-                    {" "}Selected items go to your editor draft. Review them there, then use Save & Exit to save to your library.
+                    {" "}You can edit every field afterwards in the editor.
                 </>}
             />
             <CardBody className="space-y-6">
-                <NoticeBanner tone="success">
-                    <strong>{counts.new} new · {counts.merge} add detail · {counts.same} already there</strong>
-                    <p>Already-present items are unticked below, so they are filtered from the import by default. Choose any new items or added details you want to bring into your editor draft. Nothing is saved to your library until Save &amp; Exit in the editor.</p>
-                </NoticeBanner>
                 {total === 0 && parsedPersonal.length === 0 && (
                     <NoticeBanner tone="warning">Nothing usable was found. Try a clearer scan or a text-based PDF.</NoticeBanner>
                 )}
 
                 {warningCount > 0 && (
                     <details className="rounded-md border border-warning-border bg-warning-bg px-3 py-2 text-13 text-warning">
-                        <summary className="cursor-pointer font-medium">{warningCount} import {warningCount === 1 ? "warning" : "warnings"}</summary>
+                        <summary className="cursor-pointer font-medium">{warningCount} import {warningCount === 1 ? "note" : "notes"}</summary>
                         {warnings.map(w => (
                             <div key={w.fileName} className="mt-2">
                                 {multi && <p className="text-xs font-medium">{w.fileName}</p>}
@@ -358,7 +321,7 @@ function ReviewStep({ result, current, onConfirm, onRestart }: ReviewStepProps) 
                 <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
                     <Button variant="ghost" onClick={onRestart}>Start over</Button>
                     <Button variant="primary" onClick={confirm} disabled={selectedCount === 0 && !applyPersonal}>
-                        Add {selectedCount} {selectedCount === 1 ? "item" : "items"} to editor draft
+                        Add {selectedCount} {selectedCount === 1 ? "item" : "items"} to the editor
                     </Button>
                 </div>
             </CardBody>

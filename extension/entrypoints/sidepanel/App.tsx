@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { JOB_STATUSES, JOB_STATUS_LABEL, type AccountStatus, type BgRequest, type JobStatus, type JobSummary, type TabState } from "../../lib/types";
-import { ProfileImportCard } from "./ProfileImportCard";
+import { LinkedInImportCard, onSessionTab, useLinkedInSession } from "./LinkedInImportCard";
 import { AutofillCard } from "./AutofillCard";
 import { ResumePicker, TailorCard } from "./TailorCard";
 
@@ -145,6 +145,7 @@ export function App() {
     const account = availability.phase === "checking" ? null : availability.account;
     const [state, setState] = useState<TabState | null>(null);
     const [fabEnabled, setFabEnabled] = useState(true);
+    const linkedIn = useLinkedInSession();
 
     useEffect(() => {
         // If the background worker can't answer, fall back to the Connect screen instead of "Loading…" forever.
@@ -185,9 +186,10 @@ export function App() {
                     <Connect appUrl={appUrl} />
                 ) : tabId === null ? (
                     <div className="card"><p className="muted" style={{ margin: 0 }}>No active tab. Open a page to get started.</p></div>
+                ) : onSessionTab(linkedIn, tabId) ? (
+                    <LinkedInImportCard state={linkedIn} tabId={tabId} />
                 ) : (
                     <>
-                        {state?.profileImport && <ProfileImportCard state={state.profileImport} tabId={tabId} />}
                         {state?.operation.error && <div className="notice err">{state.operation.error}</div>}
                         {!posting ? (
                             <div className="card stack">

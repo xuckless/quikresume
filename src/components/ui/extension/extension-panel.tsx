@@ -46,7 +46,7 @@ export function ExtensionPanel({ devices, autoConnect }: { devices: ExtensionDev
     const busy = pairing.phase === "issuing";
     const code = "code" in pairing ? pairing.code : null;
     const notice = pairing.phase === "connected"
-        ? { tone: "success" as const, text: "This browser is connected. Return to Import to start your LinkedIn profile import, or open a job posting to use the job tools." }
+        ? { tone: "success" as const, text: "This browser is connected. Open any job posting and click the quikResume button." }
         : pairing.phase === "failed" || pairing.phase === "pairing-failed"
             ? { tone: "danger" as const, text: pairing.error } : null;
     const [revoking, setRevoking] = useState<{ phase: "closed" } | { phase: "confirming"; device: ExtensionDevice }>({ phase: "closed" });
@@ -112,7 +112,6 @@ export function ExtensionPanel({ devices, autoConnect }: { devices: ExtensionDev
                         <div className="flex flex-wrap items-center gap-2">
                             <Button variant="primary" onClick={connect} loading={busy}>{detected.paired ? "Reconnect" : "Connect"}</Button>
                             <Button variant="ghost" onClick={showCode} disabled={busy}>Use a code instead</Button>
-                            {detected.paired && <Button onClick={() => router.push('/dashboard?view=import')}>Return to Import from LinkedIn</Button>}
                         </div>
                     ) : (
                         <div className="space-y-3">
@@ -157,8 +156,8 @@ export function ExtensionPanel({ devices, autoConnect }: { devices: ExtensionDev
             <Card>
                 <CardHeader title="What the extension can do" />
                 <CardBody className="space-y-1.5 text-13 text-fg-muted">
-                    <p>To import your LinkedIn profile, start Import from LinkedIn on the website. Then open the extension in the new LinkedIn tab and click Import profile.</p>
                     <p>It reads job postings you open, saves the ones you choose to your Job Tracker, and shows your match.</p>
+                    <p>It imports your own LinkedIn profile when you start Import from LinkedIn on the Import page.</p>
                     <p>On application forms it fills fields from your profile and Autofill preferences when you click Auto Fill. It never submits an application.</p>
                     <p>AI can make mistakes. Please review the work before applying.</p>
                 </CardBody>

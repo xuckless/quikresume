@@ -1,4 +1,6 @@
 // Shapes shared by the background worker, content scripts and the side panel.
+// (Page <-> extension messages: src/lib/ext/bridge.ts. LinkedIn import: lib/linkedin-session.ts.)
+import type { LinkedInRequest } from "./linkedin-session";
 
 export type ExtractionMethod = "adapter" | "json-ld" | "readable";
 
@@ -48,14 +50,9 @@ export type AutofillReport = AutofillCounts & (
     | { phase: "failed"; error: string }
 );
 export type Operation = { phase: "idle" | "saving"; error?: never } | { phase: "failed"; error: string };
-export type ProfileImport = { id: string; url: string } & (
-    | { phase: "waiting" | "capturing" | "analyzing" | "ready"; error?: never }
-    | { phase: "error"; error: string }
-);
 
 /** Per-tab state the background keeps and the side panel renders. */
 export interface TabState {
-    profileImport?: ProfileImport;
     posting: Posting | null;
     /** The saved job for this tab's posting; kept when the tab moves on to the application form. */
     summary: JobSummary | null;
@@ -108,7 +105,7 @@ export function applySuggestions(base: TailorSelection, chosen: TailorSuggestion
 }
 
 export type BgRequest =
-    | { type: "profile-capture"; tabId: number }
+    | LinkedInRequest
     | { type: "detected"; posting: Posting | null }
     | { type: "open-panel" }
     | { type: "pair"; code: string }
@@ -135,6 +132,3 @@ export interface AccountStatus {
     user: { id: string; name: string; email: string; image: string } | null;
     appUrl: string;
 }
-
-export const APP_SOURCE = "quikresume-app";
-export const EXT_SOURCE = "quikresume-ext";

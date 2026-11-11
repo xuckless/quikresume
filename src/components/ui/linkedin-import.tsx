@@ -1,185 +1,237 @@
+// src/components/ui/linkedin-import.tsx
+// "Import from LinkedIn" on the Import view: one guided session at a time (lib/import/linkedin-session.ts).
+// The hook owns the session and its side effects, each keyed on the phase's id; the card renders it.
+// The extension sends the profile already structured (no AI); it is validated here and handed to the
+// caller, which opens the same review step file imports use. Unmounting (leaving the Import view) cancels
+// a live session.
 "use client";
 
-import { motion, useReducedMotion } from 'motion/react';
-import { useMotionPresets } from '@/lib/ui/motion';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { canonicalProfileUrl } from '@/lib/import/linkedin';
-import { linkedInBusy, linkedInProgress, transitionLinkedIn, type LinkedInEvent, type LinkedInFlow } from '@/lib/import/linkedin-flow';
-import { APP_SOURCE, EXT_SOURCE, detectProfileExtension } from '@/lib/ext/bridge';
-import { saveLinkedInUrl } from '@/app/actions/user-actions';
-import type { ImportResponse } from '@/lib/import/types';
-import type { ParsedFile } from '@/lib/import/merge';
-import type { ImportProgress } from '@/lib/import/queue';
-import { Button } from './primitives/button';
-import { Dialog } from './primitives/dialog';
+import React, { useEffect, useEffectEvent, useReducer, useState } from "react";
+import { useRouter } from "next/navigation";
+import { saveLinkedInUrl } from "@/app/actions/user-actions";
+import { detectExtension, postToExtension, readExtMessage } from "@/lib/ext/bridge";
+import { canonicalProfileUrl } from "@/lib/import/linkedin";
+import { linkedInCaptureToFile } from "@/lib/import/linkedin-capture";
+import {
+    idleSession, linkedInReducer, liveSessionId, LINKEDIN_STEPS, sessionBusy, sessionStep,
+    type ExtensionReason, type LinkedInEvent, type LinkedInSession,
+} from "@/lib/import/linkedin-session";
+import type { ParsedFile } from "@/lib/import/merge";
+import { RESUME_LIST_KEYS } from "@/types/schema";
+import { cn } from "@/lib/cn";
+import { Button, Card, CardBody, CardHeader, Dialog, Field, Input, NoticeBanner, Swap } from "@/components/ui/primitives";
+import { Check, Circle, IdCard, Loader2 } from "@/components/ui/primitives/icons";
 
-const post = (data: object) => window.postMessage({ source: APP_SOURCE, ...data }, location.origin);
-const STEPS = ['Connect', 'Confirm in extension', 'Capture profile', 'Process content', 'Review results'];
+/** The extension answers linkedin-start once it has checked the account and opened the tab. */
+const START_TIMEOUT_MS = 15_000;
 
-export function LinkedInImport({ url, onSavedUrl, onParsed, onProgress }: { url: string; onSavedUrl: (url: string) => void; onParsed: (file: ParsedFile, meta: { id: string }) => void; onProgress?: (progress: ImportProgress) => void }) {
-    const transitions = useMotionPresets();
-    const reducedMotion = useReducedMotion();
-    const [value, setValue] = useState(url);
-    const [flow, setFlow] = useState<LinkedInFlow>({ phase: 'idle' });
-    // The same state drives rendering and synchronous extension event handling.
-    const current = useRef<LinkedInFlow>(flow);
-    const resources = useRef<{ abort?: AbortController; handshake?: ReturnType<typeof setTimeout> }>({});
-    const progressCallback = useRef(onProgress);
-    useEffect(() => { progressCallback.current = onProgress; }, [onProgress]);
-    const send = useCallback((event: LinkedInEvent) => {
-        const previous = current.current;
-        const next = transitionLinkedIn(previous, event);
-        current.current = next;
-        setFlow(next);
-        const id = 'id' in next ? next.id : 'id' in previous ? previous.id : null;
-        if (next !== previous && id) {
-            const context = { id, ...('url' in next ? { url: next.url } : 'url' in previous ? { url: previous.url } : {}) };
-            switch (next.phase) {
-                case 'checking-extension': case 'loading-profile': case 'saving-url': progressCallback.current?.({ ...context, phase: 'processing' }); break;
-                case 'opening-profile': case 'awaiting-capture': progressCallback.current?.({ ...context, phase: 'waiting' }); break;
-                case 'capturing': case 'analyzing': progressCallback.current?.({ ...context, phase: next.phase }); break;
-                case 'capture-error': progressCallback.current?.({ ...context, phase: 'capture-error', error: next.error }); break;
-                case 'error': progressCallback.current?.({ ...context, phase: 'error', error: next.error }); break;
-                case 'cancelled': case 'url-required': progressCallback.current?.({ ...context, phase: 'cancelled' }); break;
-            }
-        }
-        return next;
-    }, []);
-    const matchesOperation = (id: string) => 'id' in current.current && current.current.id === id;
-    const stopEffects = () => {
-        resources.current.abort?.abort();
-        clearTimeout(resources.current.handshake);
-        resources.current = {};
-    };
-    const cancel = () => {
-        const state = current.current;
-        send({ type: 'cancel' });
-        stopEffects();
-        if ('id' in state) post({ type: 'profile-cancel', id: state.id });
-    };
+interface LinkedInImportOptions {
+    /** The signed-in user; the extension refuses to run for a different paired account. */
+    uid: string;
+    /** The LinkedIn URL saved on the profile (server truth, not the editor draft). */
+    savedUrl: string;
+    onResult: (file: ParsedFile) => void;
+    /** A URL entered in the dialog was saved to the profile. */
+    onUrlSaved: (url: string) => void;
+}
 
+export type LinkedInImport = {
+    session: LinkedInSession;
+    dispatch: (event: LinkedInEvent) => void;
+    submitUrl: (id: string, raw: string) => Promise<void>;
+};
+
+export function useLinkedInImport({ uid, savedUrl, onResult, onUrlSaved }: LinkedInImportOptions): LinkedInImport {
+    const [session, dispatch] = useReducer(linkedInReducer, idleSession);
+    const deliver = useEffectEvent(onResult);
+
+    // Session messages from the extension; the reducer drops any for another session.
     useEffect(() => {
-        const listener = async (e: MessageEvent) => {
-            if (e.source !== window || e.origin !== location.origin || e.data?.source !== EXT_SOURCE) return;
-            const d = e.data;
-            const state = current.current;
-            if (!('id' in state) || (d.id !== state.id && !(d.type === 'profile-error' && d.id === undefined))) return;
-            const id = state.id;
-            if (d.type === 'profile-capture-error') {
-                send({ type: 'capture-failed', id, error: typeof d.error === 'string' ? d.error : 'Could not capture your profile.' });
-                return;
-            }
-            if (d.type === 'profile-error') {
-                stopEffects();
-                send({ type: 'failed', id, error: typeof d.error === 'string' ? d.error : 'The extension disconnected. Start the import again.' });
-                return;
-            }
-            if (d.type === 'profile-started') {
-                clearTimeout(resources.current.handshake);
-                send({ type: 'extension-started', id });
-                return;
-            }
-            if (d.type === 'profile-progress' && d.phase === 'capturing') {
-                send({ type: 'capture-started', id });
-                return;
-            }
-            if (d.type !== 'profile-text' || !('url' in state) || typeof d.text !== 'string' || d.text.length > 100_000 || typeof d.url !== 'string' || canonicalProfileUrl(d.url) !== state.url) return;
-            const next = send({ type: 'text-received', id });
-            if (state.phase === 'analyzing' || next.phase !== 'analyzing') return;
-            clearTimeout(resources.current.handshake);
-            const abort = new AbortController();
-            resources.current.abort = abort;
-            const timeout = setTimeout(() => abort.abort(), 150_000);
-            try {
-                const response = await fetch('/api/import/linkedin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: d.text, url: d.url }), signal: abort.signal });
-                const result: ImportResponse = await response.json();
-                if (!matchesOperation(id)) return;
-                if (!result.ok) throw new Error(result.error);
-                const warnings: string[] = Array.isArray(d.warnings) ? d.warnings.filter((w: unknown): w is string => typeof w === 'string').slice(0, 10) : [];
-                result.data.personalInfo.linkedin = state.url;
-                send({ type: 'parsed', id });
-                post({ type: 'profile-result', id, ok: true });
-                onParsed({ fileName: result.fileName, data: result.data, warnings: [...result.warnings, ...warnings] }, { id });
-            } catch (err) {
-                if (!matchesOperation(id)) return;
-                const error = err instanceof Error ? err.message : 'Import failed.';
-                send({ type: 'parse-failed', id, error });
-                post({ type: 'profile-result', id, ok: false, error });
-            } finally { clearTimeout(timeout); }
+        const onMessage = (e: MessageEvent) => {
+            const m = readExtMessage(e);
+            if (!m || m.type === "hello" || m.type === "paired") return;
+            if (m.type !== "linkedin-captured") return dispatch(m);
+            const file = linkedInCaptureToFile(m.url, m.data, m.warnings);
+            dispatch({ type: "captured", id: m.id, url: m.url, file: hasContent(file) ? file : null });
         };
-        window.addEventListener('message', listener);
-        return () => {
-            window.removeEventListener('message', listener);
-            stopEffects();
-            const state = current.current;
-            current.current = { phase: 'cancelled' };
-            if ('id' in state) {
-                progressCallback.current?.({ id: state.id, phase: 'cancelled' });
-                post({ type: 'profile-cancel', id: state.id });
-            }
-        };
-    }, [onParsed, send]);
+        window.addEventListener("message", onMessage);
+        return () => window.removeEventListener("message", onMessage);
+    }, []);
 
-    const start = async () => {
-        if (linkedInBusy(current.current)) return;
-        const id = crypto.randomUUID();
-        send({ type: 'start', id });
-        try {
-            const extension = await detectProfileExtension();
-            if (!matchesOperation(id)) return;
-            if (!extension || !extension.paired || !extension.profileImport) {
-                send({ type: 'cancel' });
-                const reason = !extension ? 'missing' : !extension.profileImport ? 'update' : 'pair';
-                location.assign('/dashboard/extension?reason=' + reason);
-                return;
-            }
-            send({ type: 'extension-found', id });
-            const response = await fetch('/api/import/linkedin', { cache: 'no-store' });
-            const identity = await response.json();
-            if (!matchesOperation(id)) return;
-            if (!response.ok || typeof identity.uid !== 'string') throw new Error('Sign in to the website again.');
-            const storedUrl = typeof identity.linkedin === 'string' ? canonicalProfileUrl(identity.linkedin) : null;
-            const candidate = value.trim() || url.trim();
-            if (!storedUrl && !candidate) { send({ type: 'require-url', id }); return; }
-            let saved = storedUrl;
-            if (!saved) {
-                send({ type: 'save-url', id });
-                saved = await saveLinkedInUrl(candidate);
-                if (!matchesOperation(id)) return;
-            }
-            setValue(saved);
-            onSavedUrl(saved);
-            send({ type: 'open-profile', id, url: saved });
-            post({ type: 'profile-start', id, uid: identity.uid, url: saved });
-            resources.current.handshake = setTimeout(() => {
-                if (current.current.phase !== 'opening-profile' || current.current.id !== id) return;
-                send({ type: 'failed', id, error: 'The extension did not answer. Reload the extension and website, then retry.' });
-                post({ type: 'profile-cancel', id });
-            }, 10_000);
-        } catch (err) {
-            if (matchesOperation(id)) send({ type: 'failed', id, error: err instanceof Error ? err.message : 'Could not start. Try again.' });
+    // checking: is the extension installed, current and paired?
+    const checkingId = session.phase === "checking" ? session.id : "";
+    const saved = canonicalProfileUrl(savedUrl) ?? "";
+    useEffect(() => {
+        if (!checkingId) return;
+        const probe = detectExtension();
+        void probe.result.then(hello => dispatch({ type: "detected", id: checkingId, hello, savedUrl: saved || null }));
+        return probe.cancel;
+    }, [checkingId, saved]);
+
+    // starting: ask the extension to open the profile; it must answer in time.
+    const startingId = session.phase === "starting" ? session.id : "";
+    const startingUrl = session.phase === "starting" ? session.url : "";
+    useEffect(() => {
+        if (!startingId) return;
+        postToExtension({ type: "linkedin-start", id: startingId, uid, url: startingUrl });
+        const timer = setTimeout(() => dispatch({ type: "start-timeout", id: startingId }), START_TIMEOUT_MS);
+        return () => clearTimeout(timer);
+    }, [startingId, startingUrl, uid]);
+
+    // While the extension follows this session, tell it when the page stops (cancel, unmount, done).
+    const liveId = liveSessionId(session);
+    useEffect(() => {
+        if (!liveId) return;
+        return () => postToExtension({ type: "linkedin-cancel", id: liveId });
+    }, [liveId]);
+
+    // received: acknowledge (the extension shows its checkmark) and open the review step.
+    const received = session.phase === "received" ? session : null;
+    const receivedId = received?.id ?? "";
+    const receivedFile = received?.file ?? null;
+    useEffect(() => {
+        if (!receivedId || !receivedFile) return;
+        postToExtension({ type: "linkedin-received", id: receivedId, ok: true });
+        deliver(receivedFile);
+    }, [receivedId, receivedFile]);
+
+    // A capture this page refused: tell the extension, which offers Import again.
+    const refusedId = session.phase === "waiting" && session.reject ? session.id : "";
+    const refusal = session.phase === "waiting" && session.reject ? session.error ?? "" : "";
+    useEffect(() => {
+        if (refusedId) postToExtension({ type: "linkedin-received", id: refusedId, ok: false, error: refusal });
+    }, [refusedId, refusal]);
+
+    const submitUrl = async (id: string, raw: string) => {
+        dispatch({ type: "url-submitted", id });
+        const res = await saveLinkedInUrl(raw).catch(() => ({ ok: false as const, error: "Could not save your LinkedIn URL. Try again." }));
+        if (!res.ok) {
+            dispatch({ type: "url-rejected", id, error: res.error });
+            return;
         }
+        onUrlSaved(res.url);
+        dispatch({ type: "url-saved", id, url: res.url });
     };
 
-    const busy = linkedInBusy(flow);
-    const progress = linkedInProgress(flow);
-    const failed = flow.phase === 'error' || flow.phase === 'capture-error' || (flow.phase === 'url-required' && Boolean(flow.error));
-    return <section aria-label="LinkedIn import" className="space-y-3 rounded-lg border border-border p-4">
-        <h3 className="flex items-center gap-3 text-sm font-medium"><svg aria-hidden="true" viewBox="0 0 24 24" className="size-7 shrink-0 rounded text-[#0a66c2]" fill="currentColor"><path d="M20.45 2H3.55C2.69 2 2 2.68 2 3.52v16.96c0 .84.69 1.52 1.55 1.52h16.9c.86 0 1.55-.68 1.55-1.52V3.52c0-.84-.69-1.52-1.55-1.52ZM7.93 18.75H4.98V9.2h2.95v9.55ZM6.45 7.9a1.71 1.71 0 1 1 0-3.42 1.71 1.71 0 0 1 0 3.42Zm12.3 10.85H15.8v-4.64c0-1.11-.02-2.54-1.55-2.54-1.55 0-1.79 1.21-1.79 2.46v4.72H9.51V9.2h2.83v1.3h.04c.39-.74 1.36-1.53 2.8-1.53 3 0 3.57 1.97 3.57 4.53v5.25Z" /></svg>Import from LinkedIn</h3>
-        <p className="text-sm text-fg-muted">Capture your own profile, review what is new or already present, then add chosen items to your editor draft. Save &amp; Exit keeps them. Your profile text is sent to our AI provider; the profile URL saves immediately.</p>
-        {url && <p className="break-all text-sm">{url}</p>}
-        <Button disabled={busy} onClick={() => void start()}>Queue LinkedIn import</Button>
-        {busy && <>
-            <ol aria-label="LinkedIn import progress" className="flex flex-wrap gap-x-4 gap-y-1 text-13">
-                {STEPS.map((label, index) => <motion.li initial={{ opacity: 0, y: reducedMotion ? 0 : 4 }} animate={{ opacity: 1, y: 0 }} transition={{ ...transitions.pop, delay: reducedMotion ? 0 : index * 0.03 }} key={label} aria-current={index === progress.step ? 'step' : undefined} className={index <= progress.step ? 'font-medium text-fg' : 'text-fg-subtle'}>{index < progress.step ? '✓ ' : `${index + 1}. `}{label}</motion.li>)}
+    return { session, dispatch, submitUrl };
+}
+
+const EXTENSION_NEEDED: Record<ExtensionReason, string> = {
+    missing: "Importing from LinkedIn needs the quikResume browser extension, and it isn't installed in this browser.",
+    pair: "Connect the quikResume extension to your account to import from LinkedIn.",
+    update: "Your quikResume extension is out of date. Update it to import from LinkedIn.",
+};
+
+const display = (url: string) => url.replace(/^https:\/\/www\./, "");
+
+/** At least one item or personal detail; otherwise the capture read nothing usable. */
+function hasContent(file: ParsedFile): boolean {
+    const { data } = file;
+    return Object.values(data.personalInfo).some(v => v.trim() !== "" && v !== data.personalInfo.linkedin)
+        || RESUME_LIST_KEYS.some(key => data[key].length > 0);
+}
+
+export function LinkedInImportCard({ linkedIn, savedUrl, disabled }: { linkedIn: LinkedInImport; savedUrl: string; disabled: boolean }) {
+    const router = useRouter();
+    const { session, dispatch } = linkedIn;
+    const start = () => dispatch({ type: "start", id: crypto.randomUUID() });
+    const saved = canonicalProfileUrl(savedUrl);
+    const busy = sessionBusy(session);
+
+    return (
+        <Card>
+            <CardHeader
+                title="Import from LinkedIn"
+                hint={saved ? <>Reads your profile at <span className="text-fg">{display(saved)}</span> with the quikResume extension.</> : "Reads your own LinkedIn profile with the quikResume extension."}
+                action={!busy && <Button icon={IdCard} onClick={start} disabled={disabled}>Import from LinkedIn</Button>}
+            />
+            {session.phase === "extension-needed" && (
+                <CardBody>
+                    <NoticeBanner tone="warning">
+                        <p>{EXTENSION_NEEDED[session.reason]}</p>
+                        <Button size="sm" className="mt-2" onClick={() => router.push(`/dashboard/extension?reason=${session.reason}`)}>Set up the extension</Button>
+                    </NoticeBanner>
+                </CardBody>
+            )}
+            {session.phase === "failed" && (
+                <CardBody>
+                    <NoticeBanner tone="danger">
+                        <p>{session.error}</p>
+                        {session.fix === "reload" && <Button size="sm" className="mt-2" onClick={() => window.location.reload()}>Reload page</Button>}
+                        {session.fix === "reconnect" && <Button size="sm" className="mt-2" onClick={() => router.push("/dashboard/extension?reason=pair")}>Reconnect the extension</Button>}
+                    </NoticeBanner>
+                </CardBody>
+            )}
+            {busy && session.phase !== "need-url" && <Progress session={session} onCancel={() => dispatch({ type: "cancel" })} />}
+            <UrlDialog
+                open={session.phase === "need-url"}
+                saving={session.phase === "need-url" && session.saving}
+                error={session.phase === "need-url" ? session.error : null}
+                onSubmit={raw => { if (session.phase === "need-url") void linkedIn.submitUrl(session.id, raw); }}
+                onClose={() => { if (session.phase === "need-url") dispatch({ type: "url-dismissed", id: session.id }); }}
+            />
+        </Card>
+    );
+}
+
+function statusLine(session: LinkedInSession): string {
+    switch (session.phase) {
+        case "checking": return "Looking for the extension…";
+        case "starting": return "Opening your profile in a new tab…";
+        case "waiting": return "In the LinkedIn tab, sign in if asked, then open the quikResume extension and click Import.";
+        case "capturing": return "Reading your profile…";
+        default: return "";
+    }
+}
+
+function Progress({ session, onCancel }: { session: LinkedInSession; onCancel: () => void }) {
+    const step = sessionStep(session);
+    const error = session.phase === "waiting" ? session.error : null;
+    return (
+        <CardBody className="fade-in space-y-3">
+            <ol className="space-y-1.5" aria-label="Import from LinkedIn progress">
+                {LINKEDIN_STEPS.map((label, i) => {
+                    const state = i < step ? "done" : i === step ? "current" : "next";
+                    return (
+                        <li key={label} className="rise-in flex items-center gap-2 text-13" style={{ "--i": i } as React.CSSProperties} aria-current={state === "current" ? "step" : undefined}>
+                            <Swap swapKey={state} className="size-4">
+                                {state === "done" ? <Check className="size-4 text-accent-text" aria-hidden />
+                                    : state === "current" ? <Loader2 className="size-4 animate-spin text-fg-muted" aria-hidden />
+                                        : <Circle className="size-3 text-border-strong" aria-hidden />}
+                            </Swap>
+                            <span className={cn(state === "next" ? "text-fg-subtle" : "text-fg", state === "current" && "font-medium")}>{label}</span>
+                        </li>
+                    );
+                })}
             </ol>
-            <p className="text-sm text-fg-muted">Results will appear here in the Import tab. Nothing captured is saved until you review and Save &amp; Exit.</p>
-            <Button variant="ghost" onClick={cancel}>Cancel LinkedIn import</Button>
-        </>}
-        {progress.message && <p role={failed ? 'alert' : 'status'} className={failed ? 'text-sm text-danger' : 'text-sm'}>{progress.message}</p>}
-        <Dialog open={flow.phase === 'url-required' || flow.phase === 'saving-url'} onClose={() => send({ type: 'dismiss-url' })} title="Your LinkedIn profile" description="Save your own LinkedIn profile URL to continue." footer={<Button disabled={busy} onClick={() => void start()}>Save URL and continue</Button>}>
-            <input aria-label="Your LinkedIn profile URL" className="w-full rounded border border-border p-2" value={value} disabled={busy} onChange={e => setValue(e.target.value)} placeholder="https://www.linkedin.com/in/your-name" />
-            {flow.phase === 'url-required' && flow.error && <p role="alert">{flow.error}</p>}
+            {error
+                ? <NoticeBanner tone="danger">{error} Click Import in the extension to try again.</NoticeBanner>
+                : <p key={session.phase} role="status" className="fade-in text-13 text-fg-muted">{statusLine(session)}</p>}
+            <div className="flex justify-end">
+                <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
+            </div>
+        </CardBody>
+    );
+}
+
+function UrlDialog({ open, saving, error, onSubmit, onClose }: { open: boolean; saving: boolean; error: string | null; onSubmit: (raw: string) => void; onClose: () => void }) {
+    const [value, setValue] = useState("");
+    return (
+        <Dialog
+            open={open}
+            onClose={() => { if (!saving) onClose(); }}
+            title="Your LinkedIn profile"
+            description="The import opens this profile. It is also saved to your Profile."
+            footer={<>
+                <Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
+                <Button variant="primary" type="submit" form="linkedin-url" loading={saving} disabled={!value.trim()}>Save and continue</Button>
+            </>}
+        >
+            <form id="linkedin-url" onSubmit={e => { e.preventDefault(); if (value.trim()) onSubmit(value); }}>
+                <Field label="Profile URL" htmlFor="linkedin-url-input" error={error ?? undefined}>
+                    <Input id="linkedin-url-input" value={value} onChange={e => setValue(e.target.value)} placeholder="linkedin.com/in/your-name" autoFocus disabled={saving} inputMode="url" />
+                </Field>
+            </form>
         </Dialog>
-    </section>;
+    );
 }

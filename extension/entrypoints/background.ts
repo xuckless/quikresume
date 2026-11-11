@@ -1,11 +1,11 @@
-import { transitionProfile, ownsSession, type Session } from "../lib/workflow";
-import { canonicalProfileUrl } from "../lib/profile-url";
 // Background service worker: the only place that holds the token and talks to the quikResume API.
 // Keeps per-tab state (detected posting, saved job summary) in chrome.storage.session so it survives
 // the worker being suspended, drives the toolbar badge, and answers the side panel / content scripts.
+// Import from LinkedIn lives in lib/linkedin-session.ts; this file only wires its listeners.
 
 import { api, apiBytes, ApiError, appUrl, clearToken, getToken, setToken } from "../lib/api";
 import type { AutofillData } from "../lib/fields";
+import { createLinkedInImport, type LinkedInImport } from "../lib/linkedin-session";
 import type { AccountStatus, BgRequest, JobSummary, Posting, TabState, TailorResult, VariantInfo } from "../lib/types";
 
 const EMPTY: TabState = { posting: null, summary: null, autofill: null, operation: { phase: "idle" } };
@@ -90,46 +90,11 @@ async function status(): Promise<AccountStatus> {
 
 async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Promise<unknown> {
     switch (msg.type) {
-        case "profile-capture": {
-            if (sender.tab) throw new Error("Use the extension panel to capture.");
-            const state = (await getState(msg.tabId)).profileImport;
-            const run = [...profileRuns.values()].find(r => r.tabId === msg.tabId && r.id === state?.id);
-            if (!state) throw new Error("Start again from the website.");
-            if (!run) { await setState(msg.tabId, { profileImport: { ...state, phase: "error", error: "Import session ended. Cancel and restart from the website." } }); return; }
-            if (!["waiting", "error"].includes(state.phase)) return;
-            if (run.phase === "capturing") return;
-            run.phase = "capturing";
-            try {
-                const me = await api<{ user: { id: string } }>("/api/ext/me");
-                if (me.user.id !== run.uid) throw new Error("Account changed. Reconnect on the website.");
-                if (profileRuns.get(run.port) !== run) return;
-                const tab = await chrome.tabs.get(msg.tabId);
-                if (profileRuns.get(run.port) !== run) return;
-                if (canonicalProfileUrl(tab.url ?? "") !== state.url) throw new Error("Open the exact saved profile URL.");
-                await setState(msg.tabId, { profileImport: transitionProfile(state, { type: "capture" }) });
-                run.port.postMessage({ type: "profile-progress", id: run.id, phase: "capturing" });
-                const capture = () => chrome.tabs.sendMessage(msg.tabId, { type: "capture-profile", url: state.url });
-                let data;
-                try { data = await capture(); }
-                catch {
-                    // Tabs already open when the unpacked extension reloads have no profile listener.
-                    await chrome.scripting.executeScript({ target: { tabId: msg.tabId }, files: ["/content-scripts/profile.js"] });
-                    data = await capture();
-                }
-                const after = await chrome.tabs.get(msg.tabId);
-                if (profileRuns.get(run.port) !== run) return;
-                if (canonicalProfileUrl(after.url ?? "") !== state.url || !data?.ok || typeof data.text !== "string" || data.text.length > 100_000) throw new Error(data?.error ?? "Profile changed or could not be captured.");
-                await setState(msg.tabId, { profileImport: transitionProfile(transitionProfile(state, { type: "capture" }), { type: "captured" }) });
-                run.phase = "analyzing";
-                run.port.postMessage({ type: "profile-text", id: run.id, url: state.url, text: data.text, warnings: data.warnings });
-            } catch (err) {
-                if (profileRuns.get(run.port) === run) {
-                    await setState(msg.tabId, { profileImport: { ...state, phase: "error", error: errorText(err) } });
-                    run.port.postMessage({ type: "profile-capture-error", id: run.id, error: errorText(err) });
-                }
-            } finally { if (run.phase === "capturing") run.phase = "waiting"; }
-            return;
-        }
+        case "linkedin-state":
+        case "linkedin-capture":
+        case "linkedin-dismiss":
+            if (sender.tab) return null; // side panel only
+            return linkedIn.handle(msg);
         case "detected": {
             const tabId = sender.tab?.id;
             if (tabId === undefined) return null;
@@ -334,70 +299,23 @@ async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Pro
     }
 }
 
-const profileRuns = new Map<chrome.runtime.Port, { port: chrome.runtime.Port; id: string; uid: string; tabId: number; phase: "waiting" | "capturing" | "analyzing" }>();
-async function clearProfile(port: chrome.runtime.Port) {
-    const run = profileRuns.get(port);
-    profileRuns.delete(port);
-    if (run) await setState(run.tabId, { profileImport: undefined }).catch(() => undefined);
-}
+/** Import from LinkedIn; created when the worker starts. */
+let linkedIn: LinkedInImport;
 
 export default defineBackground(() => {
-    chrome.runtime.onConnect.addListener(port => {
-        if (port.name !== "profile-import" || !port.sender?.tab?.id || new URL(port.sender.url ?? "https://invalid").origin !== new URL(appUrl()).origin) { port.disconnect(); return; }
-        let session: Session<object> = { phase: "idle" };
-        port.onDisconnect.addListener(() => { session = { phase: "idle" }; void clearProfile(port); });
-        port.onMessage.addListener(async m => {
-            try {
-                if (m.type === "profile-cancel") {
-                    if (!ownsSession(session, m.id)) return;
-                    session = { phase: "idle" };
-                    await clearProfile(port); return;
-                }
-                if (m.type === "profile-result") {
-                    const run = profileRuns.get(port);
-                    if (!run || run.id !== m.id) return;
-                    const state = (await getState(run.tabId)).profileImport;
-                    if (state?.phase !== "analyzing" || profileRuns.get(port) !== run) return;
-                    await setState(run.tabId, { profileImport: transitionProfile(state, m.ok === true ? { type: "parsed" } : { type: "fail", error: typeof m.error === "string" ? m.error.slice(0,500) : "Profile analysis failed." }) });
-                    return;
-                }
-                if (m.type !== "profile-start" || typeof m.id !== "string" || !/^[a-f0-9-]{36}$/.test(m.id) || typeof m.uid !== "string" || typeof m.url !== "string" || !canonicalProfileUrl(m.url)) return;
-                const ticket: Session<object> = { phase: "starting", id: m.id };
-                session = ticket;
-                await clearProfile(port);
-                const me = await api<{ user: { id: string } }>("/api/ext/me");
-                if (me.user.id !== m.uid) throw new Error("Pair the extension with your current website account.");
-                if (session !== ticket) return;
-                const tab = await chrome.tabs.create({ url: canonicalProfileUrl(m.url)! });
-                if (session !== ticket) return;
-                if (!tab.id) throw new Error("Could not open LinkedIn.");
-                const run = { port, id: m.id, uid: m.uid, tabId: tab.id, phase: "waiting" as const };
-                session = { phase: "active", id: m.id, run };
-                profileRuns.set(port, run);
-                await setState(tab.id, { profileImport: { id: m.id, url: canonicalProfileUrl(m.url)!, phase: "waiting" } });
-                port.postMessage({ type: "profile-started", id: m.id });
-                chrome.sidePanel.open({ tabId: tab.id }).catch(() => undefined);
-            } catch (err) { port.postMessage({ type: "profile-error", id: m.id, error: errorText(err) }); }
-        });
+    linkedIn = createLinkedInImport({
+        appOrigin: new URL(appUrl()).origin,
+        // The paired account; the session refuses to run for anyone but the page's user.
+        accountId: async () => (await api<{ user: { id: string } }>("/api/ext/me")).user.id,
     });
-    chrome.tabs.onUpdated.addListener((tabId, info) => {
-        if (!info.url && info.status !== "loading") return;
-        for (const run of profileRuns.values()) if (run.tabId === tabId) {
-            void getState(tabId).then(s => {
-                if (s.profileImport && ["capturing", "analyzing", "ready"].includes(s.profileImport.phase) && (info.status === "loading" || canonicalProfileUrl(info.url!) !== s.profileImport.url)) {
-                    run.port.postMessage({ type: "profile-error", id: run.id, error: "LinkedIn navigated away. Cancel and restart the import." });
-                    void clearProfile(run.port);
-                }
-            });
-        }
-    });
+    chrome.runtime.onConnect.addListener(port => linkedIn.onConnect(port));
     chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => undefined);
     chrome.runtime.onMessage.addListener((msg: BgRequest, sender, sendResponse) => {
         handle(msg, sender).then(sendResponse, err => sendResponse({ ok: false, error: errorText(err) }));
         return true;
     });
     chrome.tabs.onRemoved.addListener(tabId => {
-        for (const run of profileRuns.values()) if (run.tabId === tabId) { run.port.postMessage({ type: "profile-error", id: run.id, error: "LinkedIn tab closed. Start again." }); void clearProfile(run.port); }
+        linkedIn.onTabRemoved(tabId);
         void chrome.storage.session.remove(key(tabId));
     });
     // A token revoked on the website: forget it on the next 401 (lib/api.ts) and tell open panels.

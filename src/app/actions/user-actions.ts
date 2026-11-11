@@ -10,7 +10,8 @@ import type { UserProfile } from "@/types/db"
 import type { PersonalInfo } from "@/types/schema";
 import { personalInfoToUserDoc } from "@/lib/resume-mapper";
 import { readTags } from "@/lib/tags/types";
-import { contactBlocking, normalizeContact } from "@/lib/contact/normalize";
+import { contactBlocking, normalizeContact, normalizeLinkedIn } from "@/lib/contact/normalize";
+import { canonicalProfileUrl } from "@/lib/import/linkedin";
 import { readLinkChecks } from "@/lib/contact/types";
 import { readReview } from "@/lib/review/types";
 import { currentUid, requireUid } from "@/lib/db/session";
@@ -119,14 +120,22 @@ export async function deleteAccount(confirmation: string): Promise<{ ok: false; 
     return { ok: false, error: "Signed out." };
 }
 
-/** Persist only the explicitly supplied profile URL; never flush editor fields. */
-export async function saveLinkedInUrl(raw: string): Promise<string> {
+/**
+ * Import from LinkedIn when the profile has no LinkedIn URL yet: saves only that field (never the
+ * editor draft) so the extension can check the open tab against it. Errors are returned, not thrown
+ * (thrown messages are masked in production).
+ */
+export async function saveLinkedInUrl(raw: string): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
     const uid = await requireUid();
-    const { canonicalProfileUrl } = await import("@/lib/import/linkedin");
-    const { normalizeLinkedIn } = await import("@/lib/contact/normalize");
-    const url = canonicalProfileUrl(normalizeLinkedIn(raw).value);
-    if (!url) throw new Error("Enter a LinkedIn profile URL: linkedin.com/in/your-name.");
-    await db.collection("users").doc(uid).set({ linkedIn: url, updatedAt: Timestamp.now() }, { merge: true });
-    revalidatePath("/dashboard");
-    return url;
+    const url = canonicalProfileUrl(normalizeLinkedIn(clampStr(String(raw), LIMITS.field)).value);
+    if (!url) return { ok: false, error: "Enter your LinkedIn profile URL, like linkedin.com/in/your-name." };
+    try {
+        await db.collection("users").doc(uid).set({ linkedIn: url, updatedAt: Timestamp.now() }, { merge: true });
+    } catch (error: unknown) {
+        console.error("Error in saveLinkedInUrl:", error);
+        return { ok: false, error: "Could not save your LinkedIn URL. Try again." };
+    }
+    revalidatePath("/dashboard")
+    revalidatePath("/dashboard/profile")
+    return { ok: true, url };
 }

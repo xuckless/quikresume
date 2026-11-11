@@ -1,7 +1,6 @@
 "use client";
 
 import React, { Suspense, useEffect, useOptimistic, useReducer, useRef, useState, useTransition } from "react";
-import { importQueueTransition, initialImportQueue } from "@/lib/import/queue";
 import { updateLayout } from "@/app/actions/layout-actions";
 import type { ResumeTheme } from "@/lib/layout/theme";
 import dynamic from "next/dynamic";
@@ -93,6 +92,8 @@ const UPDATE_ACTION: Record<ResumeListKey, (id: string, fd: FormData) => Promise
 interface DashboardClientProps extends LibraryLists {
     /** Complete editor model built on the server (profile + all subcollections). */
     initialResumeData: ResumeData;
+    /** Signed-in user id (Import from LinkedIn checks it against the extension's account). */
+    uid: string;
     variants: ResumeVariant[];
     variantUsage: Record<string, string[]>;
     loadedVariantId: string | null;
@@ -121,6 +122,7 @@ export default function DashboardClient(props: DashboardClientProps) {
 
 function DashboardClientInner({
     initialResumeData,
+    uid,
     experiences, educations, skills, projects, certifications, awards, volunteering, publications, languages, custom,
     variants,
     variantUsage,
@@ -180,7 +182,6 @@ function DashboardClientInner({
     // hide what Job Match / variants just wrote), leaving the editor asks to
     // save or discard, and leaving through browser Back discards it.
     const [draft, setDraft] = useState<ResumeData | null>(null);
-    const [importJobs, sendImportJob] = useReducer(importQueueTransition, initialImportQueue);
     /** Saved items removed in the editor: deleted by saveResumeData, forgotten on Discard. */
     const [pendingDeletes, setPendingDeletes] = useState<PendingDelete[]>([]);
     const editorDraft = draft ?? initialResumeData;
@@ -215,7 +216,6 @@ function DashboardClientInner({
             const url = new URL(window.location.href);
             if (url.pathname !== "/dashboard" || parseView(url.searchParams.get("view")) !== "editor") {
                 setDraft(null);
-                sendImportJob({ type: "draft-discarded" });
                 setPendingDeletes([]);
                 sendEditor({ type: "dismissed" });
             }
@@ -293,7 +293,6 @@ function DashboardClientInner({
     };
 
     const doDiscard = () => {
-        sendImportJob({ type: "draft-discarded" });
         setDraft(null);
         setPendingDeletes([]);
         sendEditor({ type: "dismissed" });
@@ -345,7 +344,6 @@ function DashboardClientInner({
                 : result.tagged > 0
                     ? { tone: "ok", text: `Saved. Analysed skills for ${result.tagged} ${result.tagged === 1 ? "item" : "items"}.` }
                     : { tone: "ok", text: "Saved." });
-            sendImportJob({ type: "draft-saved" });
             sendEditor({ type: "save-succeeded" });
             if (target) navigateDashboard(router, target);
             else setView("library", { replace: true });
@@ -367,7 +365,6 @@ function DashboardClientInner({
     };
 
     const leaveDiscarding = () => {
-        sendImportJob({ type: "draft-discarded" });
         const href = pendingLeave;
         setDraft(null);
         setPendingDeletes([]);
@@ -497,7 +494,15 @@ function DashboardClientInner({
         ) : view === "preview" ? (
             <ResumePreview resumeData={previewData} onThemeChange={changeTheme} />
         ) : view === "import" ? (
-            <ResumeImport jobs={importJobs} onQueueEvent={sendImportJob} onSavedLinkedInUrl={url => setDraft(prev => ({ ...(prev ?? initialResumeData), personalInfo: { ...(prev ?? initialResumeData).personalInfo, linkedin: url } }))} current={draft ?? initialResumeData} onImport={handleImport} onCancel={() => setView("library")} />
+            <ResumeImport
+                current={draft ?? initialResumeData}
+                uid={uid}
+                savedLinkedIn={initialResumeData.personalInfo.linkedin}
+                // The URL is saved to the profile; an open draft must not overwrite it on Save & Exit.
+                onLinkedInSaved={url => setDraft(prev => (prev ? { ...prev, personalInfo: { ...prev.personalInfo, linkedin: url } } : prev))}
+                onImport={handleImport}
+                onCancel={() => setView("library")}
+            />
         ) : view === "jobs" ? (
             <JobMatchView
                 jobs={jobs}

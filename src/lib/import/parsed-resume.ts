@@ -1,7 +1,9 @@
 // src/lib/import/parsed-resume.ts
-// Turns the model's reply text into a ResumeData draft. Tolerant by design:
-// the envelope never fails, each list item is validated on its own, and
-// anything unusable is reported in `warnings` instead of failing the import.
+// Turns a structured import (envelope.ts) into a ResumeData draft: the model's reply text through
+// parseModelOutput, or an object built without a model (a LinkedIn profile captured by the extension)
+// through parseImportObject. Tolerant by design: the envelope never fails, each list item is validated
+// on its own, and anything unusable is reported in `warnings` instead of failing the import.
+// Pure and isomorphic (the LinkedIn path runs in the browser).
 
 import { normalizeLinks, readLinks } from "@/lib/contact/links";
 import { z } from "zod";
@@ -113,7 +115,12 @@ const LABELS: Record<ResumeListKey, string> = {
 export function parseModelOutput(text: string): ParsedImport {
     const raw = extractJson(text);
     if (!raw || typeof raw !== "object") throw new ImportParseError("The model reply was not a JSON object.", text);
-    const env = envelope.parse(raw);
+    return parseImportObject(raw);
+}
+
+/** Validates an already-structured import (ImportEnvelope or anything close to it). Never throws. */
+export function parseImportObject(raw: unknown): ParsedImport {
+    const env = envelope.parse(raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {});
     const warnings: string[] = [];
     const data = emptyResumeData();
 

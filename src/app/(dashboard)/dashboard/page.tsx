@@ -84,6 +84,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     return (
         <DashboardClient
             key={session.user.id}
+            uid={session.user.id}
             initialResumeData={initialResumeData}
             experiences={experiences}
             educations={educations}

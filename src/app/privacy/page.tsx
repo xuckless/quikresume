@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 };
 
 const CONTACT = SITE_CONTACT_EMAIL;
-const UPDATED = "November 10, 2026";
+const UPDATED = "November 11, 2026";
 
 function H({ children }: { children: React.ReactNode }) {
     return <h2 className="mt-10 text-lg font-semibold tracking-tight text-fg">{children}</h2>;
@@ -44,10 +44,10 @@ export default async function PrivacyPage() {
                 <p>On the &quot;Start&quot; page, your draft stays in your browser&apos;s local storage until you sign in or start over. An uploaded résumé and a pasted job are sent to the AI providers above to be read and matched, and are not stored on our servers. To prevent abuse we use <strong className="text-fg">Cloudflare Turnstile</strong> and count requests per visitor using a one-way hash of your IP address; the address itself is not stored. If you sign in afterwards, the draft is added to your new account.</p>
 
                 <H>The browser extension</H>
-                <p>When you request LinkedIn profile import, the extension reads inline profile text from the saved profile URL after you click Import. This text is sent through quikResume to Z.ai to structure your résumé draft. Hidden sections may be incomplete. The URL is saved immediately; review imported content and use Save &amp; Exit to persist it. LinkedIn credentials are never collected, and the LinkedIn tab stays open.</p>
                 <ul>
                     <li>It reads a page only to do what you asked: detect a job posting on supported job sites, save it when you click Save, or fill an application form when you click Auto Fill. Pages on other sites are read only when you click &quot;Scan this page&quot;.</li>
                     <li>Saved postings (title, company, location, link and description) are sent to your quikResume account. Auto Fill reads the labels of form fields on that page, fills empty fields from your profile and preferences, and sends open questions plus the posting to us to draft answers. It never submits a form and never ticks consent boxes.</li>
+                    <li>Import from LinkedIn: when you start it on the Import page, the extension opens the LinkedIn profile URL saved in your quikResume profile in a new tab (if there is none, the URL you enter is saved to your profile first). When you click Import in the extension, and only if that tab is exactly that profile, it reads the profile page in your browser, sorts its sections (name, headline, about, experience, education, skills and the like) into résumé entries, and passes them to the quikResume tab you started from. This content is not sent to an AI provider at import time and nothing is stored until you review it and click Save &amp; Exit; saved items are then tagged and reviewed like any other library item. The extension never reads your LinkedIn password or other tabs and never signs in for you.</li>
                     <li>It stores a sign-in token for your account and per-tab state in the browser. Disconnect it from the side panel or from Extension in quikResume at any time; the token is then invalid.</li>
                     <li>The use of information received from Google APIs and from the extension adheres to the Chrome Web Store User Data Policy, including the Limited Use requirements.</li>
                 </ul>

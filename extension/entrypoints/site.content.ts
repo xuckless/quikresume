@@ -1,45 +1,85 @@
-// Runs only on the quikResume app. Bridges /dashboard/extension and the background worker:
-// answers "ping" with "hello" and forwards one-time pairing codes (src/lib/ext/bridge.ts in the app).
-import { APP_SOURCE, EXT_SOURCE, type AccountStatus } from "../lib/types";
+// Runs only on the quikResume app. Relays between the page and the background worker
+// (contract and validation: src/lib/ext/bridge.ts in the app):
+//   ping -> hello (version, paired, LinkedIn import supported); pair -> the background redeems the code;
+//   linkedin-* -> a "linkedin-import" port to the background, whose replies are posted back to the page;
+//   the port closes when the session ends (cancel from the page, or "linkedin-ended" from the background).
+// When the extension is reloaded this script is orphaned: it reports "disconnected" so the page can ask
+// for a reload.
+import { EXT_SOURCE, LINKEDIN_PORT, readAppMessage, type ExtPayload } from "../../src/lib/ext/bridge";
+import type { AccountStatus } from "../lib/types";
 
 const appOrigin = new URL(__APP_URL__).origin;
+/** Messages on an open port keep the background worker alive while the user is on LinkedIn. */
+const KEEPALIVE_MS = 20_000;
 
 export default defineContentScript({
     matches: [`${appOrigin}/*`],
     runAt: "document_start",
     main() {
-        const reply = (data: object) => window.postMessage({ source: EXT_SOURCE, ...data }, location.origin);
+        const reply = (payload: ExtPayload) => window.postMessage({ source: EXT_SOURCE, ...payload }, location.origin);
+        const extensionAlive = () => Boolean(chrome.runtime?.id);
         const hello = async () => {
             const status = (await chrome.runtime.sendMessage({ type: "status" }).catch(() => null)) as AccountStatus | null;
-            reply({ type: "hello", version: chrome.runtime.getManifest().version, paired: Boolean(status?.paired), profileImport: true });
+            reply({ type: "hello", version: chrome.runtime.getManifest().version, paired: Boolean(status?.paired), linkedIn: true });
         };
-        let port: chrome.runtime.Port | undefined;
-        const connect = () => {
-            if (port) return port;
-            const next = chrome.runtime.connect({ name: "profile-import" });
-            port = next;
-            next.onMessage.addListener(m => reply(m));
-            next.onDisconnect.addListener(() => {
-                if (port !== next) return;
-                port = undefined;
-                reply({ type: "profile-error", error: "Extension disconnected. Restart the import." });
+
+        let link: { port: chrome.runtime.Port; keepalive: ReturnType<typeof setInterval> } | null = null;
+        const close = () => {
+            if (!link) return;
+            clearInterval(link.keepalive);
+            link.port.disconnect();
+            link = null;
+        };
+        const portToBackground = (): chrome.runtime.Port => {
+            if (link) return link.port;
+            const port = chrome.runtime.connect({ name: LINKEDIN_PORT });
+            const keepalive = setInterval(() => {
+                try {
+                    port.postMessage({ type: "keepalive" });
+                } catch { /* onDisconnect reports it */ }
+            }, KEEPALIVE_MS);
+            link = { port, keepalive };
+            // The background only posts LinkedInExtPayload; the page validates it again.
+            port.onMessage.addListener((m: ExtPayload) => {
+                reply(m);
+                if (m.type === "linkedin-ended") close();
             });
-            return next;
+            port.onDisconnect.addListener(() => {
+                if (link?.port !== port) return;
+                clearInterval(keepalive);
+                link = null;
+                reply({ type: "disconnected" });
+            });
+            return port;
         };
-        window.addEventListener("pagehide", () => { port?.disconnect(); port = undefined; });
+        window.addEventListener("pagehide", close);
+
         window.addEventListener("message", async e => {
-            if (e.source !== window || e.origin !== location.origin) return;
-            const d = e.data as { source?: string; type?: string; code?: unknown };
-            if (d?.source !== APP_SOURCE) return;
-            if (["profile-start", "profile-cancel", "profile-result"].includes(d.type ?? "")) {
-                try { connect().postMessage(d); }
-                catch { port = undefined; reply({ type: "profile-error", error: "Reload this page after updating the extension, then retry." }); }
+            const m = readAppMessage(e);
+            if (!m) return;
+            if (!extensionAlive()) {
+                reply({ type: "disconnected" });
                 return;
             }
-            if (d.type === "ping") await hello();
-            if (d.type === "pair" && typeof d.code === "string") {
-                const res = (await chrome.runtime.sendMessage({ type: "pair", code: d.code }).catch(() => null)) as { ok: boolean; error?: string } | null;
-                reply({ type: "paired", ok: Boolean(res?.ok), error: res?.ok ? undefined : res?.error ?? "The extension did not answer." });
+            switch (m.type) {
+                case "ping":
+                    await hello();
+                    return;
+                case "pair": {
+                    const res = (await chrome.runtime.sendMessage({ type: "pair", code: m.code }).catch(() => null)) as { ok: boolean; error?: string } | null;
+                    reply(res?.ok ? { type: "paired", ok: true } : { type: "paired", ok: false, error: res?.error ?? "The extension did not answer." });
+                    return;
+                }
+                default:
+                    // A cancel for a session this page never started needs no port.
+                    if (m.type === "linkedin-cancel" && !link) return;
+                    try {
+                        portToBackground().postMessage(m);
+                        if (m.type === "linkedin-cancel") close();
+                    } catch {
+                        close();
+                        reply({ type: "disconnected" });
+                    }
             }
         });
         void hello();
