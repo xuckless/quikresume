@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useCallback, useEffect, useOptimistic, useReducer, useRef, useState, useTransition } from "react";
+import React, { Suspense, useEffect, useOptimistic, useReducer, useRef, useState, useTransition } from "react";
 import { importQueueTransition, initialImportQueue } from "@/lib/import/queue";
 import { updateLayout } from "@/app/actions/layout-actions";
 import type { ResumeTheme } from "@/lib/layout/theme";
@@ -15,7 +15,7 @@ import type { JobRecord, Preferences, Proposal } from "@/lib/match/types";
 import type { AliasMap } from "@/lib/tags/normalize";
 import { ResumeForm } from "@/components/ui/editor/resume-form";
 import { LibraryView, libraryCounts, type LibraryLists } from "@/components/ui/library/library-view";
-import { editorTransition, reReviewTransition, type EditorEvent, type EditorWorkflow, type ReReviewEvent, type ReReviewWorkflow } from "@/lib/ui/editor-workflow";
+import { editorTransition, initialEditorWorkflow, initialReReviewWorkflow, reReviewTransition } from "@/lib/ui/editor-workflow";
 import { ResumeImport } from "@/components/ui/resume-import";
 import { StaleTagsNotice } from "@/components/ui/library/stale-tags-notice";
 import { JobMatchView, type ExternalResume } from "@/components/ui/job-match-view";
@@ -156,25 +156,11 @@ function DashboardClientInner({
     const [libraryTab, setLibraryTab] = useState<SectionTab>("all");
     const [libraryQuery, setLibraryQuery] = useState("");
     const [editorTab, setEditorTab] = useState<SectionTab>("all");
-    const [editorWorkflow, setEditorWorkflow] = useState<EditorWorkflow>({ phase: "editing" });
-    const editorWorkflowRef = useRef(editorWorkflow);
-    const sendEditor = useCallback((event: EditorEvent) => {
-        editorWorkflowRef.current = editorTransition(editorWorkflowRef.current, event);
-        setEditorWorkflow(editorWorkflowRef.current);
-    }, []);
-    const activeSave = (id: string) => {
-        const state = editorWorkflowRef.current;
-        return state.phase === "saving" && state.id === id;
-    };
-    const isSaving = editorWorkflow.phase === "saving";
-    const saveError = editorWorkflow.phase === "failed" ? editorWorkflow.error : null;
-    const confirmVariants = editorWorkflow.phase === "confirm-variants" ? editorWorkflow : null;
-    const confirmDiscard = editorWorkflow.phase === "confirm-discard";
-    const pendingLeave = editorWorkflow.phase === "confirm-leave" ? editorWorkflow.target : null;
-    const setSaveError = useCallback((error: string | null) => sendEditor(error ? { type: "error", error } : { type: "reset" }), [sendEditor]);
-    const setConfirmVariants = (confirmation: { names: string[]; target: string | null } | null) => sendEditor(confirmation ? { type: "variants", ...confirmation } : { type: "reset" });
-    const setConfirmDiscard = (confirm: boolean) => sendEditor({ type: confirm ? "discard-request" : "reset" });
-    const setPendingLeave = useCallback((target: string | null) => sendEditor(target ? { type: "leave-request", target } : { type: "reset" }), [sendEditor]);
+    const [editor, sendEditor] = useReducer(editorTransition, initialEditorWorkflow);
+    const isSaving = editor.phase === "saving";
+    const saveError = editor.phase === "editing" ? editor.error : null;
+    const confirmVariants = editor.phase === "confirm-variants" ? editor : null;
+    const pendingLeave = editor.phase === "confirm-leave" ? editor.target : null;
     const [notice, setNotice] = useState<Notice | null>(null);
     /** Item to open when the editor (re)mounts from an Action items link; the nonce remounts the form. */
     const [focusItem, setFocusItem] = useState<{ id: string; nonce: number } | null>(null);
@@ -210,7 +196,7 @@ function DashboardClientInner({
         if (view !== "editor" || !dirty) return;
         const uninstall = setLeaveGuard(href => {
             if (href === viewHref("editor")) return false;
-            setPendingLeave(href);
+            sendEditor({ type: "leave-requested", target: href });
             return true;
         });
         const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
@@ -219,7 +205,7 @@ function DashboardClientInner({
             uninstall();
             window.removeEventListener("beforeunload", onBeforeUnload);
         };
-    }, [view, dirty, setPendingLeave]);
+    }, [view, dirty]);
 
     // Browser Back / Forward out of the editor cannot be intercepted: the draft is reverted.
     const hasDraft = draft !== null;
@@ -231,12 +217,12 @@ function DashboardClientInner({
                 setDraft(null);
                 sendImportJob({ type: "draft-discarded" });
                 setPendingDeletes([]);
-                setSaveError(null);
+                sendEditor({ type: "dismissed" });
             }
         };
         window.addEventListener("popstate", onPop);
         return () => window.removeEventListener("popstate", onPop);
-    }, [hasDraft, setSaveError]);
+    }, [hasDraft]);
 
     // Coach reviews come with the library rows; the model items decide staleness.
     const reviews: ReviewMap = Object.fromEntries(
@@ -267,15 +253,8 @@ function DashboardClientInner({
     const outdatedReviews = about.briefHash
         ? Object.values(reviews).filter(r => isBriefOutdated(r, about.briefHash)).length + (isBriefOutdated(profileReview, about.briefHash) ? 1 : 0)
         : 0;
-    const [reviewWorkflow, setReviewWorkflow] = useState<ReReviewWorkflow>({ phase: "idle" });
-    const reviewWorkflowRef = useRef(reviewWorkflow);
-    const sendReview = (event: ReReviewEvent) => {
-        reviewWorkflowRef.current = reReviewTransition(reviewWorkflowRef.current, event);
-        setReviewWorkflow(reviewWorkflowRef.current);
-    };
-    const reReviewing = reviewWorkflow.phase === "running";
-    const confirmReReview = reviewWorkflow.phase === "confirming";
-    const setConfirmReReview = (confirm: boolean) => sendReview({ type: confirm ? "confirm" : "cancel" });
+    const [reReview, sendReReview] = useReducer(reReviewTransition, initialReReviewWorkflow);
+    const reReviewing = reReview.phase === "running";
 
     const updateDraft = (updater: (prev: ResumeData) => ResumeData) => {
         setDraft(prev => updater(prev ?? initialResumeData));
@@ -308,22 +287,21 @@ function DashboardClientInner({
     const openEditor = (tab?: SectionTab) => {
         // Keep an in-progress draft (e.g. one seeded by an import) if there is one.
         setDraft(prev => prev ?? initialResumeData);
-        setSaveError(null);
+        sendEditor({ type: "dismissed" });
         if (tab) setEditorTab(tab);
         setView("editor");
     };
 
     const doDiscard = () => {
         sendImportJob({ type: "draft-discarded" });
-        setConfirmDiscard(false);
         setDraft(null);
         setPendingDeletes([]);
-        setSaveError(null);
+        sendEditor({ type: "dismissed" });
         setNotice(null);
         setView("library", { replace: true });
     };
     const discardDraft = () => {
-        if (dirty) setConfirmDiscard(true);
+        if (dirty) sendEditor({ type: "discard-requested" });
         else doDiscard();
     };
 
@@ -345,17 +323,15 @@ function DashboardClientInner({
     const doSave = async (target: string | null = null) => {
         if (!draft) return;
         if (invalidDateItems(draft).length > 0 || contactBlocking(draft.personalInfo)) return;
-        if (editorWorkflowRef.current.phase === "saving") return;
-        const saveId = crypto.randomUUID();
-        sendEditor({ type: "save", id: saveId, target });
+        if (isSaving) return;
+        sendEditor({ type: "save-started", target });
         try {
             const result = await saveResumeData(draft, { deleted: pendingDeletes });
-            if (!activeSave(saveId)) return;
             if (!result.success) {
-                sendEditor({ type: "save-failed", id: saveId, error: result.error });
-                if (result.field) { openItem("profile", `pi-${result.field}`); setSaveError(result.error); return; }
+                sendEditor({ type: "save-failed", error: result.error });
+                if (result.field) { openItem("profile", `pi-${result.field}`); return; }
                 const bad = invalidDateItems(draft).find(i => i.id === result.invalidIds[0]);
-                if (bad) { openItem(bad.section, bad.id); setSaveError(result.error); }
+                if (bad) openItem(bad.section, bad.id);
                 return;
             }
             const before = initialResumeData.personalInfo;
@@ -370,12 +346,12 @@ function DashboardClientInner({
                     ? { tone: "ok", text: `Saved. Analysed skills for ${result.tagged} ${result.tagged === 1 ? "item" : "items"}.` }
                     : { tone: "ok", text: "Saved." });
             sendImportJob({ type: "draft-saved" });
-            sendEditor({ type: "saved", id: saveId });
+            sendEditor({ type: "save-succeeded" });
             if (target) navigateDashboard(router, target);
             else setView("library", { replace: true });
         } catch (error) {
             console.error("Failed to save:", error);
-            sendEditor({ type: "save-failed", id: saveId, error: error instanceof Error ? error.message : "Failed to save your library changes." });
+            sendEditor({ type: "save-failed", error: error instanceof Error ? error.message : "Failed to save your library changes." });
         }
     };
 
@@ -386,24 +362,21 @@ function DashboardClientInner({
             return;
         }
         const affected = [...new Set(changedItemIds().flatMap(id => variantUsage[id] ?? []))];
-        if (affected.length > 0) { setConfirmVariants({ names: affected, target }); return; }
+        if (affected.length > 0) { sendEditor({ type: "variants-affected", names: affected, target }); return; }
         void doSave(target);
     };
 
     const leaveDiscarding = () => {
         sendImportJob({ type: "draft-discarded" });
         const href = pendingLeave;
-        setPendingLeave(null);
         setDraft(null);
         setPendingDeletes([]);
-        setSaveError(null);
+        sendEditor({ type: "dismissed" });
         setNotice(null);
         if (href) navigateDashboard(router, href);
     };
     const leaveSaving = () => {
-        const href = pendingLeave;
-        setPendingLeave(null);
-        handleSaveAndExit(href);
+        handleSaveAndExit(pendingLeave);
     };
 
     const handleImport = (selection: ImportSelection, meta: { fileNames: string[] }) => {
@@ -415,7 +388,7 @@ function DashboardClientInner({
         if (merged.unchanged > 0) parts.push(`${merged.unchanged} already in your library ${merged.unchanged === 1 ? "was" : "were"} skipped.`);
         parts.push("Review below, then Save & Exit to keep them.");
         setNotice({ tone: "ok", text: parts.join(" ") });
-        setSaveError(null);
+        sendEditor({ type: "dismissed" });
         setEditorTab("all");
         setView("editor");
     };
@@ -486,7 +459,7 @@ function DashboardClientInner({
         ) : view === "library" ? (
             <>
                 {outdatedReviews > 0 && (
-                    <Button variant="ghost" onClick={() => setConfirmReReview(true)} loading={reReviewing} className="hidden lg:inline-flex" title="Some coach reviews were written before your latest About you answers">
+                    <Button variant="ghost" onClick={() => sendReReview({ type: "requested" })} loading={reReviewing} className="hidden lg:inline-flex" title="Some coach reviews were written before your latest About you answers">
                         Re-review {outdatedReviews}
                     </Button>
                 )}
@@ -561,7 +534,7 @@ function DashboardClientInner({
                     />
                 </div>
                 <p className="text-13 text-fg-muted">Toggle items to include them on your résumé. Click a row for details.</p>
-                <LibraryView {...lists} tab={libraryTab} query={libraryQuery} onError={text => setSaveError(text)} briefHash={about.briefHash} onReviewed={refresh} variantUsage={variantUsage} resumeData={initialResumeData} onImport={() => setView("import")} onEdit={tab => openEditor(tab)} />
+                <LibraryView {...lists} tab={libraryTab} query={libraryQuery} onError={error => sendEditor({ type: "error-raised", error })} briefHash={about.briefHash} onReviewed={refresh} variantUsage={variantUsage} resumeData={initialResumeData} onImport={() => setView("import")} onEdit={tab => openEditor(tab)} />
             </div>
         );
 
@@ -586,7 +559,7 @@ function DashboardClientInner({
                 <main className="min-w-0 p-4 pb-16 md:p-6">
                     {/* Job Match is a two-column workspace: let it use the full width left of the pane. */}
                     <div className={cn("relative mx-auto space-y-4", view === "jobs" ? "max-w-[1600px]" : "max-w-5xl")}>
-                        {saveError && <NoticeBanner tone="danger" onDismiss={() => setSaveError(null)}>{saveError}</NoticeBanner>}
+                        {saveError && <NoticeBanner tone="danger" onDismiss={() => sendEditor({ type: "dismissed" })}>{saveError}</NoticeBanner>}
                         {notice && (view === "editor" || view === "library") && (
                             <NoticeBanner tone={notice.tone === "ok" ? "success" : "warning"} onDismiss={() => setNotice(null)}>{notice.text}</NoticeBanner>
                         )}
@@ -624,7 +597,7 @@ function DashboardClientInner({
                 title="These edits affect saved variants"
                 confirmLabel="Save anyway"
                 busy={isSaving}
-                onCancel={() => setConfirmVariants(null)}
+                onCancel={() => sendEditor({ type: "dismissed" })}
                 onConfirm={() => void doSave(confirmVariants?.target ?? null)}
             >
                 <p>Variants only point at library items, so the changed text will show up in every variant that includes those items:</p>
@@ -633,11 +606,11 @@ function DashboardClientInner({
 
             <Dialog
                 open={pendingLeave !== null}
-                onClose={() => setPendingLeave(null)}
+                onClose={() => sendEditor({ type: "dismissed" })}
                 title="Leave the editor?"
                 footer={
                     <>
-                        <Button variant="ghost" onClick={() => setPendingLeave(null)}>Keep editing</Button>
+                        <Button variant="ghost" onClick={() => sendEditor({ type: "dismissed" })}>Keep editing</Button>
                         <Button variant="secondary" onClick={leaveDiscarding}>Discard changes</Button>
                         <Button variant="primary" onClick={leaveSaving}>Save & leave</Button>
                     </>
@@ -647,20 +620,16 @@ function DashboardClientInner({
             </Dialog>
 
             <ConfirmDialog
-                open={confirmReReview}
+                open={reReview.phase === "confirming"}
                 title={`Re-review ${outdatedReviews} ${outdatedReviews === 1 ? "item" : "items"}?`}
                 confirmLabel="Re-review"
-                onCancel={() => setConfirmReReview(false)}
+                onCancel={() => sendReReview({ type: "cancelled" })}
                 onConfirm={() => {
-                    const id = crypto.randomUUID();
-                    sendReview({ type: "start", id });
+                    sendReReview({ type: "started" });
+                    let done = 0;
                     reReviewAll(
-                        r => {
-                            sendReview({ type: "progress", id, reviewed: r.reviewed });
-                            const state = reviewWorkflowRef.current;
-                            if (state.phase === "running" && state.id === id) setNotice({ tone: "ok", text: `Re-reviewed ${state.reviewed} ${state.reviewed === 1 ? "item" : "items"}${r.remaining > 0 ? "…" : "."}` });
-                        },
-                        () => { sendReview({ type: "complete", id }); refresh(); },
+                        r => { done += r.reviewed; setNotice({ tone: "ok", text: `Re-reviewed ${done} ${done === 1 ? "item" : "items"}${r.remaining > 0 ? "…" : "."}` }); },
+                        () => { sendReReview({ type: "finished" }); refresh(); },
                     );
                 }}
             >
@@ -668,11 +637,11 @@ function DashboardClientInner({
             </ConfirmDialog>
 
             <ConfirmDialog
-                open={confirmDiscard}
+                open={editor.phase === "confirm-discard"}
                 title="Discard your unsaved changes?"
                 confirmLabel="Discard"
                 danger
-                onCancel={() => setConfirmDiscard(false)}
+                onCancel={() => sendEditor({ type: "dismissed" })}
                 onConfirm={doDiscard}
             >
                 <p>Edits and imported items that have not been saved will be lost.</p>

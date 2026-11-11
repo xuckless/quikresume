@@ -1,44 +1,59 @@
+// Editor save / leave / discard and coach re-review workflows as explicit
+// state machines. Single flight is guaranteed by the phase: while "saving"
+// (or "running") only the operation's own outcome is accepted.
+
 export type EditorWorkflow =
-    | { phase: 'editing' | 'confirm-discard' }
-    | { phase: 'confirm-leave'; target: string }
-    | { phase: 'confirm-variants'; names: string[]; target: string | null }
-    | { phase: 'saving'; id: string; target: string | null }
-    | { phase: 'failed'; error: string };
+    | { phase: "editing"; error: string | null }
+    | { phase: "confirm-discard" }
+    | { phase: "confirm-leave"; target: string }
+    | { phase: "confirm-variants"; names: string[]; target: string | null }
+    | { phase: "saving"; target: string | null };
+
 export type EditorEvent =
-    | { type: 'reset' | 'discard-request' }
-    | { type: 'leave-request'; target: string }
-    | { type: 'variants'; names: string[]; target: string | null }
-    | { type: 'save'; id: string; target: string | null }
-    | { type: 'saved'; id: string }
-    | { type: 'save-failed'; id: string; error: string }
-    | { type: 'error'; error: string };
+    | { type: "dismissed" }
+    | { type: "discard-requested" }
+    | { type: "leave-requested"; target: string }
+    | { type: "variants-affected"; names: string[]; target: string | null }
+    | { type: "error-raised"; error: string }
+    | { type: "save-started"; target: string | null }
+    | { type: "save-succeeded" }
+    | { type: "save-failed"; error: string };
+
+export const initialEditorWorkflow: EditorWorkflow = { phase: "editing", error: null };
+
 export function editorTransition(state: EditorWorkflow, event: EditorEvent): EditorWorkflow {
-    if (state.phase === 'saving') {
-        if (event.type === 'saved' && event.id === state.id) return { phase: 'editing' };
-        if (event.type === 'save-failed' && event.id === state.id) return { phase: 'failed', error: event.error };
+    if (state.phase === "saving") {
+        if (event.type === "save-succeeded") return initialEditorWorkflow;
+        if (event.type === "save-failed") return { phase: "editing", error: event.error };
         return state;
     }
     switch (event.type) {
-        case 'reset': return { phase: 'editing' };
-        case 'discard-request': return { phase: 'confirm-discard' };
-        case 'leave-request': return { phase: 'confirm-leave', target: event.target };
-        case 'variants': return { phase: 'confirm-variants', names: event.names, target: event.target };
-        case 'save': return { phase: 'saving', id: event.id, target: event.target };
-        case 'error': return { phase: 'failed', error: event.error };
+        case "dismissed": return initialEditorWorkflow;
+        case "discard-requested": return { phase: "confirm-discard" };
+        case "leave-requested": return { phase: "confirm-leave", target: event.target };
+        case "variants-affected": return { phase: "confirm-variants", names: event.names, target: event.target };
+        case "error-raised": return { phase: "editing", error: event.error };
+        case "save-started": return { phase: "saving", target: event.target };
         default: return state;
     }
 }
 
-export type ReReviewWorkflow = { phase: 'idle' | 'confirming' } | { phase: 'running'; id: string; reviewed: number };
-export type ReReviewEvent = { type: 'confirm' | 'cancel' } | { type: 'start'; id: string } | { type: 'progress'; id: string; reviewed: number } | { type: 'complete'; id: string };
+export type ReReviewWorkflow = { phase: "idle" | "confirming" | "running" };
+
+export type ReReviewEvent =
+    | { type: "requested" }
+    | { type: "cancelled" }
+    | { type: "started" }
+    | { type: "finished" };
+
+export const initialReReviewWorkflow: ReReviewWorkflow = { phase: "idle" };
+
 export function reReviewTransition(state: ReReviewWorkflow, event: ReReviewEvent): ReReviewWorkflow {
-    if (state.phase === 'running') {
-        if (event.type === 'progress' && state.id === event.id) return { ...state, reviewed: state.reviewed + event.reviewed };
-        if (event.type === 'complete' && state.id === event.id) return { phase: 'idle' };
-        return state;
+    if (state.phase === "running") return event.type === "finished" ? initialReReviewWorkflow : state;
+    switch (event.type) {
+        case "requested": return { phase: "confirming" };
+        case "cancelled": return initialReReviewWorkflow;
+        case "started": return state.phase === "confirming" ? { phase: "running" } : state;
+        default: return state;
     }
-    if (event.type === 'confirm') return { phase: 'confirming' };
-    if (event.type === 'cancel') return { phase: 'idle' };
-    if (event.type === 'start' && state.phase === 'confirming') return { phase: 'running', id: event.id, reviewed: 0 };
-    return state;
 }
