@@ -125,25 +125,36 @@ function reloadForCsp(err: unknown): boolean {
     return true;
 }
 
-/** Idempotent: loads wasm, fonts and template sources once. Re-armed on failure, so a retry starts clean. */
+/**
+ * Idempotent: loads wasm, fonts and template sources once.
+ *
+ * Engine transitions: idle -> loading -> ready; loading -> failed (the next call starts a fresh load,
+ * so a retry starts clean); loading -> reloading when the page is reloading to pick up the app's CSP.
+ * While reloading, every call returns the same never-settling promise, so nothing starts a second init
+ * or reports an error on a page that is about to go away.
+ */
 export function ensureTypst(): Promise<TypstInstance> {
     if ("promise" in engine) return engine.promise;
-    const promise = init().then(
-            inst => {
-                engine = { stage: "ready", promise };
-                try { sessionStorage.removeItem(CSP_RELOAD_KEY); } catch { /* storage unavailable */ }
-                return inst;
-            },
-            err => {
-                engine = { stage: "failed", error: err };
-                console.error("[typst] engine failed to start:", err);
-                if (reloadForCsp(err)) {
-                    engine = { stage: "reloading", promise };
-                    return new Promise<never>(() => {});
-                }
-                throw err instanceof TypstEngineError ? err : new TypstEngineError(explainEngineFailure(err), err);
-            },
-        );
+    const promise: Promise<TypstInstance> = init().then(
+        instance => {
+            engine = { stage: "ready", promise };
+            try {
+                sessionStorage.removeItem(CSP_RELOAD_KEY);
+            } catch {
+                /* storage unavailable */
+            }
+            return instance;
+        },
+        err => {
+            console.error("[typst] engine failed to start:", err);
+            if (reloadForCsp(err)) {
+                engine = { stage: "reloading", promise };
+                return new Promise<never>(() => {});
+            }
+            engine = { stage: "failed", error: err };
+            throw err instanceof TypstEngineError ? err : new TypstEngineError(explainEngineFailure(err), err);
+        },
+    );
     engine = { stage: "loading", promise };
     return promise;
 }
