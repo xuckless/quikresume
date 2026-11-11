@@ -289,7 +289,7 @@ describe("detailsUrl", () => {
 
 describe("captureProfile", () => {
     const fakeWindow = (href: string) => ({ location: { href }, document, innerHeight: 800, scrollY: 0, scrollBy: () => {}, scrollTo: () => {} }) as unknown as Window;
-    const opts = () => ({ pause: async () => {} });
+    const opts = (fetchPage = vi.fn(async () => null as Document | null)) => ({ pause: async () => {}, fetchPage });
     afterEach(() => { vi.restoreAllMocks(); });
 
     it("refuses a tab that is not the expected profile, before reading anything", async () => {
@@ -313,5 +313,24 @@ describe("captureProfile", () => {
             expect(el.getAttribute("data-testid")).toBe("expandable-text-button");
             expect(el.closest('[data-view-name^="profile-card-"]')).not.toBeNull();
         }
+    });
+
+    it("completes a cut-short card from its details page and drops the warning", async () => {
+        document.body.innerHTML = LIVE;
+        const item = (name: string) => `<div componentkey="entity-collection-item-${name.length}"><div><p><span>${name}</span></p><div role="list"><div role="listitem"><p><span>Used at Example</span></p></div></div></div></div>`;
+        const details = new DOMParser().parseFromString(`<main><section><h2>Skills</h2>${["Customer Service", "Data Entry", "Scheduling", "Bookkeeping"].map(item).join("")}</section></main>`, "text/html");
+        const fetchPage = vi.fn(async () => details);
+        const capture = await captureProfile(JORDAN, fakeWindow(JORDAN), opts(fetchPage));
+        expect(fetchPage).toHaveBeenCalledExactlyOnceWith(`${JORDAN}/details/skills/`);
+        expect(capture.data.skills).toEqual([{ category: "Skills", items: ["Customer Service", "Data Entry", "Scheduling", "Bookkeeping"] }]);
+        expect(capture.warnings).toEqual([]);
+    });
+
+    it("keeps the visible items with a warning when the details page has nothing readable", async () => {
+        document.body.innerHTML = LIVE;
+        const empty = new DOMParser().parseFromString("<main><div id=root></div></main>", "text/html");
+        const capture = await captureProfile(JORDAN, fakeWindow(JORDAN), opts(vi.fn(async () => empty)));
+        expect(capture.data.skills?.[0]?.items).toEqual(["Customer Service", "Data Entry"]);
+        expect(capture.warnings).toEqual(["Skills may be incomplete: LinkedIn shows only part of it on your profile page."]);
     });
 });

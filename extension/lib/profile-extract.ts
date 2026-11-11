@@ -21,9 +21,9 @@
 //   - "X, Y and +N skills" lines are links to /overlay/<id>/skill-associations-details/: dropped (the
 //     Skills card holds the full list).
 //   - Every card has edit / add pencils linking to /details/<section>/ with a data-view-name; the real
-//     "Show all" link has none and sits outside the entries. Cut-short cards are reported with a warning.
+//     "Show all" link has none and sits outside the entries.
 // Older markup (2024-25: <section>s with an anchor <div id="experience">, entries as <li>s, text in
-// span[aria-hidden]) is still read as a fallback.
+// span[aria-hidden]) is still read as a fallback; LinkedIn's /details/ pages may still use it.
 // Each section parser fails on its own: a section it cannot read becomes a warning and an `unread` key.
 
 import type { ImportEnvelope } from "../../src/lib/import/envelope";
@@ -547,6 +547,44 @@ export function extractProfile(doc: Document, profileUrl: string | null = null):
     return { ...assemble(reading), truncated: reading.truncated };
 }
 
+// ---------- Details pages ("Show all N") ----------
+
+const DETAILS_TIMEOUT_MS = 10_000;
+const DETAILS_CONCURRENCY = 3;
+const MAX_DETAILS_HTML = 5_000_000;
+
+export type FetchPage = (url: string) => Promise<Document | null>;
+
+/** Same-origin fetch of one of the member's own details pages, parsed without running its scripts. */
+export const fetchDetailsPage: FetchPage = async url => {
+    const res = await fetch(url, { credentials: "include", headers: { Accept: "text/html" }, signal: AbortSignal.timeout(DETAILS_TIMEOUT_MS) });
+    // A redirect (sign-in, another page) is not the list we asked for.
+    if (!res.ok || detailsUrl(res.url || url, url.replace(/\/details\/.*$/, "")) !== url) return null;
+    const html = await res.text();
+    if (html.length > MAX_DETAILS_HTML) return null;
+    return new DOMParser().parseFromString(html, "text/html");
+};
+
+/** Replaces each truncated card's items with the full list from its details page; keeps them (with a warning) when that fails. */
+async function completeTruncated(reading: Reading, fetchPage: FetchPage): Promise<void> {
+    const queue = Object.entries(reading.truncated) as [SectionId, string][];
+    const work = async () => {
+        for (let next = queue.shift(); next; next = queue.shift()) {
+            const [id, url] = next;
+            try {
+                const doc = await fetchPage(url);
+                const scope = doc && !isLoginWall(doc) ? doc.querySelector(SELECTORS.main) ?? doc.body : null;
+                const { items } = scope ? parseSection(id, scope) : { items: [] };
+                if (items.length > 0 && items.length >= (reading.parts[id]?.length ?? 0)) {
+                    reading.parts[id] = items;
+                    delete reading.truncated[id];
+                }
+            } catch { /* keeps the truncated items and their warning */ }
+        }
+    };
+    await Promise.all(Array.from({ length: DETAILS_CONCURRENCY }, work));
+}
+
 // ---------- Capture in the live tab ----------
 
 const READY_TIMEOUT_MS = 8_000;
@@ -556,6 +594,7 @@ const realPause = (ms: number) => new Promise<void>(resolve => setTimeout(resolv
 
 export interface CaptureOptions {
     pause?: (ms: number) => Promise<void>;
+    fetchPage?: FetchPage;
 }
 
 /** "… more" controls inside recognised profile cards; nothing else on the page is ever clicked. */
@@ -613,6 +652,7 @@ export async function captureProfile(expectedUrl: string, win: Window = window, 
     await loadWholeProfile(win, pause);
     if (!onProfile()) throw new CaptureError(CAPTURE_ERRORS.mismatch);
     const reading = readProfile(win.document, expected);
+    await completeTruncated(reading, opts.fetchPage ?? fetchDetailsPage);
     const result = assemble(reading);
     if (!onProfile()) throw new CaptureError(CAPTURE_ERRORS.mismatch);
     return result;
