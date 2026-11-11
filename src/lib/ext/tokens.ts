@@ -2,7 +2,8 @@
 // Server-only: browser-extension pairing.
 //
 //   createLinkCode(uid)        8-char one-time code, 10 min, stored only as sha256 in extension_codes/{hash}
-//   redeemLinkCode(code, name) transaction: code unused + unexpired -> marked used, long-lived token minted
+//   redeemLinkCode(code, name, replaces?) transaction: code unused + unexpired -> marked used, long-lived token minted;
+//                              `replaces` (the browser's previous token, same user only) is deleted in the same step
 //   verifyToken(token)         Bearer token -> uid; only sha256 is stored (extension_tokens/{hash})
 //   listDevices / revokeDevice / revokeToken
 //
@@ -14,6 +15,7 @@ import "server-only";
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";
 import { db } from "@/lib/firestore";
+import { isTokenShape, tokenToReplace } from "./replace-token";
 
 const CODE_TTL_MS = 10 * 60_000;
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O, 1/I/L
@@ -29,7 +31,7 @@ const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
 /** Codes are typed by hand: accept lowercase, spaces and dashes. */
 export const normalizeCode = (raw: string) => raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
-export const isTokenShape = (t: string) => /^qr_[A-Za-z0-9_-]{43}$/.test(t);
+export { isTokenShape };
 
 export interface ExtensionDevice {
     id: string;
@@ -49,7 +51,7 @@ export async function createLinkCode(uid: string): Promise<{ code: string; expir
 
 export type RedeemResult = { ok: true; token: string; uid: string } | { ok: false; error: string };
 
-export async function redeemLinkCode(rawCode: string, deviceName: string): Promise<RedeemResult> {
+export async function redeemLinkCode(rawCode: string, deviceName: string, replaces?: unknown): Promise<RedeemResult> {
     const code = normalizeCode(rawCode);
     if (code.length !== CODE_LENGTH) return { ok: false, error: "That code isn't valid." };
     const codeRef = codes().doc(sha256(code));
@@ -62,13 +64,17 @@ export async function redeemLinkCode(rawCode: string, deviceName: string): Promi
         if (!d || d.used || (d.expiresAt as Timestamp).toMillis() < Date.now()) return { ok: false as const, error: "That code has expired or was already used. Make a new one." };
         const uid = String(d.uid);
         const existing = await tx.get(tokens().where("uid", "==", uid).limit(MAX_DEVICES));
-        if (existing.size >= MAX_DEVICES) return { ok: false as const, error: `You already have ${MAX_DEVICES} connected browsers. Disconnect one first.` };
+        const old = tokenToReplace(replaces, uid, existing.docs.map(x => ({ id: x.id, uid: String(x.get("uid")) })));
+        if (existing.size - (old ? 1 : 0) >= MAX_DEVICES) return { ok: false as const, error: `You already have ${MAX_DEVICES} connected browsers. Disconnect one first.` };
         tx.update(codeRef, { used: true, usedAt: Timestamp.now() });
+        if (old) tx.delete(tokens().doc(old));
         const now = Timestamp.now();
         tx.set(tokens().doc(sha256(token)), { uid, deviceName: name, prefix: token.slice(0, 8), createdAt: now, lastUsedAt: now });
-        return { ok: true as const, uid };
+        return { ok: true as const, uid, old };
     });
-    return result.ok ? { ok: true, token, uid: result.uid } : result;
+    if (!result.ok) return result;
+    if (result.old) cache.delete(result.old);
+    return { ok: true, token, uid: result.uid };
 }
 
 const cache = new Map<string, { uid: string; id: string; at: number; touched: number }>();

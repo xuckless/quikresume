@@ -132,7 +132,7 @@ async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Pro
         }
         case "pair": {
             try {
-                const res = await api<{ token: string }>("/api/ext/pair", { method: "POST", body: { code: msg.code, deviceName: deviceName() }, auth: false });
+                const res = await api<{ token: string }>("/api/ext/pair", { method: "POST", body: { code: msg.code, deviceName: deviceName(), replaces: (await getToken()) ?? undefined }, auth: false });
                 await setToken(res.token);
                 cachedUser = null;
                 chrome.runtime.sendMessage({ type: "account-changed" }).catch(() => undefined);
