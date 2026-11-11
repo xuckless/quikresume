@@ -114,7 +114,8 @@ No `typst` CLI: `pip install typst` in a venv gives `typst.compile(...)` with `s
   `?view=preview`. Width `clamp(360px, stored, 50%)`. Views inside the remaining space use container queries (`@container`, `@4xl:`).
 - Typst: wasm ~27 MB (~7 MB gzipped), loaded only when the preview mounts; missing `public/typst/wasm` -> rerun `npm install`.
   Use `json(bytes(str))`; `sys.inputs` values are strings; `main.typ` falls back to `sample.json` only without a `resume` input. No
-  CJK / emoji glyphs (enable `preloadFontAssets({assets: ["cjk"]})` in `client.ts` if needed). Never name a parameter `h`.
+  CJK / emoji glyphs, and every literal symbol in a template must exist in all vendored fonts (`test/typst-glyphs.test.ts`;
+  list markers are drawn, not typed). (CJK: enable `preloadFontAssets({assets: ["cjk"]})` in `client.ts` if needed). Never name a parameter `h`.
 - `schema.ts` imports `defaultLayout` from `lib/layout/presets.ts`, so `presets.ts` imports only types from `@/types/schema`.
 - Nested `SortableList`s are separate `DndContext`s; only handles start a drag. Single-section tabs still need a `SortableList`.
 - `useResumePageCount` returns `{ pages, error }`; show the error, not an endless "…".
@@ -219,6 +220,9 @@ Dates: Firestore `Timestamp` at UTC midnight, day 01. Editor model `startDate: "
   indent), `items` (spaceAfter / breakBefore / keepTogether), `headings` (printed heading overrides ≤ 40 chars), `theme`. Advanced
   layout mode (editor switch) exposes Compact / Normal / Relaxed / Custom per level (clamped by `RANGES`; Normal = template defaults).
   Item-level controls only for `ENTRY_SECTIONS`. Variants with `layout: null` leave the working layout alone.
+- **Editing order**: in the editor a row whose dates are being edited keeps its place (`orderedItemsPinned`) until it collapses
+  or loses focus; everything else uses the real order. Unnamed skills categories (empty / "Skills" / "General" / the printed
+  heading) print without a label (`isPlaceholderSkillCategory`).
 - **Sub-items**: experience / projects / volunteering / skills / custom carry `hidden: string[]` of `bulletKey` (squashed text) or
   `skillKey` (lowercased) from `bulletLines`. Text-keyed, so reordering is safe and rewording un-hides. `saveResumeData` prunes dead keys.
   `hidden` is not a content field (never stales tags). Typst, page count, ATS check and PDF honour it; tag coverage is per item.
@@ -396,8 +400,9 @@ Tailor résumé button. The Suggestions card is off (`SHOW_SUGGESTIONS = false`)
 **Tracker** (`?view=jobs`, `tracker-view.tsx`): Board (dnd-kit columns) / Table, search. Jobs carry `status`
 (`saved|applied|interview|offer|rejected`), `appliedAt` (stamped when leaving saved), `notes`, `variantId`, `url`, `urlKey`
 (`lib/jobs/canonical-url.ts`), `location`, `employmentType`. Drag and the status Select both call `setJobStatus`. A re-import with a known
-`urlKey` refreshes posting fields only. `saveJobScore` writes `lastScore` only (no `updatedAt`) 1.5 s after the score changes, shown as a
-`ScoreRing`. Logos: `companyDomainOf(job)` (`lib/jobs/company-domain.ts`, rejects job boards / ATS hosts) -> `GET /logo/<domain>`
+`urlKey` refreshes posting fields only. `saveJobScore` writes `lastScore` only (no `updatedAt`) as soon as the final score (never the provisional one) differs, and
+revalidates so the tracker never shows a cached older number; shown as a `ScoreRing`. The whole card drags (title included;
+the status select does not). Logos: `companyDomainOf(job)` (`lib/jobs/company-domain.ts`, rejects job boards / ATS hosts) -> `GET /logo/<domain>`
 (signed-in, Google s2 favicon, 404 -> monogram).
 
 **Eval & calibration**: `npm run eval:match` (`test/eval/match.eval.ts`, cases in `match-cases.json`) scores tags-only then the full
@@ -414,7 +419,9 @@ questions (uncovered reqs) -> window on the working selection -> POST /api/jobs/
 
 - **Questionnaire** (`skill-questions.tsx`, `/api/jobs/skill-answers`): requirements with strength 0 on the whole library, hard first.
   Yes adds the skill to a "Soft skills" category or to the picked / model-picked technical category (an optional example becomes a
-  bullet); touched items are re-tagged and get the requirement's tag. No goes to `declinedSoftSkills` and shows in Guidelines.
+  bullet); touched items are re-tagged and get the requirement's tag, and the receiving category is switched on with the
+  answered skills un-hidden (`lib/match/answered-skills.ts`), since the job page scores only the working selection. The
+  questions are a snapshot taken when the dialog opens (a reconcile landing mid-answer must not reshuffle them). No goes to `declinedSoftSkills` and shows in Guidelines.
 - **Plan** (`lib/match/auto-tailor.ts`, run by `lib/match/tailor-run.ts`): items covering a hard requirement (+ newest education) are
   locked; the rest follow `recommendSelection`; lines naming a hard requirement are protected. The model (high effort, 180 s) may flip
   unlocked decisions and hide unprotected lines; `mergeAiReview` ignores anything else. Reconcile is reused when
@@ -429,7 +436,8 @@ questions (uncovered reqs) -> window on the working selection -> POST /api/jobs/
 
 WXT + React + TS, Chrome MV3.
 
-- **Pairing** (`lib/ext/tokens.ts`): `/dashboard/extension` creates an 8-char single-use code (10 min, sha256 in `extension_codes`).
+- **Pairing** (`lib/ext/tokens.ts`; a browser pairing again sends its old token as `replaces`, replaced only when it belongs to
+  the same user): `/dashboard/extension` creates an 8-char single-use code (10 min, sha256 in `extension_codes`).
   Click-to-connect posts it to `site.content.ts` (app origin only), which forwards to the background -> `POST /api/ext/pair`; else
   the code is typed into the side panel. Tokens `qr_…` stored only as sha256 in `extension_tokens` (≤ 10 per user, revocable, verify
   cache 30 s).
