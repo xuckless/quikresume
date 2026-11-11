@@ -127,8 +127,8 @@ export function VariantsPage({ variants, loadedVariantId, data }: VariantsPagePr
                                         return (r.missing > 0 ? `Loaded "${v.name}". ${r.missing} ${r.missing === 1 ? "item" : "items"} it pointed to no longer exist and were dropped.` : `Loaded "${v.name}" into your working selection.`);
                                     })}
                                     onUpdateSelection={() => run(`snap-${v.id}`, () => resnapshotVariant(v.id), `"${v.name}" now matches the current selection.`)}
-                                    onRename={(name) => run(`rename-${v.id}`, () => updateVariant(v.id, { name }))}
-                                    onLabels={(labels) => run(`labels-${v.id}`, () => updateVariant(v.id, { labels }))}
+                                    onRename={(name) => run(`rename-${v.id}`, () => updateVariant(v.id, { name }), `Renamed to "${name.trim()}".`)}
+                                    onLabels={(labels) => run(`labels-${v.id}`, () => updateVariant(v.id, { labels }), labels.length ? `Labels on "${v.name}" updated.` : `Labels removed from "${v.name}".`)}
                                     onDuplicate={() => run(`dup-${v.id}`, async () => { await duplicateVariant(v.id); }, "Duplicated.")}
                                     onDelete={() => setPendingDelete(v)}
                                 />
@@ -181,7 +181,7 @@ function VariantRow({ variant: v, data, loaded, busy, onLoad, onUpdateSelection,
 
     const commit = () => {
         if (editing === "name" && draft.trim() && draft.trim() !== v.name) onRename(draft);
-        if (editing === "labels") onLabels(parseLabels(draft));
+        if (editing === "labels" && parseLabels(draft).join("\n") !== v.labels.join("\n")) onLabels(parseLabels(draft));
         setEditing(null);
     };
 
