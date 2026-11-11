@@ -5,6 +5,7 @@
 // preview) -> paste a job -> teaser score, then Google sign-in. Everything stays in this browser
 // (lib/guest/draft-store.ts) until the dashboard claims it after sign-in.
 
+import { useFormsOperation } from "@/lib/ui/use-forms-operation";
 import React, { useRef, useState } from "react";
 import { guestDraftStore, EMPTY_GUEST_DRAFT, type GuestDraft } from "@/lib/guest/draft-store";
 import { demoSamples } from "@/lib/demo/samples";
@@ -56,29 +57,32 @@ export function StartFlow() {
     const draft = guestDraftStore.useValue();
     const set = (patch: Partial<GuestDraft>) => guestDraftStore.set(d => ({ ...d, ...patch }));
     const turnstile = useRef<TurnstileHandle>(null);
-    const [busy, setBusy] = useState<string | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    const operation = useFormsOperation<{ kind: "upload" | "match"; label: string }>();
+    const busy = operation.state.status === "running" ? operation.state.operation.label : null;
+    const error = operation.state.status === "failed" ? operation.state.error : null;
     const [jdText, setJdText] = useState("");
 
     const upload = async (file: File) => {
-        setError(null);
-        if (file.size > MAX_FILE_BYTES) { setError("That file is over 10 MB."); return; }
-        setBusy("Reading your résumé… (10–40 s)");
+        const id = operation.begin({ kind: "upload", label: "Reading your résumé… (10–40 s)" });
+        if (id === null) return;
+        if (file.size > MAX_FILE_BYTES) { operation.fail(id, "That file is over 10 MB."); return; }
         try {
-            const form = await documentFormData(file, label => setBusy(label));
+            const form = await documentFormData(file, label => operation.progress(id, { kind: "upload", label }));
             form.append("turnstile", (await turnstile.current?.take()) ?? "");
-            setBusy("Reading your résumé… (10–40 s)");
+            if (!operation.active(id)) return;
+            operation.progress(id, { kind: "upload", label: "Reading your résumé… (10–40 s)" });
             const json = await readJson<ImportResponse>(await fetch("/api/guest/import", { method: "POST", body: form }));
             if (!json.ok) throw new Error(json.error);
+            if (!operation.active(id)) return;
+            operation.succeed(id, undefined);
             set({ resume: json.data, source: "upload", fileName: json.fileName, step: "profile", job: null });
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Could not read that file.");
-        } finally {
-            setBusy(null);
+            operation.fail(id, err instanceof Error ? err.message : "Could not read that file.");
         }
     };
 
     const loadSample = (id: string) => {
+        operation.reset();
         const s = demoSamples().find(x => x.id === id);
         if (!s) return;
         set({ resume: s.resume, source: "sample", fileName: "", field: SAMPLE_FIELD[id] ?? "", role: s.job.title, step: "profile", job: null });
@@ -87,8 +91,8 @@ export function StartFlow() {
 
     const match = async () => {
         if (!draft.resume) return;
-        setError(null);
-        setBusy("Reading the posting and matching… (15–40 s)");
+        const id = operation.begin({ kind: "match", label: "Reading the posting and matching… (15–40 s)" });
+        if (id === null) return;
         try {
             const res = await fetch("/api/guest/match", {
                 method: "POST",
@@ -97,15 +101,15 @@ export function StartFlow() {
             });
             const json = await readJson<{ title: string; company: string; requirements: Requirement[]; seniority: Seniority | null; companyDomain: string | null; tagsById: Record<string, ResumeData["profileTags"]> }>(res);
             if (!json.ok || !json.requirements) throw new Error(json.error ?? "Could not match that job.");
+            if (!operation.active(id)) return;
+            operation.succeed(id, undefined);
             set({
                 resume: applyTags(draft.resume, json.tagsById ?? {}),
                 job: { title: json.title ?? "This job", company: json.company ?? "", jdText, requirements: json.requirements, seniority: json.seniority ?? null, companyDomain: json.companyDomain ?? null },
                 step: "teaser",
             });
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Could not match that job.");
-        } finally {
-            setBusy(null);
+            operation.fail(id, err instanceof Error ? err.message : "Could not match that job.");
         }
     };
 
@@ -114,15 +118,15 @@ export function StartFlow() {
         set({ resume: { ...draft.resume, layout: { ...draft.resume.layout, theme } } });
     };
 
-    const back = (step: GuestDraft["step"]) => () => { setError(null); set({ step }); };
+    const back = (step: GuestDraft["step"]) => () => { operation.reset(); set({ step }); };
 
     return (
         <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <Steps current={draft.step} />
-                {draft.resume && <Button size="sm" variant="ghost" onClick={() => { guestDraftStore.set(EMPTY_GUEST_DRAFT); setJdText(""); }}>Start over</Button>}
+                {draft.resume && <Button size="sm" variant="ghost" onClick={() => { operation.reset(); guestDraftStore.set(EMPTY_GUEST_DRAFT); setJdText(""); }}>Start over</Button>}
             </div>
-            {error && <NoticeBanner tone="danger" onDismiss={() => setError(null)}>{error}</NoticeBanner>}
+            {error && <NoticeBanner tone="danger" onDismiss={() => operation.reset()}>{error}</NoticeBanner>}
 
             {draft.step === "import" && (
                 <div className="space-y-5">

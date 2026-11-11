@@ -4,7 +4,9 @@
 // or (first time) from the library: dates-based facts at once, AI suggestions when /api/about/prefill
 // answers. Suggested fields are marked until the user edits them. Finish writes the candidate brief.
 
-import React, { useEffect, useState } from "react";
+import { useFormsOperation } from "@/lib/ui/use-forms-operation";
+import { formsTransition } from "@/lib/ui/forms-operation";
+import React, { useEffect, useReducer, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { formatMonthYear } from "@/lib/dates";
@@ -70,11 +72,15 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
     const [followUps, setFollowUps] = useState<FollowUp[]>(saved.followUps);
     const [followUpsHash, setFollowUpsHash] = useState<string | null>(saved.followUpsHash);
     const [step, setStep] = useState<Step>("core");
-    const [prefilling, setPrefilling] = useState(fresh && !emptyLibrary);
-    const [busy, setBusy] = useState<"draft" | "finish" | "skip" | null>(null);
+    const [prefill, dispatchPrefill] = useReducer(formsTransition<"prefill", undefined>,
+        fresh && !emptyLibrary ? { status: "running", id: 0, operation: "prefill" } : { status: "idle" });
+    const prefilling = prefill.status === "running";
+    const operation = useFormsOperation<"draft" | "finish" | "skip">();
+    const busy = operation.state.status === "running" ? operation.state.operation : null;
     // Writing follow-up questions is a background AI call: it never blocks Skip / Save draft / Finish.
-    const [writingQuestions, setWritingQuestions] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const questions = useFormsOperation<"generate">();
+    const writingQuestions = questions.state.status === "running";
+    const error = operation.state.status === "failed" ? operation.state.error : questions.state.status === "failed" ? questions.state.error : null;
     const [notice, setNotice] = useState<{ tone: "success" | "warning"; text: string } | null>(
         saved.briefStale ? { tone: "warning", text: "Your last AI summary could not be written. Finish again to retry." } : null,
     );
@@ -88,7 +94,7 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
             .then(res => readJson<PrefillReply>(res))
             .then(reply => {
                 if (cancelled) return;
-                setPrefilling(false);
+                dispatchPrefill({ type: "succeed", id: 0, result: undefined });
                 if (!reply.ok) return;
                 if (reply.warning) setNotice({ tone: "warning", text: reply.warning });
                 const s = reply.suggestions;
@@ -111,13 +117,14 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
                 });
                 setSuggested(prev => new Set([...prev, ...filled]));
             })
-            .catch(() => { if (!cancelled) setPrefilling(false); });
+            .catch(() => { if (!cancelled) dispatchPrefill({ type: "succeed", id: 0, result: undefined }); });
         return () => { cancelled = true; };
         // Runs once on mount: `fresh` and `emptyLibrary` come from the first server render.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const set = <K extends keyof CharacterizationAnswers>(key: K, value: CharacterizationAnswers[K]) => {
+        if (writingQuestions) questions.reset();
         setAnswers(prev => ({ ...prev, [key]: value, ...(key === "yearsExperience" ? { yearsSource: "user" as const } : {}) }));
         if (suggested.has(key as SuggestKey)) setSuggested(prev => { const n = new Set(prev); n.delete(key as SuggestKey); return n; });
     };
@@ -125,20 +132,23 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
     const hint = (key: SuggestKey, fallback?: string) => (suggested.has(key) ? (key === "yearsExperience" || key === "educationStatus" || key === "graduationDate" ? "Calculated from your library dates. Change it if it's off." : "Suggested from your library. Edit if it's off.") : fallback);
 
     const generateQuestions = async () => {
-        setWritingQuestions(true);
-        setError(null);
+        const id = questions.begin("generate");
+        if (id === null) return;
         try {
             const res = await fetch("/api/about/follow-ups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }) });
             const reply = await readJson<{ questions: FollowUp[]; coreHash: string }>(res);
             if (!reply.ok || !reply.questions) throw new Error(reply.error ?? "Could not generate questions.");
+            const generated = reply.questions;
+            if (!questions.active(id)) return;
             // Keep answers to questions that come back word for word.
-            const previous = new Map(followUps.map(f => [f.question, f.answer]));
-            setFollowUps(reply.questions.map(q => ({ ...q, answer: previous.get(q.question) ?? "" })));
+            setFollowUps(current => {
+                const previous = new Map(current.map(f => [f.question, f.answer]));
+                return generated.map(q => ({ ...q, answer: previous.get(q.question) ?? "" }));
+            });
             setFollowUpsHash(reply.coreHash ?? null);
+            questions.succeed(id, undefined);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Could not generate questions.");
-        } finally {
-            setWritingQuestions(false);
+            questions.fail(id, err instanceof Error ? err.message : "Could not generate questions.");
         }
     };
 
@@ -148,8 +158,8 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
     };
 
     const save = async (status: "draft" | "complete") => {
-        setBusy(status === "complete" ? "finish" : "draft");
-        setError(null);
+        const id = operation.begin(status === "complete" ? "finish" : "draft");
+        if (id === null) return;
         setNotice(null);
         try {
             const res = await fetch("/api/about/save", {
@@ -159,6 +169,7 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
             });
             const reply = await readJson<{ status: string; briefUpdated: boolean; warning?: string }>(res);
             if (!reply.ok) throw new Error(reply.error ?? "Could not save your answers.");
+            operation.succeed(id, undefined);
             if (status === "complete" && !reply.warning) {
                 router.push("/dashboard");
                 return;
@@ -166,20 +177,19 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
             setNotice(reply.warning ? { tone: "warning", text: reply.warning } : { tone: "success", text: "Draft saved." });
             router.refresh();
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Could not save your answers.");
-        } finally {
-            setBusy(null);
+            operation.fail(id, err instanceof Error ? err.message : "Could not save your answers.");
         }
     };
 
     const skip = async () => {
-        setBusy("skip");
+        const id = operation.begin("skip");
+        if (id === null) return;
         try {
             await skipCharacterization();
+            operation.succeed(id, undefined);
             router.push("/dashboard");
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Could not skip.");
-            setBusy(null);
+            operation.fail(id, err instanceof Error ? err.message : "Could not skip.");
         }
     };
 
@@ -201,7 +211,7 @@ export function AboutForm({ saved, computed, gaps, emptyLibrary, firstRun }: {
             )}
             {prefilling && <NoticeBanner tone="success">Reading your library to suggest answers…</NoticeBanner>}
             {notice && <NoticeBanner tone={notice.tone} onDismiss={() => setNotice(null)}>{notice.text}</NoticeBanner>}
-            {error && <NoticeBanner tone="danger" onDismiss={() => setError(null)}>{error}</NoticeBanner>}
+            {error && <NoticeBanner tone="danger" onDismiss={() => { operation.reset(); questions.reset(); }}>{error}</NoticeBanner>}
 
             <div className="border-b border-border">
                 <Tabs items={STEPS} value={step} onChange={goTo} aria-label="Questionnaire steps" />

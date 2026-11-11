@@ -118,3 +118,15 @@ export async function deleteAccount(confirmation: string): Promise<{ ok: false; 
     await signOut({ redirectTo: "/?deleted=1" });
     return { ok: false, error: "Signed out." };
 }
+
+/** Persist only the explicitly supplied profile URL; never flush editor fields. */
+export async function saveLinkedInUrl(raw: string): Promise<string> {
+    const uid = await requireUid();
+    const { canonicalProfileUrl } = await import("@/lib/import/linkedin");
+    const { normalizeLinkedIn } = await import("@/lib/contact/normalize");
+    const url = canonicalProfileUrl(normalizeLinkedIn(raw).value);
+    if (!url) throw new Error("Enter a LinkedIn profile URL: linkedin.com/in/your-name.");
+    await db.collection("users").doc(uid).set({ linkedIn: url, updatedAt: Timestamp.now() }, { merge: true });
+    revalidatePath("/dashboard");
+    return url;
+}

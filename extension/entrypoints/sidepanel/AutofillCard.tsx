@@ -15,10 +15,10 @@ export function AutofillCard({ tabId, summary, state, appUrl }: { tabId: number;
                     {summary ? <>For <strong>{summary.job.title}</strong> · résumé: {summary.resume.name}</> : "Save the job first to tailor answers to it, or fill with your working selection."}
                 </div>
             </div>
-            <button className="btn primary block" disabled={r?.running} onClick={() => void send({ type: "autofill", tabId })}>
-                {r?.running ? <><span className="spinner" /> Filling…</> : "Auto Fill"}
+            <button className="btn primary block" disabled={r?.phase === "running"} onClick={() => void send({ type: "autofill", tabId })}>
+                {r?.phase === "running" ? <><span className="spinner" /> Filling…</> : "Auto Fill"}
             </button>
-            {r && !r.running && !r.error && (
+            {r && r.phase === "complete" && !r.error && (
                 <div className="stack" style={{ gap: 4 }}>
                     <div>Filled <span className="mono">{r.filled}</span>{r.drafted > 0 && <> · AI drafts <span className="mono">{r.drafted}</span> <span className="subtle">(dashed outline)</span></>}</div>
                     {r.attached && <div className="subtle">Attached {r.attached}</div>}

@@ -8,6 +8,7 @@
 
 import { CompanyLogo } from "./company-logo";
 import { ScoreRing } from "@/components/ui/primitives/score-ring";
+import { jobOperationTransition, type JobOperationState } from "@/lib/ui/job-operation-state";
 import React, { useOptimistic, useRef, useState, useTransition } from "react";
 import { useArcMoves } from "@/lib/ui/use-arc-moves";
 import { useRouter } from "next/navigation";
@@ -45,7 +46,12 @@ export function TrackerView({ jobs, onOpen, onAnalyse, onDelete }: {
     const router = useRouter();
     const layout = layoutStore.useValue();
     const [query, setQuery] = useState("");
-    const [error, setError] = useState<string | null>(null);
+    const operationsRef = useRef<Record<string, JobOperationState<JobStatus>>>({});
+    const [operations, setOperations] = useState<Record<string, JobOperationState<JobStatus>>>({});
+    const updateOperation = (id: string, event: Parameters<typeof jobOperationTransition<JobStatus>>[1]) => {
+        operationsRef.current = { ...operationsRef.current, [id]: jobOperationTransition(operationsRef.current[id] ?? { status: "idle" }, event) };
+        setOperations(operationsRef.current);
+    };
     const [, startTransition] = useTransition();
     const [optimistic, applyOptimistic] = useOptimistic(jobs, (list: JobRecord[], u: { id: string; status: JobStatus }) =>
         list.map(j => (j.id === u.id ? { ...j, status: u.status } : j)),
@@ -53,14 +59,16 @@ export function TrackerView({ jobs, onOpen, onAnalyse, onDelete }: {
 
     const move = (id: string, status: JobStatus) => {
         const job = optimistic.find(j => j.id === id);
-        if (!job || job.status === status) return;
+        if (!job || job.status === status || operationsRef.current[id]?.status === "running") return;
+        updateOperation(id, { type: "start", operation: status });
         startTransition(async () => {
             applyOptimistic({ id, status });
             try {
                 await setJobStatus(id, status);
+                updateOperation(id, { type: "complete" });
                 router.refresh();
             } catch (err) {
-                setError(err instanceof Error ? err.message : "Could not update the status.");
+                updateOperation(id, { type: "fail", message: err instanceof Error ? err.message : "Could not update the status." });
             }
         });
     };
@@ -83,7 +91,7 @@ export function TrackerView({ jobs, onOpen, onAnalyse, onDelete }: {
 
     return (
         <div className="space-y-4">
-            {error && <NoticeBanner tone="danger" onDismiss={() => setError(null)}>{error}</NoticeBanner>}
+            {Object.entries(operations).map(([id, operation]) => operation.status === "failed" && <NoticeBanner key={id} tone="danger" onDismiss={() => updateOperation(id, { type: "dismiss" })}>{operation.message}</NoticeBanner>)}
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="relative w-full sm:max-w-xs">
                     <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-subtle" aria-hidden />

@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { JOB_STATUSES, JOB_STATUS_LABEL, type AccountStatus, type BgRequest, type JobStatus, type JobSummary, type TabState } from "../../lib/types";
+import { ProfileImportCard } from "./ProfileImportCard";
 import { AutofillCard } from "./AutofillCard";
 import { ResumePicker, TailorCard } from "./TailorCard";
 
@@ -50,23 +51,24 @@ function useActiveTab(): number | null {
 
 function Connect({ appUrl }: { appUrl: string }) {
     const [code, setCode] = useState("");
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [pairing, setPairing] = useState<{ phase: "idle" | "pairing" | "paired"; error?: never } | { phase: "failed"; error: string }>({ phase: "idle" });
+    const busy = pairing.phase === "pairing";
+    const error = pairing.error;
     const pair = async () => {
-        setBusy(true);
-        setError(null);
+        if (busy) return;
+        setPairing({ phase: "pairing" });
         try {
             const res = await send<{ ok: boolean; error?: string }>({ type: "pair", code });
-            if (!res?.ok) setError(res?.error ?? "That didn't work.");
+            setPairing(res?.ok ? { phase: "paired" } : { phase: "failed", error: res?.error ?? "That didn't work." });
         } catch {
-            setError("Couldn't reach the extension. Reload it and try again.");
-        } finally {
-            setBusy(false);
+            setPairing({ phase: "failed", error: "Couldn't reach the extension. Reload it and try again." });
         }
     };
     return (
         <div className="card stack">
             <h2>Connect your quikResume account</h2>
+            <a className="btn primary block" href={`${appUrl}/login`} target="_blank" rel="noreferrer">Create a quikResume account or sign in</a>
+            <p className="subtle">After signing in, click Connect below to pair this browser.</p>
             <p className="muted" style={{ margin: 0 }}>Save jobs from any board, see how your résumé matches, and fill applications.</p>
             <button className="btn primary block" onClick={() => void send({ type: "connect-page" })}>Connect</button>
             <p className="subtle" style={{ margin: "4px 0 0" }}>Or type the code from <a href={`${appUrl}/dashboard/extension`} target="_blank" rel="noreferrer">quikResume → Extension</a>:</p>
@@ -139,13 +141,14 @@ function Summary({ s, tabId, appUrl, state }: { s: JobSummary; tabId: number; ap
 
 export function App() {
     const tabId = useActiveTab();
-    const [account, setAccount] = useState<AccountStatus | null>(null);
+    const [availability, setAvailability] = useState<{ phase: "checking" } | { phase: "ready" | "login-required"; account: AccountStatus }>({ phase: "checking" });
+    const account = availability.phase === "checking" ? null : availability.account;
     const [state, setState] = useState<TabState | null>(null);
     const [fabEnabled, setFabEnabled] = useState(true);
 
     useEffect(() => {
         // If the background worker can't answer, fall back to the Connect screen instead of "Loading…" forever.
-        const load = () => void send<AccountStatus>({ type: "status" }).then(setAccount).catch(() => setAccount({ paired: false, appUrl: "" } as AccountStatus));
+        const load = () => void send<AccountStatus>({ type: "status" }).then(account => setAvailability({ phase: account.paired ? "ready" : "login-required", account })).catch(() => setAvailability({ phase: "login-required", account: { paired: false, user: null, appUrl: "" } }));
         load();
         void chrome.storage.local.get("fabEnabled").then(v => setFabEnabled(v.fabEnabled !== false));
         const onMsg = (m: { type?: string }) => { if (m?.type === "account-changed") load(); };
@@ -154,12 +157,14 @@ export function App() {
     }, []);
 
     useEffect(() => {
+        setState(null);
         if (tabId === null) return;
-        const load = () => void send<TabState>({ type: "tab-state", tabId }).then(setState);
+        let active = true;
+        const load = () => void send<TabState>({ type: "tab-state", tabId }).then(next => { if (active) setState(next); });
         load();
         const onMsg = (m: { type?: string; tabId?: number }) => { if (m?.type === "state-changed" && m.tabId === tabId) load(); };
         chrome.runtime.onMessage.addListener(onMsg);
-        return () => chrome.runtime.onMessage.removeListener(onMsg);
+        return () => { active = false; chrome.runtime.onMessage.removeListener(onMsg); };
     }, [tabId]);
 
     const appUrl = account?.appUrl ?? "";
@@ -182,7 +187,8 @@ export function App() {
                     <div className="card"><p className="muted" style={{ margin: 0 }}>No active tab. Open a page to get started.</p></div>
                 ) : (
                     <>
-                        {state?.error && <div className="notice err">{state.error}</div>}
+                        {state?.profileImport && <ProfileImportCard state={state.profileImport} tabId={tabId} />}
+                        {state?.operation.error && <div className="notice err">{state.operation.error}</div>}
                         {!posting ? (
                             <div className="card stack">
                                 <h2>No job posting found</h2>
@@ -196,8 +202,8 @@ export function App() {
                                     <div className="muted">{[posting.company, posting.location].filter(Boolean).join(" · ") || posting.site}</div>
                                 </div>
                                 {!state?.summary && (
-                                    <button className="btn primary block" disabled={state?.saving} onClick={() => void send({ type: "save", tabId })}>
-                                        {state?.saving ? <><span className="spinner" /> Saving and matching…</> : "Save job & see match"}
+                                    <button className="btn primary block" disabled={state?.operation.phase === "saving"} onClick={() => void send({ type: "save", tabId })}>
+                                        {state?.operation.phase === "saving" ? <><span className="spinner" /> Saving and matching…</> : "Save job & see match"}
                                     </button>
                                 )}
                                 {state?.summary && <div className="subtle">Saved to your Job Tracker.</div>}

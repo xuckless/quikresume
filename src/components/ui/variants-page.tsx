@@ -1,6 +1,7 @@
 // src/components/ui/variants-page.tsx
 "use client";
 
+import { useFormsOperation } from "@/lib/ui/use-forms-operation";
 import React, { useState } from "react";
 import type { ResumeData } from "@/types/schema";
 import type { ResumeVariant } from "@/types/db";
@@ -33,9 +34,10 @@ export function VariantsPage({ variants, loadedVariantId, data }: VariantsPagePr
     const [labelFilter, setLabelFilter] = useState<string | null>(null);
     const [newName, setNewName] = useState("");
     const [newLabels, setNewLabels] = useState("");
-    const [busy, setBusy] = useState<string | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [notice, setNotice] = useState<string | null>(null);
+    const operation = useFormsOperation<"create" | "delete" | `load-${string}` | `snap-${string}` | `rename-${string}` | `labels-${string}` | `dup-${string}`, string | undefined>();
+    const busy = operation.state.status === "running" ? operation.state.operation : null;
+    const error = operation.state.status === "failed" ? operation.state.error : null;
+    const notice = operation.state.status === "succeeded" ? operation.state.result : null;
     const [pendingDelete, setPendingDelete] = useState<ResumeVariant | null>(null);
 
     const allLabels = [...new Set(variants.flatMap(v => v.labels))].sort();
@@ -46,17 +48,14 @@ export function VariantsPage({ variants, loadedVariantId, data }: VariantsPagePr
     );
     const selectedNow = countItems(selectedIds(data));
 
-    const run = async (key: string, fn: () => Promise<void>, done?: string) => {
-        setBusy(key);
-        setError(null);
-        setNotice(null);
+    const run = async (key: "create" | "delete" | `load-${string}` | `snap-${string}` | `rename-${string}` | `labels-${string}` | `dup-${string}`, fn: () => Promise<void | string>, done?: string) => {
+        const id = operation.begin(key);
+        if (id === null) return;
         try {
-            await fn();
-            if (done) setNotice(done);
+            const message = await fn();
+            operation.succeed(id, message ?? done);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Something went wrong.");
-        } finally {
-            setBusy(null);
+            operation.fail(id, err instanceof Error ? err.message : "Something went wrong.");
         }
     };
 
@@ -69,8 +68,8 @@ export function VariantsPage({ variants, loadedVariantId, data }: VariantsPagePr
             />
             <main className="p-4 pb-16 md:p-6">
                 <div className="mx-auto max-w-5xl space-y-4">
-                    {error && <NoticeBanner tone="danger" onDismiss={() => setError(null)}>{error}</NoticeBanner>}
-                    {notice && <NoticeBanner tone="success" onDismiss={() => setNotice(null)}>{notice}</NoticeBanner>}
+                    {error && <NoticeBanner tone="danger" onDismiss={() => operation.reset()}>{error}</NoticeBanner>}
+                    {notice && <NoticeBanner tone="success" onDismiss={() => operation.reset()}>{notice}</NoticeBanner>}
 
                     <Card>
                         <CardHeader title="Save the current selection" hint={`${selectedNow} ${selectedNow === 1 ? "item is" : "items are"} currently included on the dashboard.`} />
@@ -129,7 +128,7 @@ export function VariantsPage({ variants, loadedVariantId, data }: VariantsPagePr
                                     busy={busy}
                                     onLoad={() => run(`load-${v.id}`, async () => {
                                         const r = await loadVariant(v.id);
-                                        setNotice(r.missing > 0 ? `Loaded "${v.name}". ${r.missing} ${r.missing === 1 ? "item" : "items"} it pointed to no longer exist and were dropped.` : `Loaded "${v.name}" into your working selection.`);
+                                        return (r.missing > 0 ? `Loaded "${v.name}". ${r.missing} ${r.missing === 1 ? "item" : "items"} it pointed to no longer exist and were dropped.` : `Loaded "${v.name}" into your working selection.`);
                                     })}
                                     onUpdateSelection={() => run(`snap-${v.id}`, () => resnapshotVariant(v.id), `"${v.name}" now matches the current selection.`)}
                                     onRename={(name) => run(`rename-${v.id}`, () => updateVariant(v.id, { name }))}

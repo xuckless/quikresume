@@ -1,7 +1,9 @@
 // src/components/ui/resume-preview.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useReducer, useState } from "react";
+import { formsPreviewTransition } from "@/lib/ui/forms-preview";
+import { useFormsOperation } from "@/lib/ui/use-forms-operation";
 import type { ResumeData } from "@/types/schema";
 import { pdfFileName, toTypstDoc, type TypstResumeDoc } from "@/lib/typst/doc";
 import { compilePdf, compileSvg, ensureTypst, formatTypstError, isEngineError } from "@/lib/typst/client";
@@ -38,12 +40,15 @@ export function ResumePreview({ resumeData, template: templateOverride, compact 
     const docJson = JSON.stringify(toTypstDoc(resumeData));
     const template: TemplateId = templateOverride ?? resumeData.layout?.theme?.templateId ?? DEFAULT_TEMPLATE;
 
-    const [svg, setSvg] = useState<string | null>(null);
-    const [pageCount, setPageCount] = useState(0);
-    const [status, setStatus] = useState<Status>("loading-engine");
-    const [error, setError] = useState<string | null>(null);
-    const [downloading, setDownloading] = useState(false);
-    const [downloadError, setDownloadError] = useState<string | null>(null);
+    const [preview, dispatch] = useReducer(formsPreviewTransition, { status: "loading-engine", previous: null });
+    const status = preview.status;
+    const image = preview.status === "ready" ? preview.image : preview.previous;
+    const svg = image?.svg ?? null;
+    const pageCount = image?.pageCount ?? 0;
+    const error = "error" in preview ? preview.error : null;
+    const download = useFormsOperation<"pdf">();
+    const downloading = download.state.status === "running";
+    const downloadError = download.state.status === "failed" ? download.state.error : null;
     // Bumped by the Retry button after an engine failure: the loader re-arms itself, the effect re-runs.
     const [attempt, setAttempt] = useState(0);
 
@@ -52,20 +57,16 @@ export function ResumePreview({ resumeData, template: templateOverride, compact 
         const timer = setTimeout(async () => {
             const doc = JSON.parse(docJson) as TypstResumeDoc;
             try {
-                setStatus(s => (s === "engine-failed" ? "loading-engine" : s));
+                dispatch({ type: "load" });
                 await ensureTypst();
                 if (cancelled) return;
-                setStatus("compiling");
+                dispatch({ type: "compile" });
                 const result = await compileSvg(doc, template);
                 if (cancelled) return;
-                setSvg(result.svg);
-                setPageCount(result.pageCount);
-                setError(null);
-                setStatus("ready");
+                dispatch({ type: "render", image: result });
             } catch (err) {
                 if (cancelled) return;
-                setError(formatTypstError(err));
-                setStatus(isEngineError(err) ? "engine-failed" : "error");
+                dispatch({ type: "fail", error: formatTypstError(err), engine: isEngineError(err) });
             }
         }, DEBOUNCE_MS);
         return () => {
@@ -75,11 +76,12 @@ export function ResumePreview({ resumeData, template: templateOverride, compact 
     }, [docJson, template, attempt]);
 
     const handleDownload = async () => {
-        setDownloading(true);
-        setDownloadError(null);
+        const id = download.begin("pdf");
+        if (id === null) return;
         try {
             const doc = JSON.parse(docJson) as TypstResumeDoc;
             const bytes = await compilePdf(doc, template);
+            if (!download.active(id)) return;
             const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
@@ -89,10 +91,9 @@ export function ResumePreview({ resumeData, template: templateOverride, compact 
             a.click();
             a.remove();
             URL.revokeObjectURL(url);
+            download.succeed(id, undefined);
         } catch (err) {
-            setDownloadError(formatTypstError(err));
-        } finally {
-            setDownloading(false);
+            download.fail(id, formatTypstError(err));
         }
     };
 

@@ -15,7 +15,11 @@ import { DEFAULT_TEMPLATE, TEMPLATES, TYPST_LIBS, type TemplateId } from "@/lib/
 type Snippet = typeof import("@myriaddreamin/typst.ts/contrib/snippet");
 type TypstInstance = Snippet["$typst"];
 
-export type TypstStage = "idle" | "loading" | "ready" | "failed";
+export type TypstStage = "idle" | "loading" | "ready" | "failed" | "reloading";
+type EngineState =
+    | { stage: "idle" }
+    | { stage: "loading" | "ready" | "reloading"; promise: Promise<TypstInstance> }
+    | { stage: "failed"; error: unknown };
 
 const WASM_COMPILER = "/typst/wasm/typst_ts_web_compiler_bg.wasm";
 const WASM_RENDERER = "/typst/wasm/typst_ts_renderer_bg.wasm";
@@ -28,14 +32,13 @@ const FONT_URLS = [
     ...["Regular", "Italic", "Semibold", "Bold"].map(w => `/typst/fonts/LibertinusSerif-${w}.otf`),
 ];
 
-let stage: TypstStage = "idle";
-let instancePromise: Promise<TypstInstance> | null = null;
+let engine: EngineState = { stage: "idle" };
 // The wasm compiler is single-threaded and shares shadow-file state, so all
 // compiles are serialized through this chain.
 let queue: Promise<unknown> = Promise.resolve();
 
 export function getTypstStage(): TypstStage {
-    return stage;
+    return engine.stage;
 }
 
 async function fetchText(url: string): Promise<string> {
@@ -124,24 +127,25 @@ function reloadForCsp(err: unknown): boolean {
 
 /** Idempotent: loads wasm, fonts and template sources once. Re-armed on failure, so a retry starts clean. */
 export function ensureTypst(): Promise<TypstInstance> {
-    if (!instancePromise) {
-        stage = "loading";
-        instancePromise = init().then(
+    if ("promise" in engine) return engine.promise;
+    const promise = init().then(
             inst => {
-                stage = "ready";
+                engine = { stage: "ready", promise };
                 try { sessionStorage.removeItem(CSP_RELOAD_KEY); } catch { /* storage unavailable */ }
                 return inst;
             },
             err => {
-                stage = "failed";
-                instancePromise = null;
+                engine = { stage: "failed", error: err };
                 console.error("[typst] engine failed to start:", err);
-                if (reloadForCsp(err)) return new Promise<never>(() => {});
+                if (reloadForCsp(err)) {
+                    engine = { stage: "reloading", promise };
+                    return new Promise<never>(() => {});
+                }
                 throw err instanceof TypstEngineError ? err : new TypstEngineError(explainEngineFailure(err), err);
             },
         );
-    }
-    return instancePromise;
+    engine = { stage: "loading", promise };
+    return promise;
 }
 
 export const isEngineError = (err: unknown): err is TypstEngineError => err instanceof TypstEngineError;

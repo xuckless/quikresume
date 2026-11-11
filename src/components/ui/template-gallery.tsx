@@ -5,7 +5,7 @@
 // template with the user's own résumé (first page), plus accent, font pair and paper size. Changes
 // go through `onChange`; the dashboard decides where they land (editor draft or the saved layout).
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useReducer } from "react";
 import type { ResumeData } from "@/types/schema";
 import { ACCENTS, FONT_PAIRS, PAPERS, type AccentId, type FontPairId, type PaperId, type ResumeTheme } from "@/lib/layout/theme";
 import { TEMPLATES, type TemplateId } from "@/lib/typst/templates";
@@ -90,25 +90,40 @@ export function TemplateGalleryDialog({ open, onClose, resumeData, theme, onChan
     );
 }
 
+type ThumbnailsState = { status: "loading" | "ready" | "failed"; svgs: Partial<Record<TemplateId, string>> };
+type ThumbnailsEvent = { type: "start" | "complete" | "fail" } | { type: "render"; id: TemplateId; svg: string };
+function thumbnailsTransition(state: ThumbnailsState, event: ThumbnailsEvent): ThumbnailsState {
+    switch (event.type) {
+        case "start": return { status: "loading", svgs: {} };
+        case "complete": return { ...state, status: "ready" };
+        case "fail": return { ...state, status: "failed" };
+        case "render": return { ...state, svgs: { ...state.svgs, [event.id]: event.svg } };
+    }
+}
+
 /** First page of each template, compiled one after another through the shared Typst queue. */
 function Thumbnails({ resumeData, theme, onPick }: { resumeData: ResumeData; theme: ResumeTheme; onPick: (id: TemplateId) => void }) {
     const docJson = JSON.stringify(toTypstDoc({ ...resumeData, layout: { ...resumeData.layout, theme } }));
-    const [svgs, setSvgs] = useState<Partial<Record<TemplateId, string>>>({});
-    const [failed, setFailed] = useState(false);
+    const [state, dispatch] = useReducer(thumbnailsTransition, { status: "loading", svgs: {} });
+    const { svgs } = state;
+    const failed = state.status === "failed";
 
     useEffect(() => {
         let cancelled = false;
         const timer = setTimeout(async () => {
+            dispatch({ type: "start" });
             try {
                 await ensureTypst();
+                if (cancelled) return;
                 const doc = JSON.parse(docJson) as TypstResumeDoc;
                 for (const id of TEMPLATE_IDS) {
                     const { svg } = await compileSvg(doc, id);
                     if (cancelled) return;
-                    setSvgs(prev => ({ ...prev, [id]: svg }));
+                    dispatch({ type: "render", id, svg });
                 }
+                dispatch({ type: "complete" });
             } catch {
-                if (!cancelled) setFailed(true);
+                if (!cancelled) dispatch({ type: "fail" });
             }
         }, 200);
         return () => { cancelled = true; clearTimeout(timer); };

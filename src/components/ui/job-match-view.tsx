@@ -6,7 +6,9 @@
 // inspect the ATS keyword table, and tailor the résumé (tailor-dialog.tsx). The AI proposals
 // card is hidden (SHOW_SUGGESTIONS).
 
-import React, { useEffect, useState } from "react";
+import { jobDetailDialogTransition, type JobDetailDialog } from "@/lib/ui/job-detail-state";
+import { useJobOperation } from "@/lib/ui/job-use-operation";
+import React, { useEffect, useReducer, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ResumeData } from "@/types/schema";
 import type { ResumeVariant } from "@/types/db";
@@ -69,15 +71,20 @@ interface JobMatchViewProps {
     onExternalResume: (r: ExternalResume | null) => void;
 }
 
+import { jobOperationTransition, type JobOperationState } from "@/lib/ui/job-operation-state";
+import { deleteTransition } from "@/lib/ui/job-delete-state";
+import { analysisDialogTransition } from "@/lib/ui/job-analysis-dialog";
+
 export function JobMatchView(props: JobMatchViewProps) {
     const { jobs, selectedJobId, onSelectJob } = props;
     const router = useRouter();
     const [error, setError] = useState<string | null>(null);
-    const [pendingDelete, setPendingDelete] = useState<JobRecord | null>(null);
-    const [deleting, setDeleting] = useState(false);
-    const [analysing, setAnalysing] = useState(false);
-    const [analyseBusy, setAnalyseBusy] = useState(false);
-    const [deleteError, setDeleteError] = useState<string | null>(null);
+    const [deletion, dispatchDelete] = useReducer(deleteTransition, { status: "closed" });
+    const pendingDelete = deletion.status === "closed" ? null : deletion.job;
+    const deleting = deletion.status === "deleting";
+    const deleteError = deletion.status === "failed" ? deletion.message : null;
+    const setPendingDelete = (job: JobRecord) => dispatchDelete({ type: "open", job });
+    const [analysisDialog, sendAnalysisDialog] = useReducer(analysisDialogTransition, { phase: "closed" });
     const selected = jobs.find(j => j.id === selectedJobId) ?? null;
 
     return (
@@ -90,14 +97,14 @@ export function JobMatchView(props: JobMatchViewProps) {
                     <JobDetail key={selected.id} job={selected} {...props} onDelete={() => setPendingDelete(selected)} onError={setError} />
                 </section>
             ) : (
-                <TrackerView jobs={jobs} onOpen={onSelectJob} onAnalyse={() => setAnalysing(true)} onDelete={setPendingDelete} />
+                <TrackerView jobs={jobs} onOpen={onSelectJob} onAnalyse={() => sendAnalysisDialog({ type: "open" })} onDelete={setPendingDelete} />
             )}
 
-            <Dialog open={analysing} onClose={() => { if (!analyseBusy) setAnalysing(false); }} title="Analyse a job" description="Paste a job description or upload it. We extract its requirements and score your résumé against them.">
+            <Dialog open={analysisDialog.phase !== "closed"} onClose={() => sendAnalysisDialog({ type: "close" })} title="Analyse a job" description="Paste a job description or upload it. We extract its requirements and score your résumé against them.">
                 <AnalyzeForm
                     resumeData={props.resumeData}
-                    onAnalyzed={(job) => { setAnalysing(false); onSelectJob(job.id); router.refresh(); }}
-                    onBusyChange={setAnalyseBusy}
+                    onAnalyzed={(job) => { sendAnalysisDialog({ type: "analyzed" }); onSelectJob(job.id); router.refresh(); }}
+                    onBusyChange={busy => sendAnalysisDialog({ type: busy ? "processing" : "settled" })}
                 />
             </Dialog>
 
@@ -107,20 +114,17 @@ export function JobMatchView(props: JobMatchViewProps) {
                 confirmLabel="Delete"
                 danger
                 busy={deleting}
-                onCancel={() => { setPendingDelete(null); setDeleteError(null); }}
+                onCancel={() => dispatchDelete({ type: "cancel" })}
                 onConfirm={async () => {
-                    if (!pendingDelete) return;
-                    setDeleting(true);
-                    setDeleteError(null);
+                    if (!pendingDelete || deleting) return;
+                    dispatchDelete({ type: "start" });
                     try {
                         await deleteJob(pendingDelete.id);
                         if (selectedJobId === pendingDelete.id) onSelectJob(null);
-                        setPendingDelete(null);
+                        dispatchDelete({ type: "complete" });
                         router.refresh();
                     } catch (err) {
-                        setDeleteError(err instanceof Error ? err.message : "Could not delete the job.");
-                    } finally {
-                        setDeleting(false);
+                        dispatchDelete({ type: "fail", message: err instanceof Error ? err.message : "Could not delete the job." });
                     }
                 }}
             >
@@ -138,25 +142,31 @@ const ACCEPT = ".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp";
 function AnalyzeForm({ resumeData, onAnalyzed, onBusyChange }: { resumeData: ResumeData; onAnalyzed: (job: JobRecord) => void; onBusyChange: (busy: boolean) => void }) {
     const [text, setText] = useState("");
     const [file, setFile] = useState<File | null>(null);
-    const [busy, setBusyLabel] = useState<string | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const setBusy = (label: string | null) => { setBusyLabel(label); onBusyChange(label !== null); };
+    const [analysis, dispatchAnalysis] = useReducer(jobOperationTransition<"preparing" | "extracting">, { status: "idle" } as JobOperationState<"preparing" | "extracting">);
+    const busy = analysis.status === "running" ? (analysis.operation === "preparing" ? "Preparing file…" : "Extracting requirements…") : null;
+    const error = analysis.status === "failed" ? analysis.message : null;
+    const setError = (message: string) => dispatchAnalysis({ type: "fail", message });
+    const begin = (operation: "preparing" | "extracting") => {
+        dispatchAnalysis({ type: "start", operation });
+        onBusyChange(true);
+    };
 
     const submit = async () => {
-        setError(null);
+        if (busy) return;
         try {
             let body: FormData;
             if (text.trim()) {
                 body = new FormData();
                 body.set("text", text);
             } else if (file) {
-                setBusy("Preparing file…");
+                begin("preparing");
                 body = await documentFormData(file);
             } else return;
             // The working selection rides along so the server can reconcile the requirements
             // against the whole library (semantic matches: degree levels, implied skills, fields).
             body.set("resume", JSON.stringify(resumeData));
-            setBusy("Extracting requirements…");
+            if (file && !text.trim()) dispatchAnalysis({ type: "advance", operation: "extracting" });
+            else begin("extracting");
             const res = await fetch("/api/jobs/analyze", { method: "POST", body });
             const json = (await res.json().catch(() => null)) as { ok: boolean; error?: string; job?: JobRecord } | null;
             if (!json) throw new Error(`Analysis failed (${res.status}).`);
@@ -167,7 +177,8 @@ function AnalyzeForm({ resumeData, onAnalyzed, onBusyChange }: { resumeData: Res
         } catch (err) {
             setError(err instanceof Error ? err.message : "Analysis failed.");
         } finally {
-            setBusy(null);
+            dispatchAnalysis({ type: "complete" });
+            onBusyChange(false);
         }
     };
 
@@ -185,7 +196,7 @@ function AnalyzeForm({ resumeData, onAnalyzed, onBusyChange }: { resumeData: Res
                         disabled={busy !== null}
                         onChange={e => {
                             const f = e.target.files?.[0] ?? null;
-                            if (f && f.size > MAX_FILE_BYTES) { setError("That file is over 10 MB."); return; }
+                            if (f && f.size > MAX_FILE_BYTES) { dispatchAnalysis({ type: "invalid", message: "That file is over 10 MB." }); return; }
                             setFile(f);
                             e.target.value = "";
                         }}
@@ -210,8 +221,11 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
     const [proposals, setProposals] = useState<Proposal[]>(job.proposals);
     const [muted, setMuted] = useState<MuteRule[]>(preferences.mutedProposals);
     const [caps, setCaps] = useState(preferences.caps);
-    const [busy, setBusy] = useState<string | null>(null);
-    const [uploading, setUploading] = useState<string | null>(null);
+    const detailOperation = useJobOperation<"recheck" | "suggest" | `apply:${string}` | "reading" | "tagging">();
+    const busy = detailOperation.state.status === "running" ? detailOperation.state.operation : null;
+    const uploading = busy === "reading" ? "Reading resume…" : busy === "tagging" ? "Analysing skills…" : null;
+    const detailError = detailOperation.state.status === "failed" ? detailOperation.state.message : null;
+    useEffect(() => { if (detailError) onError(detailError); }, [detailError, onError]);
     const [showAts, setShowAts] = useState(true);
     const [showCaps, setShowCaps] = useState(false);
 
@@ -225,32 +239,39 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
     const reqDisplay = (name: string) => job.requirements.find(r => r.name === name)?.display ?? name;
 
     const uploadResume = async (file: File) => {
+        const run = detailOperation.start("reading");
+        if (!run) return;
         onError(null);
         try {
             if (file.size > MAX_FILE_BYTES) throw new Error("That file is over 10 MB.");
-            setUploading("Reading resume…");
+
             const res = await fetch("/api/import", { method: "POST", body: await documentFormData(file) });
             const json = (await res.json().catch(() => null)) as ImportResponse | null;
             if (!json) throw new Error(`Import failed (${res.status}).`);
             if (!json.ok) throw new Error(json.error);
-            setUploading("Analysing skills…");
+            if (!run.active()) return;
+            run.advance("tagging");
             const tagRes = await fetch("/api/tags/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: allInputs(json.data), context: tagContext(json.data) }) });
             const tagJson = (await tagRes.json().catch(() => null)) as { ok: boolean; error?: string; tagsById?: Record<string, ResumeData["profileTags"]> } | null;
             if (!tagJson?.ok) throw new Error(tagJson?.error ?? "Skill analysis failed.");
+            if (!run.active()) return;
             const data = applyTags(json.data, tagJson.tagsById ?? {});
             onExternalResume({ fileName: json.fileName, data });
             setSource({ kind: "upload", fileName: json.fileName });
         } catch (err) {
-            onError(err instanceof Error ? err.message : "Could not read that resume.");
+            if (!run.active()) return;
+            run.fail(err instanceof Error ? err.message : "Could not read that resume.");
         } finally {
-            setUploading(null);
+            run.complete();
         }
     };
 
     /** Re-runs the broader-context pass against the resume being scored (any source). */
     const recheck = async () => {
+        const run = detailOperation.start("recheck");
+        if (!run) return;
         onError(null);
-        setBusy("recheck");
+
         try {
             const res = await fetch("/api/jobs/reconcile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobId: job.id, resume }) });
             const json = (await res.json().catch(() => null)) as { ok: boolean; error?: string } | null;
@@ -258,25 +279,30 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
             // The pass itself runs in the background; the refresh picks up "running" and starts the poll.
             router.refresh();
         } catch (err) {
-            onError(err instanceof Error ? err.message : "The AI match check failed.");
+            if (!run.active()) return;
+            run.fail(err instanceof Error ? err.message : "The AI match check failed.");
         } finally {
-            setBusy(null);
+            run.complete();
         }
     };
 
     const getSuggestions = async () => {
+        const run = detailOperation.start("suggest");
+        if (!run) return;
         onError(null);
-        setBusy("suggest");
+
         try {
             const res = await fetch("/api/jobs/proposals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobId: job.id, resume }) });
             const json = (await res.json().catch(() => null)) as { ok: boolean; error?: string; proposals?: Proposal[] } | null;
             if (!json?.ok || !json.proposals) throw new Error(json?.error ?? "Could not get suggestions.");
+            if (!run.active()) return;
             setProposals(json.proposals);
             router.refresh();
         } catch (err) {
-            onError(err instanceof Error ? err.message : "Could not get suggestions.");
+            if (!run.active()) return;
+            run.fail(err instanceof Error ? err.message : "Could not get suggestions.");
         } finally {
-            setBusy(null);
+            run.complete();
         }
     };
 
@@ -291,14 +317,16 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
 
     const apply = async (p: Proposal) => {
         if (source.kind === "upload") { onError("Suggestions can only be applied to your own library. Import the uploaded resume first."); return; }
-        setBusy(p.id);
+        const run = detailOperation.start(`apply:${p.id}`);
+        if (!run) return;
         try {
             await onApplyProposal(job, p);
             await setStatus(p, "applied");
         } catch (err) {
-            onError(err instanceof Error ? err.message : "Could not apply the suggestion.");
+            if (!run.active()) return;
+            run.fail(err instanceof Error ? err.message : "Could not apply the suggestion.");
         } finally {
-            setBusy(null);
+            run.complete();
         }
     };
 
@@ -317,7 +345,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
     // Library-wide (every item on): requirements answered "No" in the questionnaire that this job needs.
     const declinedNames = new Set(preferences.declinedSoftSkills.map(d => d.name));
     const declinedNeeded = uncoveredRequirements(job.requirements, resumeData, aliases).filter(r => declinedNames.has(r.name));
-    const [tailorRun, setTailorRun] = useState(0);
+    const [detailDialog, changeDetailDialog] = useReducer(jobDetailDialogTransition, "closed" as JobDetailDialog);
     const [editingTitle, setEditingTitle] = useState<string | null>(null);
 
     const commitTitle = async () => {
@@ -342,7 +370,6 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
         const timer = setTimeout(() => { void saveJobScore(job.id, scoreToSave).catch(() => {}); }, 1500);
         return () => clearTimeout(timer);
     }, [job.id, scoreToSave]);
-    const [answering, setAnswering] = useState(false);
     const [notice, setNotice] = useState<string | null>(null);
 
     // Background reconcile (usually well under a minute, at most ~5): poll the job's status (one document
@@ -418,7 +445,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                     hint={<>{job.company || "Unknown company"}{job.source.fileName ? ` · from ${job.source.fileName}` : ""}</>}
                     action={
                         <>
-                            <Button size="sm" variant="primary" icon={Wand2} onClick={() => setTailorRun(n => n + 1)} title="Pick what goes on your résumé for this job, with AI suggestions">
+                            <Button size="sm" variant="primary" icon={Wand2} onClick={() => changeDetailDialog("tailor")} title="Pick what goes on your résumé for this job, with AI suggestions">
                                 Tailor résumé
                             </Button>
                             <Button size="sm" variant="danger" onClick={onDelete}>Delete</Button>
@@ -452,7 +479,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                         )}
                         {source.kind === "upload" && (
                             <div className="flex flex-wrap items-center gap-2">
-                                <label className={cn("inline-flex h-8 cursor-pointer items-center rounded-md border border-border bg-surface px-2.5 text-13 font-medium hover:bg-surface-hover", uploading && "pointer-events-none opacity-50")}>
+                                <label className={cn("inline-flex h-8 cursor-pointer items-center rounded-md border border-border bg-surface px-2.5 text-13 font-medium hover:bg-surface-hover", busy && "pointer-events-none opacity-50")}>
                                     <input type="file" accept={ACCEPT} className="sr-only" onChange={e => { const f = e.target.files?.[0]; if (f) uploadResume(f); e.target.value = ""; }} />
                                     {uploading ?? (externalResume ? `Replace ${externalResume.fileName}` : "Upload a résumé")}
                                 </label>
@@ -496,7 +523,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                     missingMust={match.missingMust}
                     keywordGaps={match.keywordGaps}
                     declinedNeeded={declinedNeeded}
-                    onAnswerDeclined={() => setAnswering(true)}
+                    onAnswerDeclined={() => changeDetailDialog("answers")}
                     showScoreSource={source.kind !== "selection"}
                     fitNotes={fitNotes}
                     provisional={matchRunning}
@@ -521,7 +548,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                     action={
                         <>
                             <Button size="sm" variant="ghost" onClick={() => setShowCaps(v => !v)} aria-expanded={showCaps}>Section limits</Button>
-                            <Button size="sm" variant="primary" onClick={getSuggestions} loading={busy === "suggest"} disabled={source.kind === "upload"}>
+                            <Button size="sm" variant="primary" onClick={getSuggestions} loading={busy === "suggest"} disabled={source.kind === "upload" || busy !== null}>
                                 {proposals.length ? "Refresh" : "Get suggestions"}
                             </Button>
                         </>
@@ -535,7 +562,7 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                     <ProposalCards
                         proposals={proposals}
                         requirementDisplay={reqDisplay}
-                        busyId={busy && busy !== "suggest" ? busy : null}
+                        busyId={busy?.startsWith("apply:") ? busy.slice(6) : null}
                         onApply={apply}
                         onSkip={p => setStatus(p, "skipped")}
                         onIgnoreSimilar={ignoreSimilar}
@@ -546,27 +573,26 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
                 </CardBody>
             </Card>}
 
-            {tailorRun > 0 && (
+            {detailDialog === "tailor" && (
                 <TailorDialog
-                    key={tailorRun}
                     job={job}
                     resumeData={resumeData}
                     declined={preferences.declinedSoftSkills}
                     aliases={aliases}
                     caps={caps}
-                    onClose={(message) => { setTailorRun(0); if (message) setNotice(message); }}
+                    onClose={(message) => { changeDetailDialog("closed"); if (message) setNotice(message); }}
                 />
             )}
 
-            {answering && (
-                <Dialog open onClose={() => setAnswering(false)} size="lg" title="Skills you said you don't have" description="Changed your mind? Add them and the warning goes away.">
+            {detailDialog === "answers" && (
+                <Dialog open onClose={() => changeDetailDialog("closed")} size="lg" title="Skills you said you don't have" description="Changed your mind? Add them and the warning goes away.">
                     <SkillQuestions
                         gaps={declinedNeeded}
                         declined={preferences.declinedSoftSkills}
                         library={resumeData}
-                        onSkip={() => setAnswering(false)}
+                        onSkip={() => changeDetailDialog("closed")}
                         skipLabel="Close"
-                        onSaved={(r) => { setAnswering(false); setNotice(r.warning ? `Saved. ${r.warning}` : "Saved to your library."); router.refresh(); }}
+                        onSaved={(r) => { changeDetailDialog("closed"); setNotice(r.warning ? `Saved. ${r.warning}` : "Saved to your library."); router.refresh(); }}
                     />
                 </Dialog>
             )}
@@ -580,26 +606,33 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
 function JobTrackingStrip({ job, onError }: { job: JobRecord; onError: (e: string | null) => void }) {
     const router = useRouter();
     const [notes, setNotes] = useState(job.notes);
-    const save = async (fn: () => Promise<void>) => {
-        try { await fn(); router.refresh(); } catch (err) { onError(err instanceof Error ? err.message : "Could not save."); }
+    const statusOperation = useJobOperation<"save">();
+    const dateOperation = useJobOperation<"save">();
+    const notesOperation = useJobOperation<"save">();
+    const save = async (operation: typeof statusOperation, fn: () => Promise<void>) => {
+        const run = operation.start("save");
+        if (!run) return;
+        try { await fn(); if (run.active()) router.refresh(); }
+        catch (err) { if (run.active()) onError(err instanceof Error ? err.message : "Could not save."); }
+        finally { run.complete(); }
     };
     return (
         <div className="grid gap-3 border-b border-border px-4 py-3 @2xl:grid-cols-[10rem_10rem_minmax(0,1fr)]">
             <Field label="Status" htmlFor={`status-${job.id}`}>
-                <Select id={`status-${job.id}`} value={job.status} onChange={e => void save(() => setJobStatus(job.id, e.target.value as JobStatus))}>
+                <Select id={`status-${job.id}`} value={job.status} disabled={statusOperation.state.status === "running"} onChange={e => void save(statusOperation, () => setJobStatus(job.id, e.target.value as JobStatus))}>
                     {JOB_STATUSES.map(st => <option key={st} value={st}>{JOB_STATUS_LABEL[st]}</option>)}
                 </Select>
             </Field>
             <Field label="Applied" htmlFor={`applied-${job.id}`}>
-                <Input id={`applied-${job.id}`} type="date" defaultValue={job.appliedAt ?? ""} onBlur={e => {
+                <Input id={`applied-${job.id}`} type="date" disabled={dateOperation.state.status === "running"} defaultValue={job.appliedAt ?? ""} onBlur={e => {
                     const v = e.target.value || null;
-                    if (v !== job.appliedAt) void save(() => updateJobMeta(job.id, { appliedAt: v }));
+                    if (v !== job.appliedAt) void save(dateOperation, () => updateJobMeta(job.id, { appliedAt: v }));
                 }} />
             </Field>
             <Field label="Notes" htmlFor={`notes-${job.id}`} hint={job.url ? undefined : "Private to you."}>
                 <div className="flex items-center gap-2">
-                    <Input id={`notes-${job.id}`} value={notes} placeholder="Recruiter name, referral, next step…" onChange={e => setNotes(e.target.value)} onBlur={() => {
-                        if (notes !== job.notes) void save(() => updateJobMeta(job.id, { notes }));
+                    <Input id={`notes-${job.id}`} value={notes} disabled={notesOperation.state.status === "running"} placeholder="Recruiter name, referral, next step…" onChange={e => setNotes(e.target.value)} onBlur={() => {
+                        if (notes !== job.notes) void save(notesOperation, () => updateJobMeta(job.id, { notes }));
                     }} />
                     {job.url && (
                         <a href={job.url} target="_blank" rel="noreferrer noopener" className={cn("inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 text-13 text-fg-muted hover:bg-surface-hover hover:text-fg", FOCUS_RING)}>
@@ -699,7 +732,8 @@ function GuidelinesSection({ missingMust, keywordGaps, declinedNeeded, onAnswerD
 }
 
 function CapsEditor({ caps, onChange, onSave }: { caps: Preferences["caps"]; onChange: (c: Preferences["caps"]) => void; onSave: () => Promise<void> }) {
-    const [saving, setSaving] = useState(false);
+    const capsOperation = useJobOperation<"save">();
+    const saving = capsOperation.state.status === "running";
     return (
         <div className="space-y-3 rounded-md border border-border bg-surface-muted/50 p-3">
             <p className="text-13 text-fg-muted">Maximum items per section in a recommended selection. Leave empty for no limit.</p>
@@ -718,7 +752,7 @@ function CapsEditor({ caps, onChange, onSave }: { caps: Preferences["caps"]; onC
                     </label>
                 ))}
             </div>
-            <Button size="sm" variant="primary" loading={saving} onClick={async () => { setSaving(true); try { await onSave(); } finally { setSaving(false); } }}>Save limits</Button>
+            <Button size="sm" variant="primary" loading={saving} onClick={async () => { const run = capsOperation.start("save"); if (!run) return; try { await onSave(); } finally { run.complete(); } }}>Save limits</Button>
         </div>
     );
 }

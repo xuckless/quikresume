@@ -13,5 +13,5 @@ export async function GET(req: Request) {
     const d = (await readUserDoc(g.uid)).data() ?? {};
     const str = (v: unknown) => (typeof v === "string" ? v : "");
     const name = [str(d.firstName), str(d.lastName)].filter(Boolean).join(" ") || str(d.name);
-    return extJson(req, { ok: true, user: { name, email: str(d.email), image: str(d.image) } });
+    return extJson(req, { ok: true, user: { id: g.uid, name, email: str(d.email), image: str(d.image) } });
 }

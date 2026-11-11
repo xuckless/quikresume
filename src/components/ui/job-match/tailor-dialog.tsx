@@ -8,7 +8,7 @@
 // allowed and explained in yellow. Close writes the selection onto the working
 // selection; Save variant (and download PDF) creates and loads a variant.
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ResumeData, ResumeListKey } from "@/types/schema";
 import { RESUME_LIST_KEYS } from "@/types/schema";
@@ -41,9 +41,11 @@ import { ResumePreview } from "@/components/ui/resume-preview";
 import { useResumePageCount } from "@/components/ui/use-page-count";
 import { SkillQuestions } from "./skill-questions";
 
-type Step = "questions" | "review";
+import { useJobOperation } from "@/lib/ui/job-use-operation";
+import { tailorReviewTransition, type TailorReviewState, type TailorAiState } from "@/lib/ui/job-tailor-state";
+
 type Busy = null | "close" | "save" | "download" | "fit";
-type AiState = { status: "running" } | { status: "done"; untrimmed: TailorSuggestion[]; trimmed: TailorSuggestion[] } | { status: "failed"; message: string };
+type AiState = TailorAiState;
 type TrimNotes = { items: Record<string, string>; keys: Record<string, Record<string, string>> };
 
 interface TailorDialogProps {
@@ -67,18 +69,21 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
     const gaps = uncoveredRequirements(job.requirements, resumeData, aliases);
     const hasQuestions = gaps.length > 0;
 
-    const [step, setStep] = useState<Step>(hasQuestions ? "questions" : "review");
+    const [review, dispatchReview] = useReducer(tailorReviewTransition, hasQuestions ? { step: "questions" } : { step: "review", run: 0, ai: { status: "running" } } as TailorReviewState);
+    const step = review.step;
+    const ai: AiState = review.step === "review" ? review.ai : { status: "running" };
     const [requirements, setRequirements] = useState<Requirement[]>(job.requirements);
     const [plan, setPlan] = useState<TailorPlan>(() => buildTailorPlan(job.requirements, resumeData, caps, aliases));
     const [sel, setSel] = useState<TailorSelection>(() => selectionOf(resumeData));
-    const [ai, setAi] = useState<AiState>({ status: "running" });
     const [dismissed, setDismissed] = useState<Set<string>>(new Set());
     const [trimNotes, setTrimNotes] = useState<TrimNotes>({ items: {}, keys: {} });
     const [allowMultiPage, setAllowMultiPage] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
     const [name, setName] = useState([job.company, job.title].filter(Boolean).join(" · ") || "Tailored résumé");
-    const [busy, setBusy] = useState<Busy>(null);
-    const [error, setError] = useState<string | null>(null);
+    const operationController = useJobOperation<NonNullable<Busy> | "compile-download" | "save-download">();
+    const operation = operationController.state;
+    const busy: Busy = operation.status === "running" ? (operation.operation === "compile-download" || operation.operation === "save-download" ? "download" : operation.operation) : null;
+    const error = operation.status === "failed" ? operation.message : null;
     const [warning, setWarning] = useState<string | null>(null);
     const started = useRef(false);
     const runId = useRef(0);
@@ -91,8 +96,7 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
         setLibrary(lib);
         setSel(base);
         setPlan(tagPlan);
-        setStep("review");
-        setAi({ status: "running" });
+        dispatchReview({ type: "review", run: id });
         setDismissed(new Set());
 
         let reviewed = tagPlan;
@@ -114,20 +118,21 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
             failure = `${err instanceof Error ? err.message : "The AI review failed."} Suggestions come from tag matching only.`;
         }
 
+        if (runId.current !== id) return;
         try {
             await ensureTypst();
             const target = { ...planSelection(reviewed), layout: base.layout };
             const fitted = await fitToOnePage(reviewed, target, lib, pagesOf(lib));
             if (runId.current !== id) return;
-            setAi({
+            dispatchReview({ type: "settle", run: id, ai: {
                 status: "done",
                 untrimmed: diffSuggestions(reviewed, target, base),
                 trimmed: diffSuggestions(reviewed, fitted.selection, base, fitted.trim),
-            });
+            } });
             if (failure) setWarning(failure);
         } catch (err) {
             if (runId.current !== id) return;
-            setAi({ status: "failed", message: failure ?? formatTypstError(err) });
+            dispatchReview({ type: "settle", run: id, ai: { status: "failed", message: failure ?? formatTypstError(err) } });
         }
     };
 
@@ -139,6 +144,8 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    useEffect(() => () => { runId.current++; started.current = false; }, []);
+
     const applied = applySelection(library, sel);
     const suggestions = ai.status === "done" ? (allowMultiPage ? ai.untrimmed : ai.trimmed) : [];
     const pending = suggestions.filter(s => !dismissed.has(s.id) && isPending(s, sel));
@@ -149,11 +156,12 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
     const acceptAll = () => setSel(prev => pending.reduce(acceptSuggestion, prev));
 
     const fit = async () => {
-        setBusy("fit");
-        setError(null);
+        const run = operationController.start("fit");
+        if (!run) return;
         try {
             await ensureTypst();
             const result = await fitToOnePage(plan, sel, library, pagesOf(library));
+            if (!run.active()) return;
             setSel({ ...result.selection, layout: sel.layout });
             setTrimNotes(prev => {
                 const next: TrimNotes = { items: { ...prev.items }, keys: { ...prev.keys } };
@@ -163,38 +171,42 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
             });
             // Trimming is done: the remaining one-page suggestions no longer apply.
             setDismissed(prev => new Set([...prev, ...suggestions.filter(s => s.source === "trim").map(s => s.id)]));
-            if (result.pages > 1) setError("Could not fit one page without removing locked content. Switch something off or allow more pages.");
+            if (result.pages > 1) run.fail("Could not fit one page without removing locked content. Switch something off or allow more pages.");
         } catch (err) {
-            setError(formatTypstError(err));
+            run.fail(formatTypstError(err));
         } finally {
-            setBusy(null);
+            run.complete();
         }
     };
 
     const close = async () => {
-        if (busy) return;
-        runId.current++;
+        const run = operationController.start("close");
+        if (!run) return;
         const layoutChanged = JSON.stringify(applied.layout) !== JSON.stringify(library.layout);
-        if (step !== "review" || (!layoutChanged && selectionEquals(library, selectedIds(applied), selectedHidden(applied)))) { onClose(); return; }
-        setBusy("close");
-        setError(null);
+        if (step !== "review" || (!layoutChanged && selectionEquals(library, selectedIds(applied), selectedHidden(applied)))) { runId.current++; onClose(); return; }
+
         try {
             await applyWorkingSelection({ items: selectedIds(applied), hidden: selectedHidden(applied), layout: layoutChanged ? applied.layout : undefined });
+            if (!run.active()) return;
+            runId.current++;
             router.refresh();
             onClose("Applied your changes to the working selection.");
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Could not apply the selection.");
-            setBusy(null);
+            run.fail(err instanceof Error ? err.message : "Could not apply the selection.");
+            run.complete();
         }
     };
 
     const save = async (download: boolean) => {
-        setBusy(download ? "download" : "save");
-        setError(null);
+        const run = operationController.start(download ? "compile-download" : "save");
+        if (!run) return;
         try {
             // Compile first so a Typst error leaves nothing half-saved.
             const bytes = download ? await compilePdf(toTypstDoc(applied)) : null;
+            if (!run.active()) return;
+            if (download) run.advance("save-download");
             const r = await createVariantFromPlan({ name, labels: [job.company].filter(Boolean), items: selectedIds(applied), hidden: selectedHidden(applied), layout: applied.layout });
+            if (!run.active()) return;
             if (bytes) {
                 const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
                 const a = document.createElement("a");
@@ -209,8 +221,8 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
             router.refresh();
             onClose(`Created and loaded "${name}"${bytes ? " and downloaded the PDF" : ""}.${r.missing ? ` ${r.missing} items no longer existed and were skipped.` : ""}`);
         } catch (err) {
-            setError(err instanceof Error ? (download ? formatTypstError(err) : err.message) : "Could not create the variant.");
-            setBusy(null);
+            run.fail(err instanceof Error ? (download ? formatTypstError(err) : err.message) : "Could not create the variant.");
+            run.complete();
         }
     };
 
@@ -243,7 +255,7 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
             )}
         >
             <div className="space-y-4">
-                {error && <NoticeBanner tone="danger" onDismiss={() => setError(null)}>{error}</NoticeBanner>}
+                {error && <NoticeBanner tone="danger" onDismiss={() => operationController.dismiss()}>{error}</NoticeBanner>}
                 {warning && step === "review" && <NoticeBanner tone="warning" onDismiss={() => setWarning(null)}>{warning}</NoticeBanner>}
 
                 {step === "questions" && (

@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 };
 
 const CONTACT = SITE_CONTACT_EMAIL;
-const UPDATED = "November 3, 2026";
+const UPDATED = "November 10, 2026";
 
 function H({ children }: { children: React.ReactNode }) {
     return <h2 className="mt-10 text-lg font-semibold tracking-tight text-fg">{children}</h2>;
@@ -44,6 +44,7 @@ export default async function PrivacyPage() {
                 <p>On the &quot;Start&quot; page, your draft stays in your browser&apos;s local storage until you sign in or start over. An uploaded résumé and a pasted job are sent to the AI providers above to be read and matched, and are not stored on our servers. To prevent abuse we use <strong className="text-fg">Cloudflare Turnstile</strong> and count requests per visitor using a one-way hash of your IP address; the address itself is not stored. If you sign in afterwards, the draft is added to your new account.</p>
 
                 <H>The browser extension</H>
+                <p>When you request LinkedIn profile import, the extension reads inline profile text from the saved profile URL after you click Import. This text is sent through quikResume to Z.ai to structure your résumé draft. Hidden sections may be incomplete. The URL is saved immediately; review imported content and use Save &amp; Exit to persist it. LinkedIn credentials are never collected, and the LinkedIn tab stays open.</p>
                 <ul>
                     <li>It reads a page only to do what you asked: detect a job posting on supported job sites, save it when you click Save, or fill an application form when you click Auto Fill. Pages on other sites are read only when you click &quot;Scan this page&quot;.</li>
                     <li>Saved postings (title, company, location, link and description) are sent to your quikResume account. Auto Fill reads the labels of form fields on that page, fills empty fields from your profile and preferences, and sends open questions plus the posting to us to draft answers. It never submits a form and never ticks consent boxes.</li>

@@ -1,17 +1,25 @@
+import { transitionProfile, ownsSession, type Session } from "../lib/workflow";
+import { canonicalProfileUrl } from "../lib/profile-url";
 // Background service worker: the only place that holds the token and talks to the quikResume API.
 // Keeps per-tab state (detected posting, saved job summary) in chrome.storage.session so it survives
 // the worker being suspended, drives the toolbar badge, and answers the side panel / content scripts.
 
 import { api, apiBytes, ApiError, appUrl, clearToken, getToken, setToken } from "../lib/api";
 import type { AutofillData } from "../lib/fields";
-import type { AccountStatus, BgRequest, JobSummary, Posting, TabState, TailorResult, TailorState, VariantInfo } from "../lib/types";
+import type { AccountStatus, BgRequest, JobSummary, Posting, TabState, TailorResult, VariantInfo } from "../lib/types";
 
-const EMPTY: TabState = { posting: null, summary: null, autofill: null, saving: false, error: null };
+const EMPTY: TabState = { posting: null, summary: null, autofill: null, operation: { phase: "idle" } };
 const key = (tabId: number) => `tab:${tabId}`;
 
 async function getState(tabId: number): Promise<TabState> {
     const v = (await chrome.storage.session.get(key(tabId)))[key(tabId)] as TabState | undefined;
-    return v ?? { ...EMPTY };
+    if (!v) return { ...EMPTY };
+    // Session storage can outlive an extension update. Preserve the detected job,
+    // but discard operations from the old schema whose workers no longer exist.
+    return { ...v, operation: v.operation ?? { phase: "idle" },
+        autofill: v.autofill?.phase ? v.autofill : null,
+        tailor: v.tailor?.phase ? v.tailor : null };
+
 }
 
 async function setState(tabId: number, patch: Partial<TabState>): Promise<TabState> {
@@ -24,7 +32,7 @@ async function setState(tabId: number, patch: Partial<TabState>): Promise<TabSta
 }
 
 async function paintBadge(tabId: number, s: TabState) {
-    const text = s.saving ? "…" : s.summary ? String(s.summary.score) : s.posting ? "•" : "";
+    const text = s.operation.phase === "saving" ? "…" : s.summary ? String(s.summary.score) : s.posting ? "•" : "";
     await chrome.action.setBadgeText({ tabId, text }).catch(() => undefined);
     await chrome.action.setBadgeBackgroundColor({ tabId, color: "#003200" }).catch(() => undefined);
     await chrome.action.setBadgeTextColor?.({ tabId, color: "#ffffff" }).catch(() => undefined);
@@ -38,7 +46,7 @@ async function lookup(tabId: number, posting: Posting) {
     try {
         const res = await api<{ job: JobSummary | null }>(`/api/ext/jobs?url=${encodeURIComponent(posting.url)}`);
         const cur = await getState(tabId);
-        if (cur.posting?.url === posting.url) await setState(tabId, { summary: res.job, error: null });
+        if (cur.posting?.url === posting.url) await setState(tabId, { summary: res.job, operation: { phase: "idle" } });
     } catch (err) {
         if (!(err instanceof ApiError && err.status === 401)) console.warn("[quikresume] lookup failed", err);
     }
@@ -82,6 +90,46 @@ async function status(): Promise<AccountStatus> {
 
 async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Promise<unknown> {
     switch (msg.type) {
+        case "profile-capture": {
+            if (sender.tab) throw new Error("Use the extension panel to capture.");
+            const state = (await getState(msg.tabId)).profileImport;
+            const run = [...profileRuns.values()].find(r => r.tabId === msg.tabId && r.id === state?.id);
+            if (!state) throw new Error("Start again from the website.");
+            if (!run) { await setState(msg.tabId, { profileImport: { ...state, phase: "error", error: "Import session ended. Cancel and restart from the website." } }); return; }
+            if (!["waiting", "error"].includes(state.phase)) return;
+            if (run.phase === "capturing") return;
+            run.phase = "capturing";
+            try {
+                const me = await api<{ user: { id: string } }>("/api/ext/me");
+                if (me.user.id !== run.uid) throw new Error("Account changed. Reconnect on the website.");
+                if (profileRuns.get(run.port) !== run) return;
+                const tab = await chrome.tabs.get(msg.tabId);
+                if (profileRuns.get(run.port) !== run) return;
+                if (canonicalProfileUrl(tab.url ?? "") !== state.url) throw new Error("Open the exact saved profile URL.");
+                await setState(msg.tabId, { profileImport: transitionProfile(state, { type: "capture" }) });
+                run.port.postMessage({ type: "profile-progress", id: run.id, phase: "capturing" });
+                const capture = () => chrome.tabs.sendMessage(msg.tabId, { type: "capture-profile", url: state.url });
+                let data;
+                try { data = await capture(); }
+                catch {
+                    // Tabs already open when the unpacked extension reloads have no profile listener.
+                    await chrome.scripting.executeScript({ target: { tabId: msg.tabId }, files: ["/content-scripts/profile.js"] });
+                    data = await capture();
+                }
+                const after = await chrome.tabs.get(msg.tabId);
+                if (profileRuns.get(run.port) !== run) return;
+                if (canonicalProfileUrl(after.url ?? "") !== state.url || !data?.ok || typeof data.text !== "string" || data.text.length > 100_000) throw new Error(data?.error ?? "Profile changed or could not be captured.");
+                await setState(msg.tabId, { profileImport: transitionProfile(transitionProfile(state, { type: "capture" }), { type: "captured" }) });
+                run.phase = "analyzing";
+                run.port.postMessage({ type: "profile-text", id: run.id, url: state.url, text: data.text, warnings: data.warnings });
+            } catch (err) {
+                if (profileRuns.get(run.port) === run) {
+                    await setState(msg.tabId, { profileImport: { ...state, phase: "error", error: errorText(err) } });
+                    run.port.postMessage({ type: "profile-capture-error", id: run.id, error: errorText(err) });
+                }
+            } finally { if (run.phase === "capturing") run.phase = "waiting"; }
+            return;
+        }
         case "detected": {
             const tabId = sender.tab?.id;
             if (tabId === undefined) return null;
@@ -89,7 +137,7 @@ async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Pro
             const same = cur.posting?.url === msg.posting?.url;
             // Leaving the posting for its application form keeps the job (Auto Fill uses it); a new posting replaces it.
             const keep = same || msg.posting === null;
-            const next = await setState(tabId, { posting: msg.posting, summary: keep ? cur.summary : null, tailor: keep ? cur.tailor : null, error: null, saving: same ? cur.saving : false });
+            const next = await setState(tabId, { posting: msg.posting, summary: keep ? cur.summary : null, tailor: keep ? cur.tailor : null, operation: same ? cur.operation : { phase: "idle" } });
             if (msg.posting && !same) void lookup(tabId, msg.posting);
             return next;
         }
@@ -121,27 +169,28 @@ async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Pro
         case "tab-state":
             return getState(msg.tabId);
         case "scan": {
-            await setState(msg.tabId, { error: null });
+            await setState(msg.tabId, { operation: { phase: "idle" } });
             try {
                 await chrome.scripting.executeScript({ target: { tabId: msg.tabId }, files: ["/content-scripts/scan.js"] });
             } catch {
-                await setState(msg.tabId, { error: "This page can't be read (browser pages and the Web Store are off limits)." });
+                await setState(msg.tabId, { operation: { phase: "failed", error: "This page can't be read (browser pages and the Web Store are off limits)." } });
             }
             return null;
         }
         case "save": {
             const s = await getState(msg.tabId);
-            if (!s.posting) return null;
-            await setState(msg.tabId, { saving: true, error: null });
+            if (!s.posting || s.operation.phase === "saving") return null;
+            await setState(msg.tabId, { operation: { phase: "saving" } });
             try {
                 const p = s.posting;
                 const res = await api<{ summary: JobSummary | null }>("/api/ext/jobs", {
                     method: "POST",
                     body: { url: p.url, title: p.title, company: p.company, location: p.location, employmentType: p.employmentType, description: p.description, extractionMethod: p.method },
                 });
-                await setState(msg.tabId, { saving: false, summary: res.summary });
+                if ((await getState(msg.tabId)).posting?.url !== p.url) return null;
+                await setState(msg.tabId, { operation: { phase: "idle" }, summary: res.summary });
             } catch (err) {
-                await setState(msg.tabId, { saving: false, error: errorText(err) });
+                await setState(msg.tabId, { operation: { phase: "failed", error: errorText(err) } });
             }
             return null;
         }
@@ -152,7 +201,7 @@ async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Pro
                 const res = await api<{ summary: JobSummary }>(`/api/ext/jobs/${s.summary.job.id}`);
                 await setState(msg.tabId, { summary: res.summary });
             } catch (err) {
-                await setState(msg.tabId, { error: errorText(err) });
+                await setState(msg.tabId, { operation: { phase: "failed", error: errorText(err) } });
             }
             return null;
         }
@@ -163,7 +212,7 @@ async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Pro
                 const res = await api<{ summary: JobSummary }>(`/api/ext/jobs/${s.summary.job.id}`, { method: "PATCH", body: { status: msg.status } });
                 await setState(msg.tabId, { summary: res.summary });
             } catch (err) {
-                await setState(msg.tabId, { error: errorText(err) });
+                await setState(msg.tabId, { operation: { phase: "failed", error: errorText(err) } });
             }
             return null;
         }
@@ -181,29 +230,30 @@ async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Pro
                 // A different starting résumé makes an earlier tailor run stale.
                 await setState(msg.tabId, { summary: res.summary, tailor: null });
             } catch (err) {
-                await setState(msg.tabId, { error: errorText(err) });
+                await setState(msg.tabId, { operation: { phase: "failed", error: errorText(err) } });
             }
             return null;
         }
         case "tailor": {
             const s = await getState(msg.tabId);
-            if (!s.summary || s.tailor?.running) return null;
+            if (!s.summary || s.tailor?.phase === "running") return null;
             const jobId = s.summary.job.id;
-            const idle: TailorState = { running: false, saving: false, result: null, error: null };
-            await setState(msg.tabId, { tailor: { ...idle, running: true } });
+            await setState(msg.tabId, { tailor: { phase: "running" } });
             try {
                 const res = await api<Omit<TailorResult, "jobId">>("/api/ext/tailor", { method: "POST", body: { jobId } });
-                await setState(msg.tabId, { tailor: { ...idle, result: { ...res, jobId } } });
+                const current = await getState(msg.tabId);
+                if (current.summary?.job.id !== jobId || current.tailor?.phase !== "running") return null;
+                await setState(msg.tabId, { tailor: { phase: "review", result: { ...res, jobId } } });
             } catch (err) {
-                await setState(msg.tabId, { tailor: { ...idle, error: errorText(err) } });
+                await setState(msg.tabId, { tailor: { phase: "failed", error: errorText(err) } });
             }
             return null;
         }
         case "tailor-save": {
             const s = await getState(msg.tabId);
-            if (!s.summary || !s.tailor?.result) return null;
+            if (!s.summary || !s.tailor?.result || s.tailor.phase === "saving") return null;
             const t = s.tailor;
-            await setState(msg.tabId, { tailor: { ...t, saving: true, error: null } });
+            await setState(msg.tabId, { tailor: { phase: "saving", result: t.result! } });
             try {
                 const res = await api<{ summary: JobSummary | null }>("/api/ext/tailor/save", {
                     method: "POST", body: { jobId: s.summary.job.id, name: msg.name, include: msg.selection.include, hidden: msg.selection.hidden },
@@ -211,7 +261,7 @@ async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Pro
                 await setState(msg.tabId, { summary: res.summary ?? s.summary, tailor: null });
                 return { ok: true };
             } catch (err) {
-                await setState(msg.tabId, { tailor: { ...t, saving: false, error: errorText(err) } });
+                await setState(msg.tabId, { tailor: { phase: "save-failed", result: t.result!, error: errorText(err) } });
                 return { ok: false };
             }
         }
@@ -220,18 +270,20 @@ async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Pro
             return null;
         case "autofill": {
             const tabId = msg.tabId;
-            runs.set(tabId, { at: Date.now() });
-            await setState(tabId, { autofill: { running: true, filled: 0, drafted: 0, attached: null, unmapped: [], error: null } });
+            if ((await getState(tabId)).autofill?.phase === "running") return null;
+            const autofillRun = { at: Date.now() };
+            runs.set(tabId, autofillRun);
+            await setState(tabId, { autofill: { phase: "running", filled: 0, drafted: 0, attached: null, unmapped: [] } });
             try {
                 await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ["/content-scripts/fill.js"] });
             } catch {
-                await setState(tabId, { autofill: { running: false, filled: 0, drafted: 0, attached: null, unmapped: [], error: "This page can't be filled (browser pages and the Web Store are off limits)." } });
+                await setState(tabId, { autofill: { phase: "failed", filled: 0, drafted: 0, attached: null, unmapped: [], error: "This page can't be filled (browser pages and the Web Store are off limits)." } });
                 return null;
             }
             // Frames without a form never report; stop the spinner after a while.
             setTimeout(async () => {
                 const s = await getState(tabId);
-                if (s.autofill?.running) await setState(tabId, { autofill: { ...s.autofill, running: false, error: s.autofill.filled || s.autofill.drafted ? null : "No application form found on this page." } });
+                if (runs.get(tabId) === autofillRun && s.autofill?.phase === "running") await setState(tabId, { autofill: { ...s.autofill, phase: "failed", error: "No application form found on this page." } });
             }, 45_000);
             return null;
         }
@@ -248,7 +300,7 @@ async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Pro
                 return { ok: true, data: await run.data, pdf: msg.needPdf ? await run.pdf : null };
             } catch (err) {
                 const s = await getState(tabId);
-                await setState(tabId, { autofill: { ...(s.autofill ?? { filled: 0, drafted: 0, attached: null, unmapped: [] }), running: false, error: errorText(err) } });
+                await setState(tabId, { autofill: { ...(s.autofill ?? { filled: 0, drafted: 0, attached: null, unmapped: [] }), phase: "failed", error: errorText(err) } });
                 return { ok: false, error: errorText(err) };
             }
         }
@@ -265,10 +317,10 @@ async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Pro
             const tabId = sender.tab?.id;
             if (tabId === undefined) return null;
             const s = await getState(tabId);
-            const prev = s.autofill ?? { running: false, filled: 0, drafted: 0, attached: null, unmapped: [], error: null };
+            const prev = s.autofill ?? { phase: "complete", filled: 0, drafted: 0, attached: null, unmapped: [] };
             await setState(tabId, {
                 autofill: {
-                    running: false, error: null,
+                    phase: "complete",
                     filled: prev.filled + msg.filled, drafted: prev.drafted + msg.drafted, attached: msg.attached ?? prev.attached,
                     unmapped: [...new Set([...prev.unmapped, ...msg.unmapped])].slice(0, 30),
                 },
@@ -282,13 +334,72 @@ async function handle(msg: BgRequest, sender: chrome.runtime.MessageSender): Pro
     }
 }
 
+const profileRuns = new Map<chrome.runtime.Port, { port: chrome.runtime.Port; id: string; uid: string; tabId: number; phase: "waiting" | "capturing" | "analyzing" }>();
+async function clearProfile(port: chrome.runtime.Port) {
+    const run = profileRuns.get(port);
+    profileRuns.delete(port);
+    if (run) await setState(run.tabId, { profileImport: undefined }).catch(() => undefined);
+}
+
 export default defineBackground(() => {
+    chrome.runtime.onConnect.addListener(port => {
+        if (port.name !== "profile-import" || !port.sender?.tab?.id || new URL(port.sender.url ?? "https://invalid").origin !== new URL(appUrl()).origin) { port.disconnect(); return; }
+        let session: Session<object> = { phase: "idle" };
+        port.onDisconnect.addListener(() => { session = { phase: "idle" }; void clearProfile(port); });
+        port.onMessage.addListener(async m => {
+            try {
+                if (m.type === "profile-cancel") {
+                    if (!ownsSession(session, m.id)) return;
+                    session = { phase: "idle" };
+                    await clearProfile(port); return;
+                }
+                if (m.type === "profile-result") {
+                    const run = profileRuns.get(port);
+                    if (!run || run.id !== m.id) return;
+                    const state = (await getState(run.tabId)).profileImport;
+                    if (state?.phase !== "analyzing" || profileRuns.get(port) !== run) return;
+                    await setState(run.tabId, { profileImport: transitionProfile(state, m.ok === true ? { type: "parsed" } : { type: "fail", error: typeof m.error === "string" ? m.error.slice(0,500) : "Profile analysis failed." }) });
+                    return;
+                }
+                if (m.type !== "profile-start" || typeof m.id !== "string" || !/^[a-f0-9-]{36}$/.test(m.id) || typeof m.uid !== "string" || typeof m.url !== "string" || !canonicalProfileUrl(m.url)) return;
+                const ticket: Session<object> = { phase: "starting", id: m.id };
+                session = ticket;
+                await clearProfile(port);
+                const me = await api<{ user: { id: string } }>("/api/ext/me");
+                if (me.user.id !== m.uid) throw new Error("Pair the extension with your current website account.");
+                if (session !== ticket) return;
+                const tab = await chrome.tabs.create({ url: canonicalProfileUrl(m.url)! });
+                if (session !== ticket) return;
+                if (!tab.id) throw new Error("Could not open LinkedIn.");
+                const run = { port, id: m.id, uid: m.uid, tabId: tab.id, phase: "waiting" as const };
+                session = { phase: "active", id: m.id, run };
+                profileRuns.set(port, run);
+                await setState(tab.id, { profileImport: { id: m.id, url: canonicalProfileUrl(m.url)!, phase: "waiting" } });
+                port.postMessage({ type: "profile-started", id: m.id });
+                chrome.sidePanel.open({ tabId: tab.id }).catch(() => undefined);
+            } catch (err) { port.postMessage({ type: "profile-error", id: m.id, error: errorText(err) }); }
+        });
+    });
+    chrome.tabs.onUpdated.addListener((tabId, info) => {
+        if (!info.url && info.status !== "loading") return;
+        for (const run of profileRuns.values()) if (run.tabId === tabId) {
+            void getState(tabId).then(s => {
+                if (s.profileImport && ["capturing", "analyzing", "ready"].includes(s.profileImport.phase) && (info.status === "loading" || canonicalProfileUrl(info.url!) !== s.profileImport.url)) {
+                    run.port.postMessage({ type: "profile-error", id: run.id, error: "LinkedIn navigated away. Cancel and restart the import." });
+                    void clearProfile(run.port);
+                }
+            });
+        }
+    });
     chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => undefined);
     chrome.runtime.onMessage.addListener((msg: BgRequest, sender, sendResponse) => {
         handle(msg, sender).then(sendResponse, err => sendResponse({ ok: false, error: errorText(err) }));
         return true;
     });
-    chrome.tabs.onRemoved.addListener(tabId => void chrome.storage.session.remove(key(tabId)));
+    chrome.tabs.onRemoved.addListener(tabId => {
+        for (const run of profileRuns.values()) if (run.tabId === tabId) { run.port.postMessage({ type: "profile-error", id: run.id, error: "LinkedIn tab closed. Start again." }); void clearProfile(run.port); }
+        void chrome.storage.session.remove(key(tabId));
+    });
     // A token revoked on the website: forget it on the next 401 (lib/api.ts) and tell open panels.
     chrome.storage.onChanged.addListener((changes, area) => {
         if (area === "local" && "token" in changes && !changes.token.newValue) {

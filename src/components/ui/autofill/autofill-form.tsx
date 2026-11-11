@@ -4,6 +4,7 @@
 // Autofill preferences form (meta/autofill). Saved as a whole with saveAutofillPrefs.
 
 import React, { useState } from "react";
+import { useFormsOperation } from "@/lib/ui/use-forms-operation";
 import { useRouter } from "next/navigation";
 import { saveAutofillPrefs } from "@/app/actions/autofill-actions";
 import { EEO_OPTIONS, LIMITS_AUTOFILL, type AutofillEeo, type AutofillPrefs, type YesNo } from "@/lib/autofill/types";
@@ -25,35 +26,36 @@ function YesNoField({ label, value, onChange, hint }: { label: string; value: Ye
 export function AutofillForm({ initial }: { initial: AutofillPrefs }) {
     const router = useRouter();
     const [p, setP] = useState(initial);
-    const [saving, setSaving] = useState(false);
-    const [notice, setNotice] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
+    const operation = useFormsOperation<"save", string>();
+    const saving = operation.state.status === "running";
+    const notice = operation.state.status === "succeeded" ? { tone: "success" as const, text: operation.state.result } : operation.state.status === "failed" ? { tone: "danger" as const, text: operation.state.error } : null;
     const set = <K extends keyof AutofillPrefs>(k: K, v: AutofillPrefs[K]) => setP(prev => ({ ...prev, [k]: v }));
     const addr = (k: keyof AutofillPrefs["address"], v: string) => setP(prev => ({ ...prev, address: { ...prev.address, [k]: v } }));
     const sal = (k: keyof AutofillPrefs["salary"], v: string) => setP(prev => ({ ...prev, salary: { ...prev.salary, [k]: v } as AutofillPrefs["salary"] }));
     const eeo = (k: keyof AutofillEeo, v: string) => setP(prev => ({ ...prev, eeo: { ...prev.eeo, [k]: v } }));
 
     const save = async () => {
-        setSaving(true);
-        setNotice(null);
+        const id = operation.begin("save");
+        if (id === null) return;
         try {
             const res = await saveAutofillPrefs(p);
-            if (res.ok) { setP(res.prefs); setNotice({ tone: "success", text: "Saved." }); router.refresh(); }
-            else setNotice({ tone: "danger", text: res.error });
+            if (res.ok) { setP(current => current === p ? res.prefs : current); operation.succeed(id, "Saved."); router.refresh(); }
+            else operation.fail(id, res.error);
         } catch (err) {
-            setNotice({ tone: "danger", text: err instanceof Error ? err.message : "Could not save." });
-        } finally {
-            setSaving(false);
+            operation.fail(id, err instanceof Error ? err.message : "Could not save.");
         }
     };
 
     const answerFor = (question: string) => {
+        // Called only from click handlers; each saved answer needs a stable local ID.
+        // eslint-disable-next-line react-hooks/purity
         const id = `a${Date.now().toString(36)}`;
         setP(prev => ({ ...prev, answers: [...prev.answers, { id, question, answer: "" }].slice(0, LIMITS_AUTOFILL.answers), unmapped: prev.unmapped.filter(u => u.label !== question) }));
     };
 
     return (
         <div className="space-y-4">
-            {notice && <NoticeBanner tone={notice.tone} onDismiss={() => setNotice(null)}>{notice.text}</NoticeBanner>}
+            {notice && <NoticeBanner tone={notice.tone} onDismiss={() => operation.reset()}>{notice.text}</NoticeBanner>}
 
             {p.unmapped.length > 0 && (
                 <Card>

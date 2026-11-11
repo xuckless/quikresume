@@ -1,5 +1,6 @@
 "use client";
 
+import { useFormsOperation } from "@/lib/ui/use-forms-operation";
 import React, { startTransition, useOptimistic, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { cn } from "@/lib/cn";
@@ -102,7 +103,8 @@ export function LibraryRow({ id, title, subtitle, meta, isSelected, active, tags
     };
     const reReview = () => kickReviews({ ids: [id], onDone: r => { if (r.reviewed > 0) coach?.onReviewed(); } });
     const [confirmDelete, setConfirmDelete] = useState(false);
-    const [deleting, setDeleting] = useState(false);
+    const deletion = useFormsOperation<"delete">();
+    const deleting = deletion.state.status === "running";
     const name = title || "Untitled";
 
     /** Form action that reports a failure instead of silently reverting. */
@@ -116,16 +118,17 @@ export function LibraryRow({ id, title, subtitle, meta, isSelected, active, tags
     };
 
     const doDelete = async () => {
-        setDeleting(true);
+        const request = deletion.begin("delete");
+        if (request === null) return;
         try {
             await onDelete(id);
+            deletion.succeed(request, undefined);
             setConfirmDelete(false);
         } catch (err) {
+            deletion.fail(request, "Delete failed");
             console.error("[library] delete failed:", err);
             onError(`Couldn't delete "${name}". Try again.`);
             setConfirmDelete(false);
-        } finally {
-            setDeleting(false);
         }
     };
 

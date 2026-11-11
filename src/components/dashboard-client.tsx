@@ -1,6 +1,7 @@
 "use client";
 
-import React, { Suspense, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
+import React, { Suspense, useCallback, useEffect, useOptimistic, useReducer, useRef, useState, useTransition } from "react";
+import { importQueueTransition, initialImportQueue } from "@/lib/import/queue";
 import { updateLayout } from "@/app/actions/layout-actions";
 import type { ResumeTheme } from "@/lib/layout/theme";
 import dynamic from "next/dynamic";
@@ -14,6 +15,7 @@ import type { JobRecord, Preferences, Proposal } from "@/lib/match/types";
 import type { AliasMap } from "@/lib/tags/normalize";
 import { ResumeForm } from "@/components/ui/editor/resume-form";
 import { LibraryView, libraryCounts, type LibraryLists } from "@/components/ui/library/library-view";
+import { editorTransition, reReviewTransition, type EditorEvent, type EditorWorkflow, type ReReviewEvent, type ReReviewWorkflow } from "@/lib/ui/editor-workflow";
 import { ResumeImport } from "@/components/ui/resume-import";
 import { StaleTagsNotice } from "@/components/ui/library/stale-tags-notice";
 import { JobMatchView, type ExternalResume } from "@/components/ui/job-match-view";
@@ -154,14 +156,26 @@ function DashboardClientInner({
     const [libraryTab, setLibraryTab] = useState<SectionTab>("all");
     const [libraryQuery, setLibraryQuery] = useState("");
     const [editorTab, setEditorTab] = useState<SectionTab>("all");
-    const [isSaving, setIsSaving] = useState(false);
-    const [saveError, setSaveError] = useState<string | null>(null);
+    const [editorWorkflow, setEditorWorkflow] = useState<EditorWorkflow>({ phase: "editing" });
+    const editorWorkflowRef = useRef(editorWorkflow);
+    const sendEditor = useCallback((event: EditorEvent) => {
+        editorWorkflowRef.current = editorTransition(editorWorkflowRef.current, event);
+        setEditorWorkflow(editorWorkflowRef.current);
+    }, []);
+    const activeSave = (id: string) => {
+        const state = editorWorkflowRef.current;
+        return state.phase === "saving" && state.id === id;
+    };
+    const isSaving = editorWorkflow.phase === "saving";
+    const saveError = editorWorkflow.phase === "failed" ? editorWorkflow.error : null;
+    const confirmVariants = editorWorkflow.phase === "confirm-variants" ? editorWorkflow : null;
+    const confirmDiscard = editorWorkflow.phase === "confirm-discard";
+    const pendingLeave = editorWorkflow.phase === "confirm-leave" ? editorWorkflow.target : null;
+    const setSaveError = useCallback((error: string | null) => sendEditor(error ? { type: "error", error } : { type: "reset" }), [sendEditor]);
+    const setConfirmVariants = (confirmation: { names: string[]; target: string | null } | null) => sendEditor(confirmation ? { type: "variants", ...confirmation } : { type: "reset" });
+    const setConfirmDiscard = (confirm: boolean) => sendEditor({ type: confirm ? "discard-request" : "reset" });
+    const setPendingLeave = useCallback((target: string | null) => sendEditor(target ? { type: "leave-request", target } : { type: "reset" }), [sendEditor]);
     const [notice, setNotice] = useState<Notice | null>(null);
-    /** Variants affected by the edits being saved, and where to go after saving (null = Library). */
-    const [confirmVariants, setConfirmVariants] = useState<{ names: string[]; target: string | null } | null>(null);
-    const [confirmDiscard, setConfirmDiscard] = useState(false);
-    /** In-app navigation away from the editor with unsaved changes, waiting for Save / Discard / Keep editing. */
-    const [pendingLeave, setPendingLeave] = useState<string | null>(null);
     /** Item to open when the editor (re)mounts from an Action items link; the nonce remounts the form. */
     const [focusItem, setFocusItem] = useState<{ id: string; nonce: number } | null>(null);
 
@@ -180,6 +194,7 @@ function DashboardClientInner({
     // hide what Job Match / variants just wrote), leaving the editor asks to
     // save or discard, and leaving through browser Back discards it.
     const [draft, setDraft] = useState<ResumeData | null>(null);
+    const [importJobs, sendImportJob] = useReducer(importQueueTransition, initialImportQueue);
     /** Saved items removed in the editor: deleted by saveResumeData, forgotten on Discard. */
     const [pendingDeletes, setPendingDeletes] = useState<PendingDelete[]>([]);
     const editorDraft = draft ?? initialResumeData;
@@ -204,7 +219,7 @@ function DashboardClientInner({
             uninstall();
             window.removeEventListener("beforeunload", onBeforeUnload);
         };
-    }, [view, dirty]);
+    }, [view, dirty, setPendingLeave]);
 
     // Browser Back / Forward out of the editor cannot be intercepted: the draft is reverted.
     const hasDraft = draft !== null;
@@ -214,13 +229,14 @@ function DashboardClientInner({
             const url = new URL(window.location.href);
             if (url.pathname !== "/dashboard" || parseView(url.searchParams.get("view")) !== "editor") {
                 setDraft(null);
+                sendImportJob({ type: "draft-discarded" });
                 setPendingDeletes([]);
                 setSaveError(null);
             }
         };
         window.addEventListener("popstate", onPop);
         return () => window.removeEventListener("popstate", onPop);
-    }, [hasDraft]);
+    }, [hasDraft, setSaveError]);
 
     // Coach reviews come with the library rows; the model items decide staleness.
     const reviews: ReviewMap = Object.fromEntries(
@@ -251,8 +267,15 @@ function DashboardClientInner({
     const outdatedReviews = about.briefHash
         ? Object.values(reviews).filter(r => isBriefOutdated(r, about.briefHash)).length + (isBriefOutdated(profileReview, about.briefHash) ? 1 : 0)
         : 0;
-    const [reReviewing, setReReviewing] = useState(false);
-    const [confirmReReview, setConfirmReReview] = useState(false);
+    const [reviewWorkflow, setReviewWorkflow] = useState<ReReviewWorkflow>({ phase: "idle" });
+    const reviewWorkflowRef = useRef(reviewWorkflow);
+    const sendReview = (event: ReReviewEvent) => {
+        reviewWorkflowRef.current = reReviewTransition(reviewWorkflowRef.current, event);
+        setReviewWorkflow(reviewWorkflowRef.current);
+    };
+    const reReviewing = reviewWorkflow.phase === "running";
+    const confirmReReview = reviewWorkflow.phase === "confirming";
+    const setConfirmReReview = (confirm: boolean) => sendReview({ type: confirm ? "confirm" : "cancel" });
 
     const updateDraft = (updater: (prev: ResumeData) => ResumeData) => {
         setDraft(prev => updater(prev ?? initialResumeData));
@@ -291,6 +314,7 @@ function DashboardClientInner({
     };
 
     const doDiscard = () => {
+        sendImportJob({ type: "draft-discarded" });
         setConfirmDiscard(false);
         setDraft(null);
         setPendingDeletes([]);
@@ -321,16 +345,17 @@ function DashboardClientInner({
     const doSave = async (target: string | null = null) => {
         if (!draft) return;
         if (invalidDateItems(draft).length > 0 || contactBlocking(draft.personalInfo)) return;
-        setConfirmVariants(null);
-        setIsSaving(true);
-        setSaveError(null);
+        if (editorWorkflowRef.current.phase === "saving") return;
+        const saveId = crypto.randomUUID();
+        sendEditor({ type: "save", id: saveId, target });
         try {
             const result = await saveResumeData(draft, { deleted: pendingDeletes });
+            if (!activeSave(saveId)) return;
             if (!result.success) {
-                setSaveError(result.error);
-                if (result.field) { openItem("profile", `pi-${result.field}`); return; }
+                sendEditor({ type: "save-failed", id: saveId, error: result.error });
+                if (result.field) { openItem("profile", `pi-${result.field}`); setSaveError(result.error); return; }
                 const bad = invalidDateItems(draft).find(i => i.id === result.invalidIds[0]);
-                if (bad) openItem(bad.section, bad.id);
+                if (bad) { openItem(bad.section, bad.id); setSaveError(result.error); }
                 return;
             }
             const before = initialResumeData.personalInfo;
@@ -344,13 +369,13 @@ function DashboardClientInner({
                 : result.tagged > 0
                     ? { tone: "ok", text: `Saved. Analysed skills for ${result.tagged} ${result.tagged === 1 ? "item" : "items"}.` }
                     : { tone: "ok", text: "Saved." });
+            sendImportJob({ type: "draft-saved" });
+            sendEditor({ type: "saved", id: saveId });
             if (target) navigateDashboard(router, target);
             else setView("library", { replace: true });
         } catch (error) {
             console.error("Failed to save:", error);
-            setSaveError(error instanceof Error ? error.message : "Failed to save your library changes.");
-        } finally {
-            setIsSaving(false);
+            sendEditor({ type: "save-failed", id: saveId, error: error instanceof Error ? error.message : "Failed to save your library changes." });
         }
     };
 
@@ -366,6 +391,7 @@ function DashboardClientInner({
     };
 
     const leaveDiscarding = () => {
+        sendImportJob({ type: "draft-discarded" });
         const href = pendingLeave;
         setPendingLeave(null);
         setDraft(null);
@@ -498,7 +524,7 @@ function DashboardClientInner({
         ) : view === "preview" ? (
             <ResumePreview resumeData={previewData} onThemeChange={changeTheme} />
         ) : view === "import" ? (
-            <ResumeImport current={draft ?? initialResumeData} onImport={handleImport} onCancel={() => setView("library")} />
+            <ResumeImport jobs={importJobs} onQueueEvent={sendImportJob} onSavedLinkedInUrl={url => setDraft(prev => ({ ...(prev ?? initialResumeData), personalInfo: { ...(prev ?? initialResumeData).personalInfo, linkedin: url } }))} current={draft ?? initialResumeData} onImport={handleImport} onCancel={() => setView("library")} />
         ) : view === "jobs" ? (
             <JobMatchView
                 jobs={jobs}
@@ -626,12 +652,15 @@ function DashboardClientInner({
                 confirmLabel="Re-review"
                 onCancel={() => setConfirmReReview(false)}
                 onConfirm={() => {
-                    setConfirmReReview(false);
-                    setReReviewing(true);
-                    let done = 0;
+                    const id = crypto.randomUUID();
+                    sendReview({ type: "start", id });
                     reReviewAll(
-                        r => { done += r.reviewed; setNotice({ tone: "ok", text: `Re-reviewed ${done} ${done === 1 ? "item" : "items"}${r.remaining > 0 ? "…" : "."}` }); },
-                        () => { setReReviewing(false); refresh(); },
+                        r => {
+                            sendReview({ type: "progress", id, reviewed: r.reviewed });
+                            const state = reviewWorkflowRef.current;
+                            if (state.phase === "running" && state.id === id) setNotice({ tone: "ok", text: `Re-reviewed ${state.reviewed} ${state.reviewed === 1 ? "item" : "items"}${r.remaining > 0 ? "…" : "."}` });
+                        },
+                        () => { sendReview({ type: "complete", id }); refresh(); },
                     );
                 }}
             >

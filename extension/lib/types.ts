@@ -36,25 +36,32 @@ export interface JobSummary {
     whatIf: { display: string; importance: "must" | "nice"; gain: number }[];
 }
 
-export interface AutofillReport {
-    running: boolean;
+export interface AutofillCounts {
     filled: number;
     drafted: number;
     attached: string | null;
     /** Labels of fields left for the user (no data, custom widget, etc.). */
     unmapped: string[];
-    error: string | null;
 }
+export type AutofillReport = AutofillCounts & (
+    | { phase: "running" | "complete"; error?: never }
+    | { phase: "failed"; error: string }
+);
+export type Operation = { phase: "idle" | "saving"; error?: never } | { phase: "failed"; error: string };
+export type ProfileImport = { id: string; url: string } & (
+    | { phase: "waiting" | "capturing" | "analyzing" | "ready"; error?: never }
+    | { phase: "error"; error: string }
+);
 
 /** Per-tab state the background keeps and the side panel renders. */
 export interface TabState {
+    profileImport?: ProfileImport;
     posting: Posting | null;
     /** The saved job for this tab's posting; kept when the tab moves on to the application form. */
     summary: JobSummary | null;
     autofill: AutofillReport | null;
     /** True while the posting is being saved / analysed. */
-    saving: boolean;
-    error: string | null;
+    operation: Operation;
     /** Quick tailor run for the saved job (side panel). */
     tailor?: TailorState | null;
 }
@@ -77,7 +84,11 @@ export interface TailorResult {
     warning?: string;
 }
 
-export interface TailorState { running: boolean; saving: boolean; result: TailorResult | null; error: string | null }
+export type TailorState =
+    | { phase: "running"; result?: never; error?: never }
+    | { phase: "failed"; error: string; result?: never }
+    | { phase: "review" | "saving"; result: TailorResult; error?: never }
+    | { phase: "save-failed"; result: TailorResult; error: string };
 
 export interface VariantInfo { id: string; name: string; labels: string[] }
 
@@ -97,6 +108,7 @@ export function applySuggestions(base: TailorSelection, chosen: TailorSuggestion
 }
 
 export type BgRequest =
+    | { type: "profile-capture"; tabId: number }
     | { type: "detected"; posting: Posting | null }
     | { type: "open-panel" }
     | { type: "pair"; code: string }
@@ -120,7 +132,7 @@ export type BgRequest =
 
 export interface AccountStatus {
     paired: boolean;
-    user: { name: string; email: string; image: string } | null;
+    user: { id: string; name: string; email: string; image: string } | null;
     appUrl: string;
 }
 

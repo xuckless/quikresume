@@ -5,7 +5,8 @@
 // current one and resets the widget for the next request. Without NEXT_PUBLIC_TURNSTILE_SITE_KEY
 // (local dev) it renders nothing and `take()` resolves to "" (the server allows that outside production).
 
-import React, { useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useFormsOperation } from "@/lib/ui/use-forms-operation";
+import React, { useEffect, useImperativeHandle, useRef } from "react";
 
 // GuestGuard skips Turnstile in local development; don't load a production key there because
 // Cloudflare rejects localhost unless it is explicitly configured as an allowed hostname.
@@ -38,11 +39,14 @@ export function Turnstile({ ref }: { ref: React.Ref<TurnstileHandle> }) {
     const box = useRef<HTMLDivElement>(null);
     const widget = useRef<string | null>(null);
     const waiters = useRef<((t: string) => void)[]>([]);
-    const [error, setError] = useState(false);
+    const loading = useFormsOperation<"load-widget">();
+    const error = loading.state.status === "failed";
 
     useEffect(() => {
         if (!SITE_KEY) return;
         let cancelled = false;
+        const request = loading.begin("load-widget");
+        if (request === null) return;
         loadScript().then(() => {
             if (cancelled || !box.current || !window.turnstile || widget.current) return;
             widget.current = window.turnstile.render(box.current, {
@@ -50,8 +54,11 @@ export function Turnstile({ ref }: { ref: React.Ref<TurnstileHandle> }) {
                 appearance: "interaction-only",
                 callback: (token: string) => { const w = waiters.current; waiters.current = []; w.forEach(f => f(token)); },
             });
-        }).catch(() => setError(true));
-        return () => { cancelled = true; };
+            loading.succeed(request, undefined);
+        }).catch(() => { if (!cancelled) loading.fail(request, "Turnstile failed to load"); });
+        return () => { cancelled = true; loading.reset(); };
+        // Widget initialization is tied to this mount.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useImperativeHandle(ref, () => ({

@@ -3,6 +3,7 @@
 
 import type { ProfileLink } from "@/lib/contact/links";
 import { LinksEditor } from "@/components/ui/links-editor";
+import { useFormsOperation } from "@/lib/ui/use-forms-operation";
 import React, { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -34,7 +35,6 @@ interface ProfileFormProps {
     review: ItemReview | null;
 }
 
-type Status = "idle" | "saving" | "saved" | "error";
 
 export function ProfileForm({ initial, initialLinks, account, linkChecks, review }: ProfileFormProps) {
     const router = useRouter();
@@ -43,12 +43,14 @@ export function ProfileForm({ initial, initialLinks, account, linkChecks, review
     // Local draft seeded once from the server value; never re-synced from props.
     const [info, setInfo] = useState<PersonalInfo>(initial);
     const [links, setLinks] = useState<ProfileLink[]>(initialLinks);
-    const [status, setStatus] = useState<Status>("idle");
-    const [error, setError] = useState<string | null>(null);
+    const operation = useFormsOperation<"save">();
+    const suggestion = useFormsOperation<"apply">();
+    const status = operation.state.status === "running" ? "saving" : operation.state.status === "succeeded" ? "saved" : operation.state.status === "failed" ? "error" : "idle";
+    const error = operation.state.status === "failed" ? operation.state.error : suggestion.state.status === "failed" ? suggestion.state.error : null;
 
     const setValue = (field: keyof PersonalInfo, value: string) => {
         setInfo(prev => ({ ...prev, [field]: value }));
-        if (status === "saved") setStatus("idle");
+        if (status === "saved") operation.reset();
     };
     const set = (field: keyof PersonalInfo) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setValue(field, e.target.value);
 
@@ -57,27 +59,25 @@ export function ProfileForm({ initial, initialLinks, account, linkChecks, review
     const handleSave = async (e?: React.FormEvent) => {
         e?.preventDefault();
         if (blocking) return;
-        setStatus("saving");
-        setError(null);
+        const id = operation.begin("save");
+        if (id === null) return;
         try {
             const result = await updateUserProfile(info, links);
             if (!result.success) {
-                setStatus("error");
-                setError(result.error);
+                operation.fail(id, result.error);
                 return;
             }
             const extraChanged = JSON.stringify((result.links ?? links).map(l => l.url)) !== JSON.stringify(initialLinks.map(l => l.url));
             const linksChanged = extraChanged || (["github", "linkedin", "website"] as const).some(k => result.info[k] !== initial[k]) || Object.keys(linkChecks).length === 0;
-            setInfo(result.info);
-            if (result.links) setLinks(result.links);
-            setStatus("saved");
+            setInfo(current => current === info ? result.info : current);
+            if (result.links) { const savedLinks = result.links; setLinks(current => current === links ? savedLinks : current); }
+            operation.succeed(id, undefined);
             if (linksChanged) kickLinkCheck(() => router.refresh());
             if (result.info.headline !== initial.headline || result.info.summary !== initial.summary) {
                 kickReviews({ ids: [PROFILE_ID], onDone: r => { if (r.reviewed > 0) router.refresh(); } });
             }
         } catch (err) {
-            setStatus("error");
-            setError(err instanceof Error ? err.message : "Failed to save your profile.");
+            operation.fail(id, err instanceof Error ? err.message : "Failed to save your profile.");
         }
     };
 
@@ -89,13 +89,17 @@ export function ProfileForm({ initial, initialLinks, account, linkChecks, review
     const acceptSuggestion = async (s: ReviewSuggestion) => {
         const patch = applyProfileSuggestion(savedText, s);
         if (!patch) return;
+        const id = suggestion.begin("apply");
+        if (id === null) return;
         setHandled(prev => new Set(prev).add(s.id));
         try {
             await updateProfileFields(patch);
+            suggestion.succeed(id, undefined);
             setInfo(prev => ({ ...prev, ...patch }));
             router.refresh();
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Couldn't apply the suggestion.");
+            suggestion.fail(id, err instanceof Error ? err.message : "Couldn't apply the suggestion.");
+            setHandled(prev => { const next = new Set(prev); next.delete(s.id); return next; });
         }
     };
     const dismissSuggestion = async (s: ReviewSuggestion) => {
@@ -138,7 +142,7 @@ export function ProfileForm({ initial, initialLinks, account, linkChecks, review
                 <form onSubmit={handleSave} noValidate>
                 <CardHeader title="Résumé header" hint="These fields appear at the top of every résumé you generate." />
                 <CardBody className="space-y-4">
-                    {error && <NoticeBanner tone="danger" onDismiss={() => setError(null)}>{error}</NoticeBanner>}
+                    {error && <NoticeBanner tone="danger" onDismiss={() => { operation.reset(); suggestion.reset(); }}>{error}</NoticeBanner>}
                     <div className="grid gap-4 md:grid-cols-2">
                         {f("firstName", "First name", "Alex", { autoComplete: "given-name" })}
                         {f("lastName", "Last name", "Morgan", { autoComplete: "family-name" })}
@@ -147,7 +151,7 @@ export function ProfileForm({ initial, initialLinks, account, linkChecks, review
                         {f("phone", "Phone", "(123) 456-7890", { type: "tel", autoComplete: "tel" })}
                         {f("location", "Location", "Seattle, WA")}
                         {f("website", "Website", "alexmorgan.dev", { inputMode: "url" })}
-                        <div className="md:col-span-2"><LinksEditor value={links} onChange={next => { setLinks(next); if (status === "saved") setStatus("idle"); }} idPrefix="profile-links" checks={linkChecks} /></div>
+                        <div className="md:col-span-2"><LinksEditor value={links} onChange={next => { setLinks(next); if (status === "saved") operation.reset(); }} idPrefix="profile-links" checks={linkChecks} /></div>
                         {f("github", "GitHub", "github.com/alexmorgan")}
                         {f("linkedin", "LinkedIn", "linkedin.com/in/alexmorgan")}
                         <Field label="Professional summary" htmlFor="profile-summary" className="md:col-span-2" {...wordCaution(summaryWordCount(info), "your summary")}>

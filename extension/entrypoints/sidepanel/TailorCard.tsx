@@ -45,8 +45,8 @@ export function TailorCard({ s, tabId, state }: { s: JobSummary; tabId: number; 
                 <h2>Quick tailor</h2>
                 <p className="muted" style={{ margin: 0 }}>Pick the items and lines that fit this job, trimmed to one page. Nothing changes until you save.</p>
                 {t?.error && <p className="err" style={{ margin: 0 }}>{t.error}</p>}
-                <button className="btn primary block" disabled={t?.running} onClick={() => void send({ type: "tailor", tabId })}>
-                    {t?.running ? <><span className="spinner" /> Tailoring… (up to 2 min)</> : "Tailor my résumé for this job"}
+                <button className="btn primary block" disabled={t?.phase === "running"} onClick={() => void send({ type: "tailor", tabId })}>
+                    {t?.phase === "running" ? <><span className="spinner" /> Tailoring… (up to 2 min)</> : "Tailor my résumé for this job"}
                 </button>
             </div>
         );
@@ -84,8 +84,8 @@ export function TailorCard({ s, tabId, state }: { s: JobSummary; tabId: number; 
             )}
             <input className="text" value={name} maxLength={80} placeholder={`${s.job.title}${s.job.company ? ` · ${s.job.company}` : ""}`} aria-label="Name for the tailored résumé" onChange={e => setName(e.target.value)} />
             {t?.error && <p className="err" style={{ margin: 0 }}>{t.error}</p>}
-            <button className="btn primary block" disabled={t?.saving} onClick={save}>
-                {t?.saving ? <><span className="spinner" /> Saving…</> : "Save as the résumé for this job"}
+            <button className="btn primary block" disabled={t?.phase === "saving"} onClick={save}>
+                {t?.phase === "saving" ? <><span className="spinner" /> Saving…</> : "Save as the résumé for this job"}
             </button>
             <p className="subtle" style={{ margin: 0 }}>Saved to Variants and linked to this job; Auto Fill attaches it.</p>
         </div>

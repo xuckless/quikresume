@@ -7,7 +7,7 @@
 // remembered and warned about on later jobs until answered Yes. Saved through
 // /api/jobs/skill-answers.
 
-import React, { useState } from "react";
+import React, { useReducer, useState } from "react";
 import type { ResumeData } from "@/types/schema";
 import type { DeclinedSkill, Requirement } from "@/lib/match/types";
 import { requirementTier } from "@/lib/match/score";
@@ -17,6 +17,8 @@ import { Button, FOCUS_RING } from "@/components/ui/primitives/button";
 import { Input, Select } from "@/components/ui/primitives/field";
 import { Badge } from "@/components/ui/primitives/badge";
 import { NoticeBanner } from "@/components/ui/primitives/notice-banner";
+
+import { jobOperationTransition, type JobOperationState } from "@/lib/ui/job-operation-state";
 
 type Choice = "yes" | "no" | "skip";
 interface Answer { choice: Choice; example: string; itemId: string; categoryId: string }
@@ -50,8 +52,9 @@ export function SkillQuestions({ gaps, declined, library, onSaved, onSkip, skipL
 
     const [answers, setAnswers] = useState<Record<string, Answer>>({});
     const [reopened, setReopened] = useState<Set<string>>(new Set());
-    const [saving, setSaving] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [operation, dispatch] = useReducer(jobOperationTransition<"save">, { status: "idle" } as JobOperationState<"save">);
+    const saving = operation.status === "running";
+    const error = operation.status === "failed" ? operation.message : null;
 
     const evidenceItems = EVIDENCE_SECTIONS.flatMap(key => library[key].map(item => ({ id: item.id, label: `${SECTION_LABEL[key]} · ${itemTitle(key, item)}` })));
     const categories = library.skills.filter(s => s.category.trim().toLowerCase() !== SOFT_CATEGORY);
@@ -63,8 +66,8 @@ export function SkillQuestions({ gaps, declined, library, onSaved, onSkip, skipL
     const hasHard = rows.some(r => requirementTier(r) === "hard");
 
     const save = async () => {
-        setSaving(true);
-        setError(null);
+        if (saving) return;
+        dispatch({ type: "start", operation: "save" });
         try {
             const payload = decided.map(r => {
                 const a = answerOf(r.name);
@@ -78,15 +81,15 @@ export function SkillQuestions({ gaps, declined, library, onSaved, onSkip, skipL
             if (!json.ok) throw new Error(json.error);
             onSaved({ resume: json.resume, declined: json.declined, warning: json.warning });
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Could not save your answers.");
+            dispatch({ type: "fail", message: err instanceof Error ? err.message : "Could not save your answers." });
         } finally {
-            setSaving(false);
+            dispatch({ type: "complete" });
         }
     };
 
     return (
         <div className="space-y-4">
-            {error && <NoticeBanner tone="danger" onDismiss={() => setError(null)}>{error}</NoticeBanner>}
+            {error && <NoticeBanner tone="danger" onDismiss={() => dispatch({ type: "dismiss" })}>{error}</NoticeBanner>}
 
             {rows.length > 0 ? (
                 <>

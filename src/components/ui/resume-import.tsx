@@ -5,11 +5,12 @@
 // Nothing is persisted here.
 "use client";
 
-import React, { useState } from "react";
+import { LinkedInImport } from "./linkedin-import";
+import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { PersonalInfo, ResumeData, ResumeListKey } from "@/types/schema";
 import { emptyResumeData, RESUME_LIST_KEYS } from "@/types/schema";
-import { classifyIncoming, combineParsedFiles, type CombinedImport, type ImportSelection, type ParsedFile } from "@/lib/import/merge";
-import { MAX_FILE_BYTES, MAX_PDF_PAGES, type ImportResponse } from "@/lib/import/types";
+import { combineParsedFiles, classifyIncoming, type CombinedImport, type ImportSelection, type ParsedFile } from "@/lib/import/merge";
+import { MAX_PDF_PAGES, type ImportResponse } from "@/lib/import/types";
 import { documentFormData } from "@/lib/import/pdf-pages";
 import { itemLabel, itemTitle, SECTION_LABEL } from "@/lib/sections";
 import { validateItemDates } from "@/lib/validation/dates";
@@ -21,99 +22,115 @@ import { Badge } from "@/components/ui/primitives/badge";
 import { NoticeBanner } from "@/components/ui/primitives/notice-banner";
 import { Loader2, Upload } from "@/components/ui/primitives/icons";
 
+import { selectedImportCount, type ImportJob, type ImportQueueEvent } from "@/lib/import/queue";
+
 interface ResumeImportProps {
+    jobs: ImportJob[];
+    onQueueEvent: (event: ImportQueueEvent) => void;
     /** What the library (or the open draft) currently holds; drives the New / Merges / Already labels. */
     current: ResumeData;
     onImport: (selection: ImportSelection, meta: { fileNames: string[] }) => void;
+    onSavedLinkedInUrl: (url: string) => void;
     onCancel: () => void;
 }
 
-type FileStatus = "queued" | "rendering" | "reading" | "done" | "failed";
-interface QueuedFile { file: File; status: FileStatus; error?: string }
-
-type Stage =
-    | { step: "pick"; error: string | null }
-    | { step: "working" }
-    | { step: "review"; result: CombinedImport };
+import { initialImportState, importTransition, type FileStatus } from "@/lib/ui/resume-import-state";
 
 const ACCEPT = ".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp";
 const MAX_FILES = 6;
 
-export function ResumeImport({ current, onImport, onCancel }: ResumeImportProps) {
-    const [stage, setStage] = useState<Stage>({ step: "pick", error: null });
-    const [queue, setQueue] = useState<QueuedFile[]>([]);
+export function ResumeImport({ current, onImport, onCancel, onSavedLinkedInUrl, jobs, onQueueEvent }: ResumeImportProps) {
+    const [stage, dispatch] = useReducer(importTransition, initialImportState);
     const [dragOver, setDragOver] = useState(false);
-
+    const active = useRef<AbortController | null>(null);
+    const run = useRef(0);
+    useEffect(() => () => { active.current?.abort(); run.current++; }, []);
+    const queue = stage.step === "review" ? [] : stage.queue;
+    const onLinkedInParsed = useCallback((file: ParsedFile, meta: { id: string }) => onQueueEvent({ type: "parsed", id: meta.id, file }), [onQueueEvent]);
     const addFiles = (list: FileList | File[] | null | undefined) => {
-        if (!list) return;
-        const incoming = Array.from(list);
-        const errors: string[] = [];
-        setQueue(prev => {
-            const next = [...prev];
-            for (const f of incoming) {
-                if (next.some(q => q.file.name === f.name && q.file.size === f.size)) continue;
-                if (f.size > MAX_FILE_BYTES) { errors.push(`${f.name} is over 10 MB and was skipped.`); continue; }
-                if (next.length >= MAX_FILES) { errors.push(`Only ${MAX_FILES} files per import; ${f.name} was skipped.`); continue; }
-                next.push({ file: f, status: "queued" });
-            }
-            return next;
-        });
-        setStage({ step: "pick", error: errors.length ? errors.join(" ") : null });
+        if (list) dispatch({ type: "add", files: Array.from(list) });
     };
-
-    const removeFile = (name: string) => setQueue(prev => prev.filter(q => q.file.name !== name));
-
-    const setStatus = (name: string, status: FileStatus, error?: string) =>
-        setQueue(prev => prev.map(q => (q.file.name === name ? { ...q, status, error } : q)));
-
+    const removeFile = (name: string) => dispatch({ type: "remove", name });
     const analyze = async () => {
-        if (queue.length === 0) return;
-        setStage({ step: "working" });
+        if (stage.step !== "pick" || !queue.length || active.current) return;
+        const controller = new AbortController();
+        active.current = controller;
+        const id = ++run.current;
+        dispatch({ type: "start", run: id });
         const parsed: ParsedFile[] = [];
-        for (const q of queue) {
+        for (const [index, q] of queue.entries()) {
+            if (controller.signal.aborted) return;
             try {
-                setStatus(q.file.name, "rendering");
+                dispatch({ type: "progress", run: id, index, status: "rendering" });
                 const body = await documentFormData(q.file);
-                setStatus(q.file.name, "reading");
-                const res = await fetch("/api/import", { method: "POST", body });
+                if (controller.signal.aborted) return;
+                dispatch({ type: "progress", run: id, index, status: "reading" });
+                const res = await fetch("/api/import", { method: "POST", body, signal: controller.signal });
                 const json = (await res.json().catch(() => null)) as ImportResponse | null;
+                if (controller.signal.aborted) return;
                 if (!json) throw new Error(`Import failed (${res.status}).`);
                 if (!json.ok) throw new Error(json.error);
                 parsed.push({ fileName: json.fileName, data: json.data, warnings: json.warnings });
-                setStatus(q.file.name, "done");
+                dispatch({ type: "progress", run: id, index, status: "done" });
             } catch (err) {
-                setStatus(q.file.name, "failed", err instanceof Error ? err.message : "Import failed.");
+                if (controller.signal.aborted) return;
+                dispatch({ type: "failed", run: id, index, error: err instanceof Error ? err.message : "Import failed." });
             }
         }
-        if (parsed.length === 0) {
-            setStage({ step: "pick", error: "None of the files could be read. See the errors next to each file." });
-            return;
-        }
-        setStage({ step: "review", result: combineParsedFiles(parsed, emptyResumeData()) });
+        if (!controller.signal.aborted) dispatch({ type: "complete", run: id, parsed });
+        if (active.current === controller) active.current = null;
     };
 
+    const reviewingJob = jobs.find(job => job.phase === "reviewing");
+    // Keep capture mounted while another queued job is reviewed or files are analyzed.
+    const capture = <div hidden={reviewingJob?.phase === "reviewing" || stage.step !== "pick"}>
+        <LinkedInImport url={current.personalInfo.linkedin} onSavedUrl={onSavedLinkedInUrl} onParsed={onLinkedInParsed} onProgress={progress => onQueueEvent({ type: "progress", ...progress })} />
+    </div>;
+    if (reviewingJob?.phase === "reviewing") {
+        return <>{capture}<ReviewStep key={reviewingJob.id} result={combineParsedFiles([reviewingJob.file], emptyResumeData())} current={current}
+            onRestart={() => onQueueEvent({ type: "close-review", id: reviewingJob.id })}
+            onConfirm={selection => {
+                onQueueEvent({ type: "accept", id: reviewingJob.id, acceptedCount: selectedImportCount(selection) });
+                onImport(selection, { fileNames: [reviewingJob.file.fileName] });
+            }} /></>;
+    }
     if (stage.step === "review") {
         return (
-            <ReviewStep
+            <>{capture}<ReviewStep
                 key={stage.result.fileNames.join("|")}
                 result={stage.result}
                 current={current}
                 onConfirm={(sel) => onImport(sel, { fileNames: stage.result.fileNames })}
-                onRestart={() => { setQueue([]); setStage({ step: "pick", error: null }); }}
-            />
+                onRestart={() => dispatch({ type: "restart" })}
+            /></>
         );
     }
 
     const working = stage.step === "working";
 
     return (
-        <Card>
+        <>{capture}<Card>
             <CardHeader
                 title="Import existing résumés"
                 hint="Upload PDFs, Word documents, text files or photos. GLM-4.6V reads each one and sorts everything into your library sections. Duplicates across files are merged, and you review before anything is saved."
             />
             <CardBody className="space-y-4">
                 {stage.step === "pick" && stage.error && <NoticeBanner tone="danger">{stage.error}</NoticeBanner>}
+
+                {working && <NoticeBanner tone="success">Processing your files. Each file’s progress is shown below. Next you’ll review new items and duplicates before adding anything to your editor draft.</NoticeBanner>}
+
+                {jobs.length > 0 && <section aria-label="LinkedIn import jobs" className="space-y-3" aria-live="polite">
+                    <h3 className="text-sm font-medium">LinkedIn import jobs</h3>
+                    {jobs.map(job => <div key={job.id} className="rounded-lg border border-border p-4 space-y-2">
+                        <p className="text-sm font-medium">LinkedIn profile import</p>
+                        {job.url && <p className="break-all text-xs text-fg-subtle">{job.url}</p>}
+                        <p className="text-sm text-fg-muted">{job.phase === "ready" ? "Ready to review. Nothing has been added yet." : job.phase === "saved" ? `${job.acceptedCount} selected items saved to your library.` : job.phase === "accepted" ? `${job.acceptedCount} selected items added to your editor draft. Save & Exit to save to your library.` : job.phase === "error" ? job.error : job.phase === "capture-error" ? `${job.error} Retry Import profile in the extension.` : job.phase === "cancelled" ? "Import cancelled. Start a new import to try again." : job.phase === "waiting" ? "Waiting for the extension to capture your profile…" : job.phase === "capturing" ? "Capturing your profile…" : job.phase === "analyzing" ? "Processing captured profile content…" : "Preparing profile import…"}</p>
+                        {job.phase === "ready" && <>
+                            <JobCounts current={current} file={job.file} />
+                            <Button size="sm" onClick={() => onQueueEvent({ type: "review", id: job.id })}>Review import</Button>
+                        </>}
+                    </div>)}
+                </section>}
 
                 <label
                     onDragOver={(e) => { e.preventDefault(); if (!working) setDragOver(true); }}
@@ -161,8 +178,14 @@ export function ResumeImport({ current, onImport, onCancel }: ResumeImportProps)
                     </Button>
                 </div>
             </CardBody>
-        </Card>
+        </Card></>
     );
+}
+
+function JobCounts({ current, file }: { current: ResumeData; file: ParsedFile }) {
+    const counts = { new: 0, merge: 0, same: 0 };
+    for (const key of RESUME_LIST_KEYS) for (const item of file.data[key]) counts[classifyIncoming(current, key, item).kind]++;
+    return <p className="text-xs text-fg-subtle">{counts.new} new · {counts.merge} with new details to merge · {counts.same} already there (filtered by default). Review to inspect all items.</p>;
 }
 
 function StatusDot({ status }: { status: FileStatus }) {
@@ -236,17 +259,21 @@ function ReviewStep({ result, current, onConfirm, onRestart }: ReviewStepProps) 
                     {counts.new > 0 && ` ${counts.new} new.`}
                     {counts.merge > 0 && ` ${counts.merge} will add detail to items you already have.`}
                     {counts.same > 0 && ` ${counts.same} already in your library (unticked).`}
-                    {" "}You can edit every field afterwards in the editor.
+                    {" "}Selected items go to your editor draft. Review them there, then use Save & Exit to save to your library.
                 </>}
             />
             <CardBody className="space-y-6">
+                <NoticeBanner tone="success">
+                    <strong>{counts.new} new · {counts.merge} add detail · {counts.same} already there</strong>
+                    <p>Already-present items are unticked below, so they are filtered from the import by default. Choose any new items or added details you want to bring into your editor draft. Nothing is saved to your library until Save &amp; Exit in the editor.</p>
+                </NoticeBanner>
                 {total === 0 && parsedPersonal.length === 0 && (
                     <NoticeBanner tone="warning">Nothing usable was found. Try a clearer scan or a text-based PDF.</NoticeBanner>
                 )}
 
                 {warningCount > 0 && (
                     <details className="rounded-md border border-warning-border bg-warning-bg px-3 py-2 text-13 text-warning">
-                        <summary className="cursor-pointer font-medium">{warningCount} {warningCount === 1 ? "entry was" : "entries were"} skipped</summary>
+                        <summary className="cursor-pointer font-medium">{warningCount} import {warningCount === 1 ? "warning" : "warnings"}</summary>
                         {warnings.map(w => (
                             <div key={w.fileName} className="mt-2">
                                 {multi && <p className="text-xs font-medium">{w.fileName}</p>}
@@ -331,7 +358,7 @@ function ReviewStep({ result, current, onConfirm, onRestart }: ReviewStepProps) 
                 <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
                     <Button variant="ghost" onClick={onRestart}>Start over</Button>
                     <Button variant="primary" onClick={confirm} disabled={selectedCount === 0 && !applyPersonal}>
-                        Add {selectedCount} {selectedCount === 1 ? "item" : "items"} to the editor
+                        Add {selectedCount} {selectedCount === 1 ? "item" : "items"} to editor draft
                     </Button>
                 </div>
             </CardBody>

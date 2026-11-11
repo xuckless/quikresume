@@ -1,5 +1,6 @@
 "use client";
 
+import { useFormsOperation } from "@/lib/ui/use-forms-operation";
 import React, { startTransition, useOptimistic, useState } from "react";
 import type { ResumeData, ResumeListKey } from "@/types/schema";
 import { RESUME_LIST_KEYS } from "@/types/schema";
@@ -372,16 +373,18 @@ function SortableLibrarySection({ sectionKey, sortable, ids, collapsed, sortByDa
 }) {
     const title = SECTION_LABEL[sectionKey];
     const { rowRef, style, handle } = useSortableRow(sectionKey, title, !sortable);
-    const [pending, setPending] = useState<"include" | "exclude" | null>(null);
+    const operation = useFormsOperation<"include" | "exclude">();
+    const pending = operation.state.status === "running" ? operation.state.operation : null;
     const setAll = async (on: boolean) => {
-        setPending(on ? "include" : "exclude");
+        const id = operation.begin(on ? "include" : "exclude");
+        if (id === null) return;
         try {
             await setSectionSelection(sectionKey, on);
+            operation.succeed(id, undefined);
         } catch (err) {
             console.error("[library] bulk selection failed:", err);
+            operation.fail(id, "Selection failed");
             onError(`Couldn't ${on ? "include" : "exclude"} every item in ${title}. Try again.`);
-        } finally {
-            setPending(null);
         }
     };
     return (

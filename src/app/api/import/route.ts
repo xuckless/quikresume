@@ -15,14 +15,13 @@
 // Guarded (lib/security/guard.ts): same-origin, session, per-user rate limit, daily AI budget.
 
 import { NextResponse } from "next/server";
-import { chatCompletion, GlmError, glmErrorStatus, glmModel, isGlmConfigured } from "@/lib/glm/client";
-import { SYSTEM_PROMPT, userInstruction } from "@/lib/import/prompt";
-import { ImportParseError, parseModelOutput } from "@/lib/import/parsed-resume";
+import { glmModel, isGlmConfigured } from "@/lib/glm/client";
+import { userInstruction } from "@/lib/import/prompt";
+import { analyzeResume } from "@/lib/import/analyze";
 import { formToDocument, isDocumentError } from "@/lib/import/document-text";
 import { MAX_FILE_BYTES, type ImportResponse } from "@/lib/import/types";
 import { guardApi } from "@/lib/security/guard";
 import { RATE } from "@/lib/security/rate-limit";
-import { withAiUser } from "@/lib/security/ai-budget";
 import { fenceUserText } from "@/lib/security/prompt";
 import { auth } from "@/auth";
 
@@ -54,29 +53,7 @@ export async function POST(req: Request) {
 
     parts.unshift({ type: "text", text: userInstruction(kind, fileName) });
 
-    return withAiUser(g.uid, "import", async () => {
-        try {
-            const result = await chatCompletion([
-                { role: "system", content: SYSTEM_PROMPT },
-                { role: "user", content: parts },
-            ]);
-            const parsed = parseModelOutput(result.text);
-            return NextResponse.json<ImportResponse>({
-                ok: true, data: parsed.data, warnings: parsed.warnings, fileName, model: result.model,
-            });
-        } catch (err) {
-            if (err instanceof ImportParseError) {
-                console.error("[import] could not parse model output:", err.message, "\n---\n", err.raw.slice(0, 500));
-                return fail(502, "The AI reply could not be understood. Please try again, or upload a clearer copy of the resume.");
-            }
-            if (err instanceof GlmError) {
-                console.error("[import] GLM error:", err.message);
-                return fail(glmErrorStatus(err), err.message);
-            }
-            console.error("[import] unexpected error:", err);
-            return fail(500, "Something went wrong while importing the resume.");
-        }
-    });
+    return analyzeResume(g.uid, parts, fileName);
 }
 
 export async function GET() {

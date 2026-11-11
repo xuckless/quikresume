@@ -95,3 +95,6 @@ GEMINI.md
 
 # match eval reports
 test/eval/.results/
+
+# Local working notes
+TODO.md
