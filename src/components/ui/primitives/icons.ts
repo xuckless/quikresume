@@ -32,7 +32,6 @@ export {
     GripVertical,
     GraduationCap,
     HeartHandshake,
-    IdCard,
     Languages,
     Layers,
     Library,
@@ -56,3 +55,4 @@ export {
     X,
     type LucideIcon,
 } from "lucide-react";
+export { Linkedin } from "./linkedin-icon";

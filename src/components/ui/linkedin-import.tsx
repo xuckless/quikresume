@@ -21,7 +21,7 @@ import type { ParsedFile } from "@/lib/import/merge";
 import { RESUME_LIST_KEYS } from "@/types/schema";
 import { cn } from "@/lib/cn";
 import { Button, Card, CardBody, CardHeader, Dialog, Field, Input, NoticeBanner, Swap } from "@/components/ui/primitives";
-import { Check, Circle, IdCard, Loader2 } from "@/components/ui/primitives/icons";
+import { Check, Circle, Linkedin, Loader2 } from "@/components/ui/primitives/icons";
 
 /** The extension answers linkedin-start once it has checked the account and opened the tab. */
 const START_TIMEOUT_MS = 15_000;
@@ -149,7 +149,7 @@ export function LinkedInImportCard({ linkedIn, savedUrl, disabled }: { linkedIn:
             <CardHeader
                 title="Import from LinkedIn"
                 hint={saved ? <>Reads your profile at <span className="text-fg">{display(saved)}</span> with the quikResume extension.</> : "Reads your own LinkedIn profile with the quikResume extension."}
-                action={!busy && <Button icon={IdCard} onClick={start} disabled={disabled}>Import from LinkedIn</Button>}
+                action={!busy && <Button icon={Linkedin} onClick={start} disabled={disabled}>Import from LinkedIn</Button>}
             />
             {session.phase === "extension-needed" && (
                 <CardBody>
