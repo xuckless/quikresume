@@ -28,6 +28,17 @@ export function jobHref(jobId: string | null): string {
     return jobId ? `/dashboard?view=jobs&job=${encodeURIComponent(jobId)}` : viewHref("jobs");
 }
 
+/**
+ * Pushing a different view starts at the top (a long editor must not leave the Library scrolled down).
+ * The old entry keeps its own scroll, so browser Back restores it. Replacing or re-pushing the same URL keeps the position.
+ */
+export function startsAtTop(currentUrl: string, nextHref: string, replace: boolean | undefined, origin = "http://x"): boolean {
+    if (replace) return false;
+    const a = new URL(currentUrl, origin);
+    const b = new URL(nextHref, origin);
+    return a.pathname + a.search !== b.pathname + b.search;
+}
+
 type AppRouter = ReturnType<typeof useRouter>;
 
 /**
@@ -39,11 +50,15 @@ type AppRouter = ReturnType<typeof useRouter>;
 export function navigateDashboard(router: AppRouter, href: string, opts?: { replace?: boolean }): void {
     if (typeof window !== "undefined" && window.location.pathname === "/dashboard" && new URL(href, window.location.origin).pathname === "/dashboard") {
         if (opts?.replace) window.history.replaceState(null, "", href);
-        else window.history.pushState(null, "", href);
+        else {
+            const top = startsAtTop(window.location.href, href, false, window.location.origin);
+            window.history.pushState(null, "", href);
+            if (top) window.scrollTo(0, 0);
+        }
         return;
     }
     if (opts?.replace) router.replace(href, { scroll: false });
-    else router.push(href, { scroll: false });
+    else router.push(href); // a new page starts at the top
 }
 
 /** The dashboard view, read from `?view=` and written as a history entry (so Back works). */
