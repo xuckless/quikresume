@@ -1,11 +1,12 @@
 // Auto Fill: fills the application form on the active tab from the profile, Autofill preferences and
 // the job's résumé (linked variant, else working selection), drafts open questions with AI, attaches
 // the PDF. Filled fields are outlined; AI drafts get a dashed outline. Nothing is submitted.
+import { appUrl } from "../../lib/api";
 import type { BgRequest, JobSummary, TabState } from "../../lib/types";
 
 const send = (m: BgRequest) => chrome.runtime.sendMessage(m);
 
-export function AutofillCard({ tabId, summary, state, appUrl }: { tabId: number; summary: JobSummary | null; state: TabState | null; appUrl: string }) {
+export function AutofillCard({ tabId, summary, state }: { tabId: number; summary: JobSummary | null; state: TabState | null }) {
     const r = state?.autofill ?? null;
     return (
         <div className="card stack">
@@ -16,9 +17,9 @@ export function AutofillCard({ tabId, summary, state, appUrl }: { tabId: number;
                 </div>
             </div>
             <button className="btn primary block" disabled={r?.phase === "running"} onClick={() => void send({ type: "autofill", tabId })}>
-                {r?.phase === "running" ? <><span className="spinner" /> Filling…</> : "Auto Fill"}
+                {r?.phase === "running" ? <span key="busy" className="swap"><span className="spinner" /> Filling…</span> : <span key="idle" className="swap">Auto Fill</span>}
             </button>
-            {r && r.phase === "complete" && !r.error && (
+            {r?.phase === "complete" && (
                 <div className="stack" style={{ gap: 4 }}>
                     <div>Filled <span className="mono">{r.filled}</span>{r.drafted > 0 && <> · AI drafts <span className="mono">{r.drafted}</span> <span className="subtle">(dashed outline)</span></>}</div>
                     {r.attached && <div className="subtle">Attached {r.attached}</div>}
@@ -26,13 +27,13 @@ export function AutofillCard({ tabId, summary, state, appUrl }: { tabId: number;
                         <div>
                             <div className="subtle">Left for you ({r.unmapped.length}):</div>
                             <ul className="plain subtle">{r.unmapped.slice(0, 8).map(u => <li key={u}>· {u}</li>)}</ul>
-                            <a href={`${appUrl}/dashboard/autofill`} target="_blank" rel="noreferrer">Add answers in Autofill preferences →</a>
+                            <a href={`${appUrl()}/dashboard/autofill`} target="_blank" rel="noreferrer">Add answers in Autofill preferences →</a>
                         </div>
                     )}
                     <div className="notice">Review every field before you submit. quikResume never submits for you.</div>
                 </div>
             )}
-            {r?.error && <div className="notice err">{r.error}</div>}
+            {r?.phase === "failed" && <div className="notice err" role="alert">{r.error}</div>}
         </div>
     );
 }

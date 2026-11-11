@@ -3,6 +3,7 @@
 // status. The panel follows the active tab.
 
 import { useEffect, useState } from "react";
+import { appUrl } from "../../lib/api";
 import { JOB_STATUSES, JOB_STATUS_LABEL, type AccountStatus, type BgRequest, type JobStatus, type JobSummary, type TabState } from "../../lib/types";
 import { LinkedInImportCard, onSessionTab, useLinkedInSession } from "./LinkedInImportCard";
 import { AutofillCard } from "./AutofillCard";
@@ -23,11 +24,11 @@ function band(score: number) {
     return score >= 80 ? "Strong fit" : score >= 60 ? "Good fit" : score >= 40 ? "Partial fit" : "Weak fit";
 }
 
-function Ring({ score }: { score: number }) {
+function Ring({ score, pulse }: { score: number; pulse: boolean }) {
     const r = 27;
     const c = 2 * Math.PI * r;
     return (
-        <div className="ring" aria-label={`Match score ${score} of 100`}>
+        <div className={pulse ? "ring pulse" : "ring"} aria-label={`Match score ${score} of 100`}>
             <svg width="64" height="64" viewBox="0 0 64 64">
                 <circle cx="32" cy="32" r={r} fill="none" stroke="var(--chart-track)" strokeWidth="6" />
                 <circle cx="32" cy="32" r={r} fill="none" stroke="var(--accent-text)" strokeWidth="6" strokeLinecap="round" strokeDasharray={`${(c * score) / 100} ${c}`} />
@@ -49,17 +50,19 @@ function useActiveTab(): number | null {
     return tabId;
 }
 
-function Connect({ appUrl }: { appUrl: string }) {
+type PairingState = { phase: "idle" | "pairing" } | { phase: "failed"; error: string };
+
+function Connect() {
     const [code, setCode] = useState("");
-    const [pairing, setPairing] = useState<{ phase: "idle" | "pairing" | "paired"; error?: never } | { phase: "failed"; error: string }>({ phase: "idle" });
+    const [pairing, setPairing] = useState<PairingState>({ phase: "idle" });
     const busy = pairing.phase === "pairing";
-    const error = pairing.error;
+    // Pairing succeeds -> the background broadcasts "account-changed" and App swaps this card out.
     const pair = async () => {
         if (busy) return;
         setPairing({ phase: "pairing" });
         try {
             const res = await send<{ ok: boolean; error?: string }>({ type: "pair", code });
-            setPairing(res?.ok ? { phase: "paired" } : { phase: "failed", error: res?.error ?? "That didn't work." });
+            setPairing(res?.ok ? { phase: "idle" } : { phase: "failed", error: res?.error ?? "That didn't work." });
         } catch {
             setPairing({ phase: "failed", error: "Couldn't reach the extension. Reload it and try again." });
         }
@@ -67,21 +70,22 @@ function Connect({ appUrl }: { appUrl: string }) {
     return (
         <div className="card stack">
             <h2>Connect your quikResume account</h2>
-            <a className="btn primary block" href={`${appUrl}/login`} target="_blank" rel="noreferrer">Create a quikResume account or sign in</a>
-            <p className="subtle">After signing in, click Connect below to pair this browser.</p>
             <p className="muted" style={{ margin: 0 }}>Save jobs from any board, see how your résumé matches, and fill applications.</p>
             <button className="btn primary block" onClick={() => void send({ type: "connect-page" })}>Connect</button>
-            <p className="subtle" style={{ margin: "4px 0 0" }}>Or type the code from <a href={`${appUrl}/dashboard/extension`} target="_blank" rel="noreferrer">quikResume → Extension</a>:</p>
+            <p className="subtle" style={{ margin: 0 }}>
+                New to quikResume? <a href={`${appUrl()}/login`} target="_blank" rel="noreferrer">Create an account or sign in</a> on the website, then pair this browser from there.
+            </p>
+            <p className="subtle" style={{ margin: "4px 0 0" }}>Or type the code from <a href={`${appUrl()}/dashboard/extension`} target="_blank" rel="noreferrer">quikResume → Extension</a>:</p>
             <div className="row">
                 <input className="code" value={code} maxLength={9} placeholder="ABCD-EFGH" aria-label="Connection code" onChange={e => setCode(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && code.trim()) void pair(); }} />
-                <button className="btn" disabled={busy || code.replace(/[^a-z0-9]/gi, "").length !== 8} onClick={() => void pair()}>{busy ? <span className="spinner" /> : "Connect"}</button>
+                <button className="btn" style={{ minWidth: 76 }} disabled={busy || code.replace(/[^a-z0-9]/gi, "").length !== 8} onClick={() => void pair()}>{busy ? <span className="spinner" /> : "Connect"}</button>
             </div>
-            {error && <p className="err" style={{ margin: 0 }}>{error}</p>}
+            {pairing.phase === "failed" && <p className="err" style={{ margin: 0 }}>{pairing.error}</p>}
         </div>
     );
 }
 
-function Summary({ s, tabId, appUrl, state }: { s: JobSummary; tabId: number; appUrl: string; state: TabState | null }) {
+function Summary({ s, tabId, state, celebrate }: { s: JobSummary; tabId: number; state: TabState | null; celebrate: boolean }) {
     const running = s.job.match.status === "running";
     // While the AI check runs in the background, re-read the summary every 5 s.
     useEffect(() => {
@@ -89,12 +93,12 @@ function Summary({ s, tabId, appUrl, state }: { s: JobSummary; tabId: number; ap
         const t = window.setInterval(() => void send({ type: "refresh", tabId }), 5000);
         return () => window.clearInterval(t);
     }, [running, tabId]);
-    const jobLink = `${appUrl}/dashboard?view=jobs&job=${encodeURIComponent(s.job.id)}`;
+    const jobLink = `${appUrl()}/dashboard?view=jobs&job=${encodeURIComponent(s.job.id)}`;
     return (
         <>
             <div className="card stack">
                 <div className="score">
-                    <Ring score={s.score} />
+                    <Ring score={s.score} pulse={celebrate} />
                     <div>
                         <div style={{ fontWeight: 600 }}>{band(s.score)} <span className="mono subtle">±{s.band}</span></div>
                         <div>Must-haves <span className="mono">{s.must.hit}/{s.must.total}</span>{s.nice.total > 0 && <span className="subtle"> · nice {s.nice.hit}/{s.nice.total}</span>}</div>
@@ -139,17 +143,22 @@ function Summary({ s, tabId, appUrl, state }: { s: JobSummary; tabId: number; ap
     );
 }
 
+/** Who the panel is talking to. Unreachable background = unpaired: the Connect card is the way out of "Loading…". */
+type Session = { phase: "checking" } | { phase: "unpaired" } | { phase: "paired"; user: AccountStatus["user"] };
+
 export function App() {
     const tabId = useActiveTab();
-    const [availability, setAvailability] = useState<{ phase: "checking" } | { phase: "ready" | "login-required"; account: AccountStatus }>({ phase: "checking" });
-    const account = availability.phase === "checking" ? null : availability.account;
+    const [session, setSession] = useState<Session>({ phase: "checking" });
     const [state, setState] = useState<TabState | null>(null);
     const [fabEnabled, setFabEnabled] = useState(true);
+    // The score pulses once when this panel saved the job (not when it merely opens on an already saved one).
+    const [justSaved, setJustSaved] = useState(false);
     const linkedIn = useLinkedInSession();
 
     useEffect(() => {
-        // If the background worker can't answer, fall back to the Connect screen instead of "Loading…" forever.
-        const load = () => void send<AccountStatus>({ type: "status" }).then(account => setAvailability({ phase: account.paired ? "ready" : "login-required", account })).catch(() => setAvailability({ phase: "login-required", account: { paired: false, user: null, appUrl: "" } }));
+        const load = () => void send<AccountStatus>({ type: "status" })
+            .then(a => setSession(a.paired ? { phase: "paired", user: a.user } : { phase: "unpaired" }))
+            .catch(() => setSession({ phase: "unpaired" }));
         load();
         void chrome.storage.local.get("fabEnabled").then(v => setFabEnabled(v.fabEnabled !== false));
         const onMsg = (m: { type?: string }) => { if (m?.type === "account-changed") load(); };
@@ -159,6 +168,7 @@ export function App() {
 
     useEffect(() => {
         setState(null);
+        setJustSaved(false);
         if (tabId === null) return;
         let active = true;
         const load = () => void send<TabState>({ type: "tab-state", tabId }).then(next => { if (active) setState(next); });
@@ -168,29 +178,29 @@ export function App() {
         return () => { active = false; chrome.runtime.onMessage.removeListener(onMsg); };
     }, [tabId]);
 
-    const appUrl = account?.appUrl ?? "";
     const posting = state?.posting ?? null;
+    const saving = state?.save.phase === "saving";
 
     return (
         <>
             <header>
                 <span className="brand"><Bolt />quik<span className="r">R</span>esume</span>
-                {account?.paired && (
-                    <button className="btn ghost" title={account.user?.email ?? ""} onClick={() => { if (confirm("Disconnect this browser from quikResume?")) void send({ type: "signout" }); }}>Disconnect</button>
+                {session.phase === "paired" && (
+                    <button className="btn ghost" title={session.user?.email ?? ""} onClick={() => { if (confirm("Disconnect this browser from quikResume?")) void send({ type: "signout" }); }}>Disconnect</button>
                 )}
             </header>
             <main>
-                {!account ? (
+                {session.phase === "checking" ? (
                     <div className="row subtle"><span className="spinner" /> Loading…</div>
-                ) : !account.paired ? (
-                    <Connect appUrl={appUrl} />
+                ) : session.phase === "unpaired" ? (
+                    <Connect />
                 ) : tabId === null ? (
                     <div className="card"><p className="muted" style={{ margin: 0 }}>No active tab. Open a page to get started.</p></div>
                 ) : onSessionTab(linkedIn, tabId) ? (
                     <LinkedInImportCard state={linkedIn} tabId={tabId} />
                 ) : (
                     <>
-                        {state?.operation.error && <div className="notice err">{state.operation.error}</div>}
+                        {state?.notice && <div className="notice err" role="alert">{state.notice}</div>}
                         {!posting ? (
                             <div className="card stack">
                                 <h2>No job posting found</h2>
@@ -204,15 +214,18 @@ export function App() {
                                     <div className="muted">{[posting.company, posting.location].filter(Boolean).join(" · ") || posting.site}</div>
                                 </div>
                                 {!state?.summary && (
-                                    <button className="btn primary block" disabled={state?.operation.phase === "saving"} onClick={() => void send({ type: "save", tabId })}>
-                                        {state?.operation.phase === "saving" ? <><span className="spinner" /> Saving and matching…</> : "Save job & see match"}
-                                    </button>
+                                    <>
+                                        {state?.save.phase === "failed" && <div className="notice err" role="alert">{state.save.error}</div>}
+                                        <button className="btn primary block" disabled={saving} onClick={() => { setJustSaved(true); void send({ type: "save", tabId }); }}>
+                                            {saving ? <span key="busy" className="swap"><span className="spinner" /> Saving and matching…</span> : <span key="idle" className="swap">Save job & see match</span>}
+                                        </button>
+                                    </>
                                 )}
                                 {state?.summary && <div className="subtle">Saved to your Job Tracker.</div>}
                             </div>
                         )}
-                        {state?.summary && <Summary s={state.summary} tabId={tabId} appUrl={appUrl} state={state} />}
-                        <AutofillCard tabId={tabId} summary={state?.summary ?? null} state={state} appUrl={appUrl} />
+                        {state?.summary && <Summary s={state.summary} tabId={tabId} state={state} celebrate={justSaved} />}
+                        <AutofillCard tabId={tabId} summary={state?.summary ?? null} state={state} />
                         <div className="card switch">
                             <span className="muted">Floating button on job pages</span>
                             <input type="checkbox" checked={fabEnabled} aria-label="Floating button on job pages" onChange={e => { setFabEnabled(e.target.checked); void chrome.storage.local.set({ fabEnabled: e.target.checked }); }} />

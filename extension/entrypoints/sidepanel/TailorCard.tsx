@@ -3,7 +3,7 @@
 // user ticks; "Save" stores the result as a variant linked to the job (Auto Fill then attaches it).
 
 import { useEffect, useState } from "react";
-import { applySuggestions, type BgRequest, type JobSummary, type TabState, type TailorSuggestion, type VariantInfo } from "../../lib/types";
+import { applySuggestions, tailorError, tailorResult, type BgRequest, type JobSummary, type TabState, type TailorSuggestion, type VariantInfo } from "../../lib/types";
 
 const send = <T,>(m: BgRequest) => chrome.runtime.sendMessage(m) as Promise<T>;
 
@@ -33,7 +33,9 @@ function describe(x: TailorSuggestion): string {
 
 export function TailorCard({ s, tabId, state }: { s: JobSummary; tabId: number; state: TabState | null }) {
     const t = state?.tailor ?? null;
-    const result = t?.result && t.result.jobId === s.job.id ? t.result : null;
+    const plan = tailorResult(t);
+    const result = plan && plan.jobId === s.job.id ? plan : null;
+    const error = tailorError(t);
     const [off, setOff] = useState<Record<string, boolean>>({});
     const [name, setName] = useState("");
     const resultKey = result ? `${result.jobId}:${result.suggestions.length}:${result.after}` : "";
@@ -44,9 +46,9 @@ export function TailorCard({ s, tabId, state }: { s: JobSummary; tabId: number; 
             <div className="card stack">
                 <h2>Quick tailor</h2>
                 <p className="muted" style={{ margin: 0 }}>Pick the items and lines that fit this job, trimmed to one page. Nothing changes until you save.</p>
-                {t?.error && <p className="err" style={{ margin: 0 }}>{t.error}</p>}
+                {error && <p className="err" style={{ margin: 0 }} role="alert">{error}</p>}
                 <button className="btn primary block" disabled={t?.phase === "running"} onClick={() => void send({ type: "tailor", tabId })}>
-                    {t?.phase === "running" ? <><span className="spinner" /> Tailoring… (up to 2 min)</> : "Tailor my résumé for this job"}
+                    {t?.phase === "running" ? <span key="busy" className="swap"><span className="spinner" /> Tailoring… (up to 2 min)</span> : <span key="idle" className="swap">Tailor my résumé for this job</span>}
                 </button>
             </div>
         );
@@ -83,9 +85,9 @@ export function TailorCard({ s, tabId, state }: { s: JobSummary; tabId: number; 
                 </ul>
             )}
             <input className="text" value={name} maxLength={80} placeholder={`${s.job.title}${s.job.company ? ` · ${s.job.company}` : ""}`} aria-label="Name for the tailored résumé" onChange={e => setName(e.target.value)} />
-            {t?.error && <p className="err" style={{ margin: 0 }}>{t.error}</p>}
+            {error && <p className="err" style={{ margin: 0 }} role="alert">{error}</p>}
             <button className="btn primary block" disabled={t?.phase === "saving"} onClick={save}>
-                {t?.phase === "saving" ? <><span className="spinner" /> Saving…</> : "Save as the résumé for this job"}
+                {t?.phase === "saving" ? <span key="busy" className="swap"><span className="spinner" /> Saving…</span> : <span key="idle" className="swap">Save as the résumé for this job</span>}
             </button>
             <p className="subtle" style={{ margin: 0 }}>Saved to Variants and linked to this job; Auto Fill attaches it.</p>
         </div>

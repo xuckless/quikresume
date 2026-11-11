@@ -46,21 +46,30 @@ export interface AutofillCounts {
     unmapped: string[];
 }
 export type AutofillReport = AutofillCounts & (
-    | { phase: "running" | "complete"; error?: never }
+    /** `startedAt` (ms): a run nobody reports on is closed after AUTOFILL_TIMEOUT_MS (lib/tab-state.ts). */
+    | { phase: "running"; startedAt: number }
+    | { phase: "complete" }
     | { phase: "failed"; error: string }
 );
-export type Operation = { phase: "idle" | "saving"; error?: never } | { phase: "failed"; error: string };
 
-/** Per-tab state the background keeps and the side panel renders. */
+/** Saving the tab's posting to the Job Tracker (save + analyse). */
+export type SaveState = { phase: "idle" } | { phase: "saving" } | { phase: "failed"; error: string };
+
+/**
+ * Per-tab state the background keeps (chrome.storage.session, lib/tab-state.ts) and the side panel renders.
+ * Each field has one writer story: `save`, `tailor` and `autofill` are the phases of their own operation;
+ * `notice` is the last failure of the small actions (scan, refresh, status, résumé) and nothing else.
+ */
 export interface TabState {
     posting: Posting | null;
     /** The saved job for this tab's posting; kept when the tab moves on to the application form. */
     summary: JobSummary | null;
+    save: SaveState;
+    /** Why the last scan / refresh / status / résumé change failed; cleared when the next one starts or succeeds. */
+    notice: string | null;
     autofill: AutofillReport | null;
-    /** True while the posting is being saved / analysed. */
-    operation: Operation;
     /** Quick tailor run for the saved job (side panel). */
-    tailor?: TailorState | null;
+    tailor: TailorState | null;
 }
 
 export type TailorSuggestion =
@@ -82,10 +91,15 @@ export interface TailorResult {
 }
 
 export type TailorState =
-    | { phase: "running"; result?: never; error?: never }
-    | { phase: "failed"; error: string; result?: never }
-    | { phase: "review" | "saving"; result: TailorResult; error?: never }
+    | { phase: "running" }
+    | { phase: "failed"; error: string }
+    | { phase: "review" | "saving"; result: TailorResult }
     | { phase: "save-failed"; result: TailorResult; error: string };
+
+/** The plan to review, once there is one. */
+export const tailorResult = (t: TailorState | null): TailorResult | null => (t && t.phase !== "running" && t.phase !== "failed" ? t.result : null);
+/** Why the last run or save failed. */
+export const tailorError = (t: TailorState | null): string | null => (t && (t.phase === "failed" || t.phase === "save-failed") ? t.error : null);
 
 export interface VariantInfo { id: string; name: string; labels: string[] }
 
@@ -130,5 +144,4 @@ export type BgRequest =
 export interface AccountStatus {
     paired: boolean;
     user: { id: string; name: string; email: string; image: string } | null;
-    appUrl: string;
 }
