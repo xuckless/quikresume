@@ -13,7 +13,10 @@ import { PLACEHOLDER } from "@/lib/sections";
 
 type AnyItem = ResumeData[ResumeListKey][number];
 
-const PLACEHOLDERS = new Set(Object.values(PLACEHOLDER).map(v => v.toLowerCase()).concat(["skills", "untitled"]));
+/** Skills category names that mean "no name": the save placeholder and the import fallback. */
+export const SKILL_CATEGORY_PLACEHOLDERS: readonly string[] = [PLACEHOLDER.skillCategory.toLowerCase(), "skills"];
+
+const PLACEHOLDERS = new Set(Object.values(PLACEHOLDER).map(v => v.toLowerCase()).concat(SKILL_CATEGORY_PLACEHOLDERS, ["untitled"]));
 
 const ORG_SUFFIXES = new Set(["inc", "llc", "ltd", "limited", "corp", "corporation", "co", "company", "gmbh", "plc", "llp", "pty", "sa", "ag", "bv"]);
 

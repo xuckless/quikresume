@@ -76,7 +76,7 @@
     skills: ("Skills", sp => if data.skills.len() > 0 {
       indented(grid(
         columns: (auto, 1fr), column-gutter: 12pt, row-gutter: 4pt,
-        ..data.skills.map(s => (text(weight: "semibold", s.label), s.value)).flatten()
+        ..data.skills.map(s => if s.label == "" { (grid.cell(colspan: 2, s.value),) } else { (text(weight: "semibold", s.label), s.value) }).flatten()
       ))
     }),
     projects: ("Projects", sp => if data.projects.len() > 0 {

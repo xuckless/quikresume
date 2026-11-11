@@ -14,6 +14,7 @@ import { orderedItems } from "@/lib/layout/order";
 import { defaultLayout, itemLayout, sectionSpacing } from "@/lib/layout/presets";
 import type { ResumeLayout, SectionId } from "@/lib/layout/types";
 import { ACCENTS, FONT_PAIRS, type PaperId } from "@/lib/layout/theme";
+import { SKILL_CATEGORY_PLACEHOLDERS } from "@/lib/import/match";
 import type { TemplateId } from "@/lib/typst/templates";
 
 /** Per-entry layout, present on every list entry (pt / booleans). */
@@ -176,6 +177,15 @@ function typstLayout(layout: ResumeLayout): TypstLayout {
 
 const s = (v: string | null | undefined): string => (v ?? "").trim();
 
+/**
+ * True when a skills category name adds nothing under the section heading: empty, the placeholder names
+ * ("Skills", "General"), or the heading as printed (a renamed heading included). Such rows print unlabelled.
+ */
+export function isPlaceholderSkillCategory(category: string | null | undefined, heading?: string | null): boolean {
+    const c = s(category).toLowerCase();
+    return c === "" || SKILL_CATEGORY_PLACEHOLDERS.includes(c) || c === s(heading).toLowerCase();
+}
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 /** "2027-05" -> "May 2027", "2027" -> "2027". */
 function expiryLabel(v: string): string {
@@ -228,7 +238,7 @@ export function toTypstDoc(data: ResumeData): TypstResumeDoc {
             const all = skillEntries(k.items);
             const shown = visible(all, k.hidden);
             // A category whose skills are all switched off disappears.
-            return all.length > 0 && shown.length === 0 ? [] : [{ label: s(k.category), value: shown.map(e => e.label).join(", "), ...lay(k.id) }];
+            return all.length > 0 && shown.length === 0 ? [] : [{ label: isPlaceholderSkillCategory(k.category, layout.headings?.skills) ? "" : s(k.category), value: shown.map(e => e.label).join(", "), ...lay(k.id) }];
         }),
         projects: pick("projects").map(pr => ({
             title: s(pr.title),

@@ -72,7 +72,7 @@
       })
     }),
     skills: ("Skills", sp => if data.skills.len() > 0 {
-      data.skills.map(s => [#text(weight: "semibold", s.label): #s.value]).join(linebreak())
+      data.skills.map(s => if s.label == "" { [#s.value] } else { [#text(weight: "semibold", s.label): #s.value] }).join(linebreak())
     }),
     projects: ("Projects", sp => if data.projects.len() > 0 {
       stack-entries(sp: sp, data.projects, (p, keep) => {

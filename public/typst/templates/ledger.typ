@@ -152,7 +152,11 @@
 }
 
 #let skills(items, sp) = if items.len() > 0 {
-  kv(items.map(i => (i.label, i.value)))
+  // An unlabelled row (unnamed category) spans both columns.
+  grid(
+    columns: (auto, 1fr), column-gutter: 14pt, row-gutter: 4pt,
+    ..items.map(i => if i.label == "" { (grid.cell(colspan: 2, i.value),) } else { (text(fill: muted, weight: 500, i.label), i.value) }).flatten()
+  )
 }
 
 #let projects(items, sp) = if items.len() > 0 {
