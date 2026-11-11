@@ -1,7 +1,8 @@
 // src/components/ui/linkedin-import.tsx
 // "Import from LinkedIn" on the Import view: one guided session at a time (lib/import/linkedin-session.ts).
 // The hook owns the session and its side effects, each keyed on the phase's id; the card renders it.
-// The extension sends the profile already structured (no AI); it is validated here and handed to the
+// The extension sends the profile already structured (parsed from the page, gaps read with AI only when its
+// parser was unsure); it is validated here and handed to the
 // caller, which opens the same review step file imports use. Unmounting (leaving the Import view) cancels
 // a live session.
 "use client";
@@ -185,7 +186,7 @@ function statusLine(session: LinkedInSession): string {
         case "checking": return "Looking for the extension…";
         case "starting": return "Opening your profile in a new tab…";
         case "waiting": return "In the LinkedIn tab, sign in if asked, then open the quikResume extension and click Import.";
-        case "capturing": return "Reading your profile…";
+        case "capturing": return session.analysing ? "Some sections needed AI to read. This takes a few seconds…" : "Reading your profile…";
         default: return "";
     }
 }
@@ -212,7 +213,7 @@ function Progress({ session, onCancel }: { session: LinkedInSession; onCancel: (
             </ol>
             {error
                 ? <NoticeBanner tone="danger">{error} Click Import in the extension to try again.</NoticeBanner>
-                : <p key={session.phase} role="status" className="fade-in text-13 text-fg-muted">{statusLine(session)}</p>}
+                : <p key={session.phase === "capturing" && session.analysing ? "analysing" : session.phase} role="status" className="fade-in text-13 text-fg-muted">{statusLine(session)}</p>}
             <div className="flex justify-end">
                 <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
             </div>

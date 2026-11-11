@@ -60,3 +60,6 @@ export function userInstruction(kind: "images" | "text", fileName: string): stri
     const name = fileName.replace(/[^\w .()\-]+/g, "_").slice(0, 120);
     return `${src} Source file: ${name}. Extract it into the JSON shape from the instructions and reply with the JSON only.`;
 }
+
+/** Added after userInstruction for the LinkedIn AI fallback (/api/ext/profile/analyse). */
+export const LINKEDIN_TEXT_NOTE = `The text is the visible text of the candidate's own LinkedIn profile page, section headings on their own lines (About, Experience, Education, Licenses & certifications, Volunteering, Skills...). Leave out LinkedIn's interface text: buttons, counts ("500 connections", "Skills (37)"), "Show all", "… more", pronouns, and skill summary lines such as "Sales, Hiring and +3 skills". Experience lines look like: title; "Company · Employment type"; "Jan 2021 - Present · 3 yrs"; "City, Region, Country · On-site". Put the company alone in "company" and drop the duration, employment type and work mode. personalInfo.headline is the line under the name; location is the "City, Region, Country" line of the top section.`;

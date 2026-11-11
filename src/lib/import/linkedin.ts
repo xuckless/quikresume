@@ -5,6 +5,11 @@
 
 /** Largest captured profile (JSON.stringify length of its ImportEnvelope) the extension sends and the page accepts. */
 export const MAX_PROFILE_JSON = 300_000;
+/**
+ * Longest visible profile text (characters) the extension sends to /api/ext/profile/analyse when its
+ * parser cannot read the page; the route refuses more.
+ */
+export const MAX_PROFILE_TEXT = 40_000;
 /** Capture warnings ("Could not read Projects") passed along with a profile. */
 export const MAX_CAPTURE_WARNINGS = 20;
 

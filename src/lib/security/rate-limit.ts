@@ -53,6 +53,8 @@ export const RATE = {
     /** Signed-out /start funnel, per visitor (IP hash). */
     guestImport: { name: "guest-import", limit: 4, windowMs: HOUR },
     guestMatch: { name: "guest-match", limit: 6, windowMs: HOUR },
+    /** LinkedIn import AI fallback (one call per capture the extension's parser could not read). */
+    extProfile: { name: "ext-profile", limit: 10, windowMs: HOUR },
     /** Auto Fill AI answers (one call per form page). */
     autofill: { name: "autofill", limit: 40, windowMs: HOUR },
     /** Save & Exit (runs the tagger). */

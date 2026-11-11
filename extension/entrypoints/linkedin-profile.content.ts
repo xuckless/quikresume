@@ -1,6 +1,7 @@
 // Runs on LinkedIn profile pages (and is injected into tabs that reached a profile by in-app navigation).
 // Answers the background only (extension/lib/linkedin-session.ts): whether the page is a login wall, and
-// the parsed profile (lib/profile-extract.ts) when the user clicks Import in the side panel. Never reads
+// the parsed profile (lib/profile-extract.ts) when the user clicks Import in the side panel, with the
+// visible profile text only when the parser was unsure (the background then asks the AI). Never reads
 // anything on its own; the only page it fetches is the member's own /details/ lists.
 import { CaptureError, captureProfile, isLoginWall } from "../lib/profile-extract";
 import type { CaptureReply, ProfilePageReply, ProfileTabRequest } from "../lib/linkedin-session";

@@ -1,6 +1,7 @@
 // Side panel card for Import from LinkedIn, shown on the session's LinkedIn tab. The session itself lives
 // in the background (lib/linkedin-session.ts): this card reads it, follows the tab's address through tab
-// events, and asks for the capture. Import is enabled only when the tab is the expected profile.
+// events, and asks for the capture. Import is enabled only when the tab is the expected profile. While the
+// background reads an unrecognised page with AI the card shows "Reading with AI…".
 
 import { useEffect, useState } from "react";
 import { canonicalProfileUrl } from "../../../src/lib/import/linkedin";
@@ -81,7 +82,7 @@ export function LinkedInImportCard({ state, tabId }: { state: LinkedInState; tab
     const current = page ? canonicalProfileUrl(page.url) : null;
     const matches = current === state.url;
     const loginWall = page?.loginWall === true || (page !== null && /linkedin\.com\/(authwall|login|checkpoint|uas)/.test(page.url));
-    const working = state.phase === "capturing" || state.phase === "sending";
+    const working = state.phase === "capturing" || state.phase === "analysing" || state.phase === "sending";
     const canImport = state.phase === "waiting" && matches && !loginWall;
     const steps = [
         { label: "Sign in to LinkedIn", done: page !== null && !loginWall && page.url.includes("linkedin.com") },
@@ -115,13 +116,15 @@ export function LinkedInImportCard({ state, tabId }: { state: LinkedInState; tab
                 </div>
             ) : null}
             {state.phase === "waiting" && state.error && <div className="notice err" role="alert">{state.error}</div>}
+            {state.phase === "analysing" && <p className="muted" role="status">Some sections needed AI to read. This takes a few seconds.</p>}
 
             <button className="btn primary block" disabled={!canImport} onClick={() => void send({ type: "linkedin-capture", id: state.id })}>
                 {state.phase === "capturing" ? <><span className="spinner" /> Reading your profile…</>
+                    : state.phase === "analysing" ? <><span className="spinner" /> Reading with AI…</>
                     : state.phase === "sending" ? <><span className="spinner" /> Sending to quikResume…</>
                         : state.phase === "waiting" && state.error ? "Try again" : "Import"}
             </button>
-            <p className="subtle">Reads this page only, in your browser. Sections LinkedIn shortens behind “Show all” may be incomplete.</p>
+            <p className="subtle">Reads your profile in your browser, including its “Show all” lists. Parts it can't read directly are read with AI through quikResume.</p>
         </div>
     );
 }

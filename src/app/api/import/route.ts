@@ -15,9 +15,9 @@
 // Guarded (lib/security/guard.ts): same-origin, session, per-user rate limit, daily AI budget.
 
 import { NextResponse } from "next/server";
-import { chatCompletion, GlmError, glmErrorStatus, glmModel, isGlmConfigured } from "@/lib/glm/client";
-import { SYSTEM_PROMPT, userInstruction } from "@/lib/import/prompt";
-import { ImportParseError, parseModelOutput } from "@/lib/import/parsed-resume";
+import { glmModel, isGlmConfigured } from "@/lib/glm/client";
+import { userInstruction } from "@/lib/import/prompt";
+import { importFailure, runImportModel } from "@/lib/import/model-import";
 import { formToDocument, isDocumentError } from "@/lib/import/document-text";
 import { MAX_FILE_BYTES, type ImportResponse } from "@/lib/import/types";
 import { guardApi } from "@/lib/security/guard";
@@ -56,25 +56,16 @@ export async function POST(req: Request) {
 
     return withAiUser(g.uid, "import", async () => {
         try {
-            const result = await chatCompletion([
-                { role: "system", content: SYSTEM_PROMPT },
-                { role: "user", content: parts },
-            ]);
-            const parsed = parseModelOutput(result.text);
+            const { parsed, model } = await runImportModel(parts);
             return NextResponse.json<ImportResponse>({
-                ok: true, data: parsed.data, warnings: parsed.warnings, fileName, model: result.model,
+                ok: true, data: parsed.data, warnings: parsed.warnings, fileName, model,
             });
         } catch (err) {
-            if (err instanceof ImportParseError) {
-                console.error("[import] could not parse model output:", err.message, "\n---\n", err.raw.slice(0, 500));
-                return fail(502, "The AI reply could not be understood. Please try again, or upload a clearer copy of the resume.");
-            }
-            if (err instanceof GlmError) {
-                console.error("[import] GLM error:", err.message);
-                return fail(glmErrorStatus(err), err.message);
-            }
-            console.error("[import] unexpected error:", err);
-            return fail(500, "Something went wrong while importing the resume.");
+            const { status, error } = importFailure(err, "import", {
+                unreadable: "The AI reply could not be understood. Please try again, or upload a clearer copy of the resume.",
+                other: "Something went wrong while importing the resume.",
+            }, { logReply: true });
+            return fail(status, error);
         }
     });
 }

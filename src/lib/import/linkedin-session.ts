@@ -1,13 +1,15 @@
 // src/lib/import/linkedin-session.ts
 // Web side of one "Import from LinkedIn" session (components/ui/linkedin-import.tsx). Every event that
 // belongs to a session carries its id; events for another id are ignored, so a late reply from a
-// cancelled or replaced session can never move the current one. No AI: the extension sends the profile
-// already structured, and it goes straight to the Import review step.
+// cancelled or replaced session can never move the current one. The extension sends the profile already
+// structured (parsed from the page; when its parser was unsure, the gaps were read with AI first) and it
+// goes straight to the Import review step.
 //
 //   idle -start-> checking -detected-> extension-needed (missing / unpaired / outdated: set it up first)
 //                                   -> need-url (no saved profile URL) -url-saved-> starting
 //                                   -> starting (linkedin-start sent) -linkedin-started-> waiting
 //   waiting -linkedin-capturing-> capturing -linkedin-captured-> received (in review; the page acknowledges)
+//   capturing -linkedin-analysing-> capturing with `analysing` (the AI fallback is reading the page)
 //   capture failure -> waiting with the error (the user retries from the extension)
 //   an unusable capture -> waiting with the error, and the extension is told (`reject`)
 //   the extension ended the session, went silent or was reloaded -> failed; cancel -> idle
@@ -29,7 +31,8 @@ export type LinkedInSession =
     | { phase: "starting"; id: string; url: string }
     /** `reject`: the error is about a capture this page refused; the extension must hear it. */
     | { phase: "waiting"; id: string; url: string; error: string | null; reject: boolean }
-    | { phase: "capturing"; id: string; url: string }
+    /** `analysing`: the extension's parser was unsure and the AI is reading the profile text. */
+    | { phase: "capturing"; id: string; url: string; analysing: boolean }
     | { phase: "received"; id: string; file: ParsedFile }
     | { phase: "extension-needed"; reason: ExtensionReason }
     | { phase: "failed"; error: string; fix: LinkedInFix };
@@ -116,7 +119,9 @@ export function linkedInReducer(s: LinkedInSession, e: LinkedInEvent): LinkedInS
         case "linkedin-started":
             return s.phase === "starting" ? { phase: "waiting", id: s.id, url: s.url, error: null, reject: false } : s;
         case "linkedin-capturing":
-            return s.phase === "waiting" ? { phase: "capturing", id: s.id, url: s.url } : s;
+            return s.phase === "waiting" ? { phase: "capturing", id: s.id, url: s.url, analysing: false } : s;
+        case "linkedin-analysing":
+            return s.phase === "waiting" || s.phase === "capturing" ? { phase: "capturing", id: s.id, url: s.url, analysing: true } : s;
         case "captured":
             return s.phase === "waiting" || s.phase === "capturing" ? captured(s, e) : s;
         case "linkedin-capture-failed":

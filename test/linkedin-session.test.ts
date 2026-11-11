@@ -16,6 +16,16 @@ describe("LinkedIn session (web)", () => {
         expect(reduce(capturing, { type: "captured", id: "a", url: URL_, file })).toEqual({ phase: "received", id: "a", file });
     });
 
+    it("shows the AI fallback while the extension reads the profile with AI, then lands in review", () => {
+        const capturing = reduce(waiting(), { type: "linkedin-capturing", id: "a" });
+        expect(capturing).toMatchObject({ phase: "capturing", analysing: false });
+        const analysing = reduce(capturing, { type: "linkedin-analysing", id: "a" });
+        expect(analysing).toEqual({ phase: "capturing", id: "a", url: URL_, analysing: true });
+        expect(reduce(analysing, { type: "linkedin-analysing", id: "b" })).toBe(analysing);
+        expect(reduce(analysing, { type: "linkedin-capture-failed", id: "a", error: "Nope" })).toMatchObject({ phase: "waiting", error: "Nope" });
+        expect(reduce(analysing, { type: "captured", id: "a", url: URL_, file })).toEqual({ phase: "received", id: "a", file });
+    });
+
     it("sends the user to extension setup when it is missing, unpaired or outdated", () => {
         const after = (h: Parameters<typeof reduce>[1] & { type: "detected" }) => run({ type: "start", id: "a" }, h);
         expect(after({ type: "detected", id: "a", hello: null, savedUrl: URL_ })).toEqual({ phase: "extension-needed", reason: "missing" });

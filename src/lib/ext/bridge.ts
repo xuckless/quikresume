@@ -32,6 +32,8 @@ export type AppMessage = AppPayload & { source: typeof APP_SOURCE };
 export type LinkedInExtPayload =
     | { type: "linkedin-started"; id: string }
     | { type: "linkedin-capturing"; id: string }
+    /** The parser was unsure: the extension is reading the profile's visible text with AI. */
+    | { type: "linkedin-analysing"; id: string }
     /** The profile as an ImportEnvelope (src/lib/import/envelope.ts), validated by the page before review. */
     | { type: "linkedin-captured"; id: string; url: string; data: Record<string, unknown>; warnings: string[] }
     | { type: "linkedin-capture-failed"; id: string; error: string }
@@ -94,6 +96,7 @@ export function parseLinkedInExtPayload(d: unknown): LinkedInExtPayload | null {
     switch (d.type) {
         case "linkedin-started":
         case "linkedin-capturing":
+        case "linkedin-analysing":
             return { type: d.type, id };
         case "linkedin-captured": {
             const url = typeof d.url === "string" ? canonicalProfileUrl(d.url) : null;

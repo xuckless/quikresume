@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CAPTURE_ERRORS, captureProfile, detailsUrl, extractProfile, isDateLine, isLoginWall, pageState, splitDates } from "./profile-extract";
+import { CAPTURE_ERRORS, captureProfile, detailsUrl, extractProfile, isDateLine, isLoginWall, pageState, profileText, splitDates } from "./profile-extract";
 import { needsAnalysis } from "./profile-merge";
 
 // ---------- Older markup (2024-25), hand-built ----------
@@ -268,6 +268,21 @@ describe("extractProfile (current markup)", () => {
         expect(result).toMatchObject({ topCard: false, unread: [] });
         expect(result.data.workExperience).toEqual([]);
         expect(needsAnalysis(result)).toBe(true);
+        // The AI fallback gets the profile's text, not LinkedIn's cards.
+        const text = profileText(document);
+        expect(text).toContain("Jordan Example");
+        expect(text).toMatch(/\nExperience\nCampus Outreach Assistant\n/);
+        expect(text).not.toMatch(/profile views|Following|People you may know/);
+    });
+});
+
+describe("profileText", () => {
+    it("keeps the top card and profile cards with their headings, and leaves LinkedIn's cards out", () => {
+        document.body.innerHTML = LIVE;
+        const text = profileText(document);
+        expect(text.startsWith("Jordan Example\n")).toBe(true);
+        for (const heading of ["About", "Experience", "Education", "Licenses & certifications", "Volunteering", "Skills (24)"]) expect(text).toContain(`\n${heading}\n`);
+        expect(text).not.toMatch(/Dashboard|profile views|Activity|Following|Interests|Connected apps|People you may know/);
     });
 });
 
@@ -324,6 +339,7 @@ describe("captureProfile", () => {
         expect(fetchPage).toHaveBeenCalledExactlyOnceWith(`${JORDAN}/details/skills/`);
         expect(capture.data.skills).toEqual([{ category: "Skills", items: ["Customer Service", "Data Entry", "Scheduling", "Bookkeeping"] }]);
         expect(capture.warnings).toEqual([]);
+        expect(capture.text).toBeNull();
     });
 
     it("keeps the visible items with a warning when the details page has nothing readable", async () => {
@@ -332,5 +348,13 @@ describe("captureProfile", () => {
         const capture = await captureProfile(JORDAN, fakeWindow(JORDAN), opts(vi.fn(async () => empty)));
         expect(capture.data.skills?.[0]?.items).toEqual(["Customer Service", "Data Entry"]);
         expect(capture.warnings).toEqual(["Skills may be incomplete: LinkedIn shows only part of it on your profile page."]);
+    });
+
+    it("adds the visible text only when the parser is unsure", async () => {
+        document.body.innerHTML = LIVE;
+        breakCard("profile-card-education")(document);
+        const capture = await captureProfile(JORDAN, fakeWindow(JORDAN), opts());
+        expect(capture.unread).toEqual(["education"]);
+        expect(capture.text).toContain("\nEducation\n");
     });
 });

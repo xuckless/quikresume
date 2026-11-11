@@ -8,6 +8,7 @@
 import { normalizeLinks, readLinks } from "@/lib/contact/links";
 import { z } from "zod";
 import type { ResumeData, ResumeListKey } from "@/types/schema";
+import type { ImportEnvelope } from "./envelope";
 import { emptyPersonalInfo, emptyResumeData } from "@/types/schema";
 import { newTempId } from "@/lib/ids";
 import { normalizeContact } from "@/lib/contact/normalize";
@@ -116,6 +117,15 @@ export function parseModelOutput(text: string): ParsedImport {
     const raw = extractJson(text);
     if (!raw || typeof raw !== "object") throw new ImportParseError("The model reply was not a JSON object.", text);
     return parseImportObject(raw);
+}
+
+/**
+ * The envelope's outline from a model reply, items still unvalidated: known keys only, personal fields as
+ * clean bounded strings, each list capped. For replies that travel on to another parseImportObject (the
+ * LinkedIn AI fallback goes back to the extension, then to the page).
+ */
+export function readImportEnvelope(raw: unknown): ImportEnvelope {
+    return envelope.parse(raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}) as ImportEnvelope;
 }
 
 /** Validates an already-structured import (ImportEnvelope or anything close to it). Never throws. */

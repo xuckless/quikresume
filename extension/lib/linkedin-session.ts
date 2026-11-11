@@ -2,31 +2,39 @@
 // The app's Import page starts it over a "linkedin-import" port (entrypoints/site.content.ts relays
 // window messages, src/lib/ext/bridge.ts types and validates them); the side panel shows it on the
 // LinkedIn tab and asks for the capture; the profile, parsed from the page DOM into an ImportEnvelope
-// (lib/profile-extract.ts, no AI), goes back to the page, which opens its review step.
+// (lib/profile-extract.ts), goes back to the page, which opens its review step. When the parser is unsure
+// (lib/profile-merge.ts), the page's visible text goes to /api/ext/profile/analyse and the AI's reading
+// fills what the parser could not read.
 //
 //   idle -start-> opening (account check, new tab) -opened-> waiting (user signs in, opens the profile)
 //   waiting -capture-> capturing -captured-> sending (the page validates it)
+//   capturing -analyse-> analysing (AI fallback) -captured-> sending
 //   capture failure, or the page refusing the capture -> waiting with the error (Import again retries)
 //   sending -received ok-> done (big checkmark; the tab stays open)
 //   cancel from the page, tab closed, page gone, account mismatch -> ended (error shown) -dismiss-> idle
 //
 // Security: ports are accepted only from the app origin; the paired account must be the uid the page
 // sent (checked at start and again before each capture); the tab's canonical URL must equal the
-// expected URL before and after the capture; the payload is capped at MAX_PROFILE_JSON.
+// expected URL before and after the capture; the payload is capped at MAX_PROFILE_JSON; the AI fallback
+// gets only that checked capture's visible text (≤ MAX_PROFILE_TEXT), sent with the paired token.
 // Web-side counterpart: src/lib/import/linkedin-session.ts.
 
 import {
     LINKEDIN_PORT, parseLinkedInAppPayload,
     type LinkedInAppPayload, type LinkedInExtPayload,
 } from "../../src/lib/ext/bridge";
-import { canonicalProfileUrl, MAX_PROFILE_JSON } from "../../src/lib/import/linkedin";
-import type { CaptureResult } from "./profile-merge";
+import type { ImportEnvelope } from "../../src/lib/import/envelope";
+import { canonicalProfileUrl, MAX_PROFILE_JSON, MAX_PROFILE_TEXT } from "../../src/lib/import/linkedin";
+import type { Capture } from "./profile-extract";
+import { aiFailedWarning, hasContent, mergeAnalysis, needsAnalysis } from "./profile-merge";
 
 export type LinkedInState =
     | { phase: "idle" }
     | { phase: "opening"; id: string; url: string }
     | { phase: "waiting"; id: string; url: string; tabId: number; error: string | null }
     | { phase: "capturing"; id: string; url: string; tabId: number }
+    /** The parser was unsure: the AI is reading the profile's visible text. */
+    | { phase: "analysing"; id: string; url: string; tabId: number }
     | { phase: "sending"; id: string; url: string; tabId: number }
     | { phase: "done"; id: string; url: string; tabId: number }
     | { phase: "ended"; id: string; url: string; tabId: number | null; error: string };
@@ -35,6 +43,7 @@ export type LinkedInEvent =
     | { type: "start"; id: string; url: string }
     | { type: "opened"; id: string; tabId: number }
     | { type: "capture"; id: string }
+    | { type: "analyse"; id: string }
     | { type: "captured"; id: string }
     | { type: "capture-failed"; id: string; error: string }
     | { type: "received"; id: string; ok: true }
@@ -45,8 +54,8 @@ export type LinkedInEvent =
 export const IDLE: LinkedInState = { phase: "idle" };
 
 /** A session the page is still following (it must hear how it ends). */
-export function isLive(s: LinkedInState): s is Extract<LinkedInState, { phase: "opening" | "waiting" | "capturing" | "sending" }> {
-    return s.phase === "opening" || s.phase === "waiting" || s.phase === "capturing" || s.phase === "sending";
+export function isLive(s: LinkedInState): s is Extract<LinkedInState, { phase: "opening" | "waiting" | "capturing" | "analysing" | "sending" }> {
+    return s.phase === "opening" || s.phase === "waiting" || s.phase === "capturing" || s.phase === "analysing" || s.phase === "sending";
 }
 
 /** Pure transitions. Returns the same object when the event does not apply (stale id, wrong phase). */
@@ -60,10 +69,12 @@ export function reduceLinkedIn(s: LinkedInState, e: LinkedInEvent): LinkedInStat
             return s.phase === "opening" ? { phase: "waiting", id: s.id, url: s.url, tabId: e.tabId, error: null } : s;
         case "capture":
             return s.phase === "waiting" ? { phase: "capturing", id: s.id, url: s.url, tabId: s.tabId } : s;
+        case "analyse":
+            return s.phase === "capturing" ? { phase: "analysing", id: s.id, url: s.url, tabId: s.tabId } : s;
         case "captured":
-            return s.phase === "capturing" ? { phase: "sending", id: s.id, url: s.url, tabId: s.tabId } : s;
+            return s.phase === "capturing" || s.phase === "analysing" ? { phase: "sending", id: s.id, url: s.url, tabId: s.tabId } : s;
         case "capture-failed":
-            return s.phase === "capturing" ? { phase: "waiting", id: s.id, url: s.url, tabId: s.tabId, error: e.error } : s;
+            return s.phase === "capturing" || s.phase === "analysing" ? { phase: "waiting", id: s.id, url: s.url, tabId: s.tabId, error: e.error } : s;
         case "received":
             if (s.phase !== "sending") return s;
             return e.ok ? { phase: "done", id: s.id, url: s.url, tabId: s.tabId } : { phase: "waiting", id: s.id, url: s.url, tabId: s.tabId, error: e.error };
@@ -81,7 +92,7 @@ export type LinkedInRequest =
 /** Background -> profile content script (entrypoints/linkedin-profile.content.ts). */
 export type ProfileTabRequest = { type: "profile-page" } | { type: "capture-profile"; url: string };
 export type ProfilePageReply = { loginWall: boolean };
-export type CaptureReply = ({ ok: true } & CaptureResult) | { ok: false; error: string };
+export type CaptureReply = ({ ok: true } & Capture) | { ok: false; error: string };
 
 export const MESSAGES = {
     mismatch: "This tab is not the LinkedIn profile saved in quikResume. Open your profile, then click Import.",
@@ -93,6 +104,7 @@ export const MESSAGES = {
     replaced: "A new LinkedIn import was started.",
     interrupted: "The extension restarted and the import stopped. Start it again from quikResume.",
     noTab: "Couldn't open LinkedIn. Start the import again from quikResume.",
+    unreadable: (reason: string) => `quikResume doesn't recognise this LinkedIn page layout, and reading it with AI failed (${reason.replace(/\.$/, "")}). Click Import to try again.`,
 };
 
 const STORE_KEY = "linkedin";
@@ -106,6 +118,8 @@ interface Deps {
     appOrigin: string;
     /** Id of the quikResume account this extension is paired with (throws when unpaired). */
     accountId: () => Promise<string>;
+    /** The AI fallback: the profile's visible text structured by /api/ext/profile/analyse (throws on failure). */
+    analyse: (url: string, text: string) => Promise<ImportEnvelope>;
 }
 
 /**
@@ -113,7 +127,7 @@ interface Deps {
  * restarted worker can report an interrupted import), the port of the page that owns it, and the
  * handlers background.ts wires to Chrome events.
  */
-export function createLinkedInImport({ appOrigin, accountId }: Deps) {
+export function createLinkedInImport({ appOrigin, accountId, analyse }: Deps) {
     let state: LinkedInState = IDLE;
     /** The page port that started the current session, and that session's uid. */
     let owner: { id: string; uid: string; port: chrome.runtime.Port } | null = null;
@@ -203,9 +217,28 @@ export function createLinkedInImport({ appOrigin, accountId }: Deps) {
         }
         if ((await tabProfileUrl(tabId)) !== url) return fail(MESSAGES.moved);
         if (!reply.ok) return fail(reply.error);
-        if (JSON.stringify(reply.data).length > MAX_PROFILE_JSON) return fail("Your profile is too long to import.");
+        let { data, warnings } = reply;
+        if (needsAnalysis(reply)) {
+            // The parser was unsure: the AI reads the visible text; what the parser read confidently stays.
+            const usable = hasContent(reply.data);
+            const text = typeof reply.text === "string" ? reply.text.slice(0, MAX_PROFILE_TEXT) : "";
+            if (!text.trim() && !usable) return fail(MESSAGES.unreadable("the page had no readable text"));
+            if (text.trim()) {
+                if (!dispatch({ type: "analyse", id })) return;
+                send(id, { type: "linkedin-analysing", id });
+                try {
+                    const ai = await analyse(url, text);
+                    ({ data, warnings } = mergeAnalysis(reply, ai && typeof ai === "object" ? ai : {}));
+                } catch (err) {
+                    const reason = errorText(err, "no answer");
+                    if (!usable) return fail(MESSAGES.unreadable(reason));
+                    warnings = [...warnings, aiFailedWarning(reason)];
+                }
+            }
+        }
+        if (JSON.stringify(data).length > MAX_PROFILE_JSON) return fail("Your profile is too long to import.");
         if (dispatch({ type: "captured", id })) {
-            send(id, { type: "linkedin-captured", id, url, data: reply.data as Record<string, unknown>, warnings: reply.warnings });
+            send(id, { type: "linkedin-captured", id, url, data: data as Record<string, unknown>, warnings });
         }
     }
 

@@ -307,6 +307,8 @@ export default defineBackground(() => {
         appOrigin: new URL(appUrl()).origin,
         // The paired account; the session refuses to run for anyone but the page's user.
         accountId: async () => (await api<{ user: { id: string } }>("/api/ext/me")).user.id,
+        // The AI fallback for a profile the parser could not read (lib/profile-merge.ts).
+        analyse: async (url, text) => (await api<{ data: Record<string, unknown> }>("/api/ext/profile/analyse", { method: "POST", body: { url, text } })).data,
     });
     chrome.runtime.onConnect.addListener(port => linkedIn.onConnect(port));
     // Per-tab state from earlier shapes (lib/tab-state.ts) is never read again.

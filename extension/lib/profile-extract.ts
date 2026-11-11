@@ -1,6 +1,7 @@
 // LinkedIn profile page -> ImportEnvelope (src/lib/import/envelope.ts), parsed from the DOM in the
 // profile tab (entrypoints/linkedin-profile.content.ts). No AI here: the app validates the result with the
-// same lenient schema as file import; lib/profile-merge.ts `needsAnalysis` says when it is unsure.
+// same lenient schema as file import. When this parser is unsure (lib/profile-merge.ts `needsAnalysis`),
+// the capture also carries the profile's visible text and the background asks the AI to fill the gaps.
 //
 // Markup facts relied on (LinkedIn's signed-in, server-driven profile, checked against a saved live page
 // in 2026-11; anonymised copy in __fixtures__/linkedin-profile-2026.html). Class names are obfuscated
@@ -27,8 +28,8 @@
 // Each section parser fails on its own: a section it cannot read becomes a warning and an `unread` key.
 
 import type { ImportEnvelope } from "../../src/lib/import/envelope";
-import { canonicalProfileUrl } from "../../src/lib/import/linkedin";
-import type { CaptureResult, ReadKey } from "./profile-merge";
+import { canonicalProfileUrl, MAX_PROFILE_TEXT } from "../../src/lib/import/linkedin";
+import { needsAnalysis, type CaptureResult, type ReadKey } from "./profile-merge";
 
 export const SELECTORS = {
     /** The page's main column. */
@@ -79,6 +80,10 @@ const SECTION_KEY: Record<SectionId, ReadKey> = {
     licenses_and_certifications: "certifications", honors_and_awards: "awards", volunteering_experience: "volunteering",
     publications: "publications", languages: "languages", organizations: "custom", courses: "custom", patents: "custom", test_scores: "custom",
 };
+
+/** Cards that are LinkedIn's, not the member's profile (left out of the AI fallback's text). */
+const NOT_PROFILE = /^profile-card-(insights|recent-activity|interests|connected-accounts|pymk|company-recommendation|browsemap|featured-null)/;
+const NOT_PROFILE_HEADING = /^(dashboard|analytics|activity|interests|connected apps|people you may know|you might like|pages you might like|more profiles for you|people also viewed|profile language|public profile (&|and) url|resources)$/i;
 
 export class CaptureError extends Error {}
 
@@ -585,6 +590,30 @@ async function completeTruncated(reading: Reading, fetchPage: FetchPage): Promis
     await Promise.all(Array.from({ length: DETAILS_CONCURRENCY }, work));
 }
 
+// ---------- Visible text (AI fallback) ----------
+
+const NOT_TEXT = 'aside, nav, header, footer, [role="dialog"], [data-testid="dialog-content"], [data-testid^="carousel"], .visually-hidden, select';
+
+/**
+ * The readable text of the profile column, headings kept as lines, for the AI fallback. Only the top
+ * card and profile cards (LinkedIn's own cards left out); on a layout we do not recognise, the main
+ * column minus navigation, overlays and cards whose heading is LinkedIn's (Activity, Interests...).
+ */
+export function profileText(doc: Document): string {
+    const root = doc.querySelector(SELECTORS.main) ?? doc.body;
+    const notProfile = (el: Element) => {
+        if (el.matches(NOT_TEXT)) return true;
+        const view = el.getAttribute("data-view-name") ?? "";
+        if (NOT_PROFILE.test(view)) return true;
+        const h2 = el.matches("section, [data-view-name]") ? el.querySelector("h2") : null;
+        return h2 !== null && NOT_PROFILE_HEADING.test(headingOf(el)) && h2.closest("section, [data-view-name]") === el;
+    };
+    const cards = [...outermost(root, SELECTORS.topCard), ...outermost(root, SELECTORS.anyCard)].filter(el => !notProfile(el));
+    const blocks = cards.length > 0 ? cards : [root];
+    const text = blocks.map(b => linesOf(b, notProfile).filter(l => !/^…?\s*(see )?more$|^…$/i.test(l)).join("\n")).filter(Boolean).join("\n\n");
+    return text.slice(0, MAX_PROFILE_TEXT);
+}
+
 // ---------- Capture in the live tab ----------
 
 const READY_TIMEOUT_MS = 8_000;
@@ -640,8 +669,11 @@ async function loadWholeProfile(win: Window, pause: (ms: number) => Promise<void
     win.scrollTo(0, 0);
 }
 
+/** What the content script sends back: the parse, plus the visible text when the AI must help. */
+export type Capture = CaptureResult & { text: string | null };
+
 /** Captures the profile open in `win`, which must be `expectedUrl` before and after. */
-export async function captureProfile(expectedUrl: string, win: Window = window, opts: CaptureOptions = {}): Promise<CaptureResult> {
+export async function captureProfile(expectedUrl: string, win: Window = window, opts: CaptureOptions = {}): Promise<Capture> {
     const pause = opts.pause ?? realPause;
     const expected = canonicalProfileUrl(expectedUrl);
     const onProfile = () => expected !== null && canonicalProfileUrl(win.location.href) === expected;
@@ -655,5 +687,5 @@ export async function captureProfile(expectedUrl: string, win: Window = window, 
     await completeTruncated(reading, opts.fetchPage ?? fetchDetailsPage);
     const result = assemble(reading);
     if (!onProfile()) throw new CaptureError(CAPTURE_ERRORS.mismatch);
-    return result;
+    return { ...result, text: needsAnalysis(result) ? profileText(win.document) : null };
 }

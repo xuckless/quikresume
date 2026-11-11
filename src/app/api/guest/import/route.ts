@@ -3,9 +3,8 @@
 // draft lives in the visitor's browser until they sign in (see claimGuestDraft).
 
 import { NextResponse } from "next/server";
-import { chatCompletion, GlmError, glmErrorStatus } from "@/lib/glm/client";
-import { SYSTEM_PROMPT, userInstruction } from "@/lib/import/prompt";
-import { ImportParseError, parseModelOutput } from "@/lib/import/parsed-resume";
+import { userInstruction } from "@/lib/import/prompt";
+import { importFailure, runImportModel } from "@/lib/import/model-import";
 import { formToDocument, isDocumentError } from "@/lib/import/document-text";
 import { MAX_FILE_BYTES, type ImportResponse } from "@/lib/import/types";
 import { GUEST_BUDGET, GUEST_POOL, guardGuest } from "@/lib/security/guest-guard";
@@ -38,14 +37,14 @@ export async function POST(req: Request) {
 
     return withAiUser(g.guestId, "guest-import", async () => {
         try {
-            const result = await chatCompletion([{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: parts }]);
-            const parsed = parseModelOutput(result.text);
-            return NextResponse.json<ImportResponse>({ ok: true, data: parsed.data, warnings: parsed.warnings, fileName, model: result.model });
+            const { parsed, model } = await runImportModel(parts);
+            return NextResponse.json<ImportResponse>({ ok: true, data: parsed.data, warnings: parsed.warnings, fileName, model });
         } catch (err) {
-            if (err instanceof ImportParseError) return fail(502, "The AI reply could not be understood. Try again, or upload a clearer copy.");
-            if (err instanceof GlmError) return fail(glmErrorStatus(err), err.message);
-            console.error("[guest/import]", err);
-            return fail(500, "Something went wrong while reading the résumé.");
+            const { status, error } = importFailure(err, "guest/import", {
+                unreadable: "The AI reply could not be understood. Try again, or upload a clearer copy.",
+                other: "Something went wrong while reading the résumé.",
+            });
+            return fail(status, error);
         }
     }, { budget: GUEST_BUDGET, pool: GUEST_POOL });
 }

@@ -36,6 +36,8 @@ describe("parseExtPayload", () => {
     it("keeps errors short and maps unknown end reasons to other", () => {
         expect(parseExtPayload({ type: "linkedin-ended", id: ID, error: "x".repeat(1000), reason: "?" })).toEqual({ type: "linkedin-ended", id: ID, error: "x".repeat(300), reason: "other" });
         expect(parseExtPayload({ type: "linkedin-capture-failed", id: ID, error: "" })).toBeNull();
+        expect(parseExtPayload({ type: "linkedin-analysing", id: ID, extra: 1 })).toEqual({ type: "linkedin-analysing", id: ID });
+        expect(parseExtPayload({ type: "linkedin-analysing", id: "nope" })).toBeNull();
         expect(parseExtPayload({ type: "unknown" })).toBeNull();
     });
 });
