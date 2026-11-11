@@ -335,15 +335,15 @@ function JobDetail({ job, preferences, aliases, variants, resumeData, onApplyPro
         }
     };
 
-    // Remember the working selection's score for the job list (debounced; writes nothing when unchanged).
-    // Not while the AI check runs: the tracker would show the preliminary keyword score as final.
+    // Remember the working selection's score for the job list (writes nothing when unchanged). Not while the
+    // AI check runs: the tracker would show the preliminary keyword score as final. Saved at once, not after a
+    // delay that leaving the page cancels; the score only moves on a refresh or a source switch, and the save
+    // revalidates, so `job.lastScore` catches up and the tracker never reads a cached older number.
     const matchRunning = job.match.status === "running";
-    const roundedScore = Math.round(match.score);
-    const scoreToSave = source.kind === "selection" && !matchRunning && roundedScore !== job.lastScore ? roundedScore : null;
+    const scoreToSave = source.kind === "selection" && !matchRunning && match.score !== job.lastScore ? match.score : null;
     useEffect(() => {
         if (scoreToSave === null) return;
-        const timer = setTimeout(() => { void saveJobScore(job.id, scoreToSave).catch(() => {}); }, 1500);
-        return () => clearTimeout(timer);
+        void saveJobScore(job.id, scoreToSave).catch(() => {});
     }, [job.id, scoreToSave]);
     const [notice, setNotice] = useState<string | null>(null);
 

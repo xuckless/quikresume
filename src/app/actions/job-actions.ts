@@ -63,8 +63,10 @@ export async function setProposalStatus(jobId: string, proposalId: string, statu
 export async function saveJobScore(jobId: string, score: number) {
     const uid = await requireUid();
     if (typeof score !== "number" || !Number.isFinite(score)) return;
-    // No revalidation: the list shows the new number on the next natural refresh.
     await setJobScore(uid, jobId, Math.max(0, Math.min(100, Math.round(score))));
+    // Revalidate: the router keeps dynamic pages for 30 s (next.config staleTimes), so without it the tracker
+    // reopened from the job page showed the cached older score. The caller saves only when the number changed.
+    revalidatePath("/dashboard");
 }
 
 export async function muteProposal(input: MuteRule) {
