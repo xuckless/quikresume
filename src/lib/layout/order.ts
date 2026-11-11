@@ -61,6 +61,32 @@ export function orderedItems<T extends AnyItem>(key: ResumeListKey, items: reado
     return out;
 }
 
+/** The fields `compareByDate` reads, across sections. */
+export const DATE_FIELDS = ["startDate", "endDate", "date", "year"] as const;
+/** An item's date fields as they were when its edit began. */
+export type DatePin = Partial<Record<(typeof DATE_FIELDS)[number], string>>;
+
+/** The pin to store before `patch` changes an item's dates; null when the patch leaves dates alone. */
+export function pinBeforeEdit(item: AnyItem, patch: object): DatePin | null {
+    if (!DATE_FIELDS.some(f => f in patch)) return null;
+    const x = item as unknown as Record<string, string | undefined>;
+    const pin: DatePin = {};
+    for (const f of DATE_FIELDS) if (f in x) pin[f] = x[f];
+    return pin;
+}
+
+/**
+ * Editor display order: like `orderedItems`, but items in `pins` sort by the dates they had
+ * when their edit began, so a row does not move while its dates are typed. The items returned
+ * are the real ones. Everything else (Library, Typst, Tailor) uses `orderedItems`.
+ */
+export function orderedItemsPinned<T extends AnyItem>(key: ResumeListKey, items: readonly T[], layout: ResumeLayout | undefined, pins: Readonly<Record<string, DatePin>>): T[] {
+    if (items.every(it => !pins[it.id])) return orderedItems(key, items, layout);
+    const byId = new Map(items.map(it => [it.id, it]));
+    const sortAs = items.map(it => (pins[it.id] ? ({ ...it, ...pins[it.id] } as T) : it));
+    return orderedItems(key, sortAs, layout).map(it => byId.get(it.id)!);
+}
+
 export function hasManualOrder(layout: ResumeLayout, key: ResumeListKey): boolean {
     return Array.isArray(layout.itemOrder[key]);
 }

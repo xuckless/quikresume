@@ -6,6 +6,8 @@
 //
 // Order is the print order: sections follow `layout.sectionOrder` and items
 // `orderedItems` (newest first until dragged). Dragging edits `draft.layout`.
+// While an item's dates are being edited it keeps the place it had (`datePins`);
+// it settles into its dated place when the row is collapsed or focus leaves it.
 // Advanced layout mode adds page, section and item spacing controls.
 
 import React, { useState } from "react";
@@ -15,7 +17,7 @@ import { isStale } from "@/lib/tags/content";
 import { itemTitle, itemLabel, SECTION_LABEL } from "@/lib/sections";
 import { itemWordCount } from "@/lib/text/word-count";
 import { validateItemDates } from "@/lib/validation/dates";
-import { hasManualOrder, isDatedSection, moveItem, moveSection, orderedItems, resetItemOrder } from "@/lib/layout/order";
+import { hasManualOrder, isDatedSection, moveItem, moveSection, orderedItemsPinned, pinBeforeEdit, resetItemOrder, type DatePin } from "@/lib/layout/order";
 import { ENTRY_SECTIONS } from "@/lib/layout/presets";
 import type { ResumeLayout, SectionId } from "@/lib/layout/types";
 import type { LinkChecks } from "@/lib/contact/types";
@@ -64,9 +66,16 @@ export function ResumeForm({ resumeData, onChange, variantUsage = {}, tab, initi
     const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set(initialOpenId ? [initialOpenId] : []));
     const [justAddedId, setJustAddedId] = useState<string | null>(initialOpenId);
     const [draggingSection, setDraggingSection] = useState(false);
+    // Item id -> dates before its current edit; the display order sorts by these until the row settles.
+    const [datePins, setDatePins] = useState<Readonly<Record<string, DatePin>>>({});
     const layout = resumeData.layout;
 
-    const toggleOpen = (id: string) => setOpenIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+    const settle = (id: string) => setDatePins(prev => { if (!prev[id]) return prev; const n = { ...prev }; delete n[id]; return n; });
+
+    const toggleOpen = (id: string) => {
+        if (openIds.has(id)) settle(id);
+        setOpenIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+    };
 
     const updateLayout: LayoutUpdate = fn => onChange(prev => ({ ...prev, layout: fn(prev.layout) }));
 
@@ -82,6 +91,9 @@ export function ResumeForm({ resumeData, onChange, variantUsage = {}, tab, initi
     };
 
     const updateItem = <K extends ResumeListKey>(key: K, id: string, patch: Partial<ItemOf<K>>) => {
+        const current = (resumeData[key] as ItemOf<K>[]).find(item => item.id === id);
+        const pin = current ? pinBeforeEdit(current, patch) : null;
+        if (pin) setDatePins(prev => (prev[id] ? prev : { ...prev, [id]: pin }));
         onChange(prev => ({
             ...prev,
             [key]: (prev[key] as ItemOf<K>[]).map(item => (item.id === id ? { ...item, ...patch } : item)),
@@ -90,6 +102,7 @@ export function ResumeForm({ resumeData, onChange, variantUsage = {}, tab, initi
 
     // Removal only edits the draft; saved items are deleted by Save & Exit, so Discard brings them back.
     const removeItem = <K extends ResumeListKey>(key: K, id: string) => {
+        settle(id);
         if (!isTempId(id)) onDeletePersisted(key, id);
         onChange(prev => ({ ...prev, [key]: (prev[key] as ItemOf<K>[]).filter(item => item.id !== id) }));
     };
@@ -126,7 +139,7 @@ export function ResumeForm({ resumeData, onChange, variantUsage = {}, tab, initi
         }
         const key = id;
         const cfg = SECTION_CONFIG[key];
-        const items = orderedItems(key, resumeData[key] as ItemOf<typeof key>[], layout);
+        const items = orderedItemsPinned(key, resumeData[key] as ItemOf<typeof key>[], layout, datePins);
         const ids = items.map(it => it.id);
         const manual = hasManualOrder(layout, key);
         return (
@@ -155,6 +168,7 @@ export function ResumeForm({ resumeData, onChange, variantUsage = {}, tab, initi
                             review={reviews[item.id] ?? null}
                             open={openIds.has(item.id)}
                             onToggleOpen={() => toggleOpen(item.id)}
+                            onSettle={() => settle(item.id)}
                             autoFocus={item.id === justAddedId}
                             onUpdate={patch => updateItem(key, item.id, patch)}
                             onRemove={() => removeItem(key, item.id)}
@@ -227,7 +241,7 @@ function SortableSection({ id, sortable, icon, count, addLabel, onAdd, headerAct
     );
 }
 
-function SortableItemRow<K extends ResumeListKey>({ sectionKey, item, layout, advanced, usedBy, review, open, onToggleOpen, autoFocus, onUpdate, onRemove, onDuplicate, updateLayout }: {
+function SortableItemRow<K extends ResumeListKey>({ sectionKey, item, layout, advanced, usedBy, review, open, onToggleOpen, onSettle, autoFocus, onUpdate, onRemove, onDuplicate, updateLayout }: {
     sectionKey: K;
     item: ItemOf<K>;
     layout: ResumeLayout;
@@ -236,6 +250,7 @@ function SortableItemRow<K extends ResumeListKey>({ sectionKey, item, layout, ad
     review: ItemReview | null;
     open: boolean;
     onToggleOpen: () => void;
+    onSettle: () => void;
     autoFocus: boolean;
     onUpdate: (patch: Partial<ItemOf<K>>) => void;
     onRemove: () => void;
@@ -282,7 +297,10 @@ function SortableItemRow<K extends ResumeListKey>({ sectionKey, item, layout, ad
             rowRef={rowRef}
             style={style}
         >
-            {SECTION_CONFIG[sectionKey].fields(item, onUpdate, errors)}
+            {/* Focus leaving the row ends a date edit: the row then moves to its dated place. */}
+            <div className="contents" onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onSettle(); }}>
+                {SECTION_CONFIG[sectionKey].fields(item, onUpdate, errors)}
+            </div>
             <ReviewPanel
                 review={review}
                 suggestions={suggestions}
