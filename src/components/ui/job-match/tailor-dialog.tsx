@@ -65,7 +65,10 @@ const pagesOf = (lib: ResumeData) => async (sel: TailorSelection) => (await comp
 export function TailorDialog({ job, resumeData, declined: initialDeclined, aliases, caps, onClose }: TailorDialogProps) {
     const router = useRouter();
     const [declined, setDeclined] = useState(initialDeclined);
-    const gaps = uncoveredRequirements(job.requirements, resumeData, aliases);
+    // Step 1's questions are a snapshot of this opening: the job page refreshes `job` when the background AI
+    // check lands, and a recomputed list would lose or shift rows mid-answer. The review (startReview) reads
+    // `job.requirements` when it opens, so it does start from the freshest verdicts.
+    const [gaps] = useState(() => uncoveredRequirements(job.requirements, resumeData, aliases));
     const hasQuestions = gaps.length > 0;
 
     // Nothing to ask: the review (run 1) is open from the first render and the effect below starts its AI.

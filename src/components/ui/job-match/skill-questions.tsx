@@ -44,10 +44,16 @@ const EVIDENCE_SECTIONS = ["workExperience", "projects", "volunteering"] as cons
 const SOFT_CATEGORY = "soft skills";
 
 export function SkillQuestions({ gaps, declined, library, onSaved, onSkip, skipLabel = "Skip questions", saveLabel = "Save answers" }: SkillQuestionsProps) {
-    const declinedNames = new Set(declined.map(d => d.name));
-    const byTier = (a: Requirement, b: Requirement) => (requirementTier(a) === requirementTier(b) ? 0 : requirementTier(a) === "hard" ? -1 : 1);
-    const toAsk = gaps.filter(r => !declinedNames.has(r.name)).sort(byTier);
-    const previouslyDeclined = gaps.filter(r => declinedNames.has(r.name)).sort(byTier);
+    // The questions are fixed when this mounts. Callers derive `gaps` from the job, which the background AI
+    // check refreshes while the user answers; recomputing would drop or shift rows under their clicks.
+    const [{ toAsk, previouslyDeclined }] = useState(() => {
+        const declinedNames = new Set(declined.map(d => d.name));
+        const byTier = (a: Requirement, b: Requirement) => (requirementTier(a) === requirementTier(b) ? 0 : requirementTier(a) === "hard" ? -1 : 1);
+        return {
+            toAsk: gaps.filter(r => !declinedNames.has(r.name)).sort(byTier),
+            previouslyDeclined: gaps.filter(r => declinedNames.has(r.name)).sort(byTier),
+        };
+    });
 
     const [answers, setAnswers] = useState<Record<string, Answer>>({});
     const [reopened, setReopened] = useState<Set<string>>(new Set());
