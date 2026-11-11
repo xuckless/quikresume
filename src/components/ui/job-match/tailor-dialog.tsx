@@ -11,7 +11,6 @@
 import React, { useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ResumeData, ResumeListKey } from "@/types/schema";
-import { RESUME_LIST_KEYS } from "@/types/schema";
 import type { Caps, DeclinedSkill, JobRecord, Requirement } from "@/lib/match/types";
 import type { AliasMap } from "@/lib/tags/normalize";
 import { scoreJob, scoreOptionsFor, uncoveredRequirements, type ScoreOptions } from "@/lib/match/score";
@@ -256,10 +255,11 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
                         skipLabel="Skip"
                         onSkip={() => startReview(library, null)}
                         onSaved={(r) => {
-                            // Keep the working selection flags from the dashboard; take new content/tags from the server.
+                            // The server's copy: new content and tags, and the categories a Yes switched on. Before
+                            // the review opens the dialog has no selection of its own, so nothing local is lost.
                             setDeclined(r.declined);
                             router.refresh();
-                            startReview(mergeSelection(r.resume, library), r.warning ?? null);
+                            startReview(r.resume, r.warning ?? null);
                         }}
                     />
                 )}
@@ -294,16 +294,6 @@ export function TailorDialog({ job, resumeData, declined: initialDeclined, alias
             </div>
         </Dialog>
     );
-}
-
-/** Server copy (fresh content + tags) with the client's working selection flags. */
-function mergeSelection(server: ResumeData, client: ResumeData): ResumeData {
-    const next: ResumeData = { ...server };
-    for (const key of RESUME_LIST_KEYS) {
-        const sel = new Map((client[key] as { id: string; isSelected: boolean }[]).map(it => [it.id, it.isSelected]));
-        (next[key] as unknown[]) = (server[key] as { id: string; isSelected: boolean }[]).map(it => ({ ...it, isSelected: sel.get(it.id) ?? it.isSelected }));
-    }
-    return next;
 }
 
 // ---------- review

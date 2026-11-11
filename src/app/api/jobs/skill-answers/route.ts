@@ -3,7 +3,8 @@
 // The tailor window's questionnaire, for job requirements nothing in the library covers.
 // "Yes" on a soft requirement appends it to the printed "Soft skills" category; "Yes" on a hard
 // requirement appends it to the skill category the user picked, or the one the text model
-// picks (a new "Technical skills" category when nothing fits). An example becomes one
+// picks (a new "Technical skills" category when nothing fits); either way the category is switched on
+// with the answered skills shown, so they count for the working selection. An example becomes one
 // AI-worded bullet on the item the user picked. Touched items are re-tagged and additionally
 // carry the answered requirement's tag, so coverage is immediate even if tagging fails.
 // "No" is remembered in meta/preferences.declinedSoftSkills (hard and soft; warned about on
@@ -30,7 +31,8 @@ import { contentHashOf, itemText, tagContext, type TagInput } from "@/lib/tags/c
 import { extractTags } from "@/lib/tags/extract";
 import { isTagKind, type Tag, type TagKind } from "@/lib/tags/types";
 import { SECTION_COLLECTION, itemTitle } from "@/lib/sections";
-import { skillEntries, skillKey } from "@/lib/sub-items";
+import { skillEntries } from "@/lib/sub-items";
+import { withAnsweredSkills } from "@/lib/match/answered-skills";
 import { toBullets } from "@/lib/typst/doc";
 import type { ResumeData, ResumeListKey } from "@/types/schema";
 import { guardApi } from "@/lib/security/guard";
@@ -123,13 +125,11 @@ export async function POST(req: Request) {
             const addSkills = (target: Skill | string, group: Answer[]) => {
                 const found = typeof target === "string" ? categoryNamed(target) : target;
                 const current = found ? ((touched.get(found.id)?.item as Skill | undefined) ?? found) : undefined;
-                const entries = skillEntries(current?.items);
-                const have = new Set(entries.map(e => e.key));
-                const added = group.map(a => a.display).filter(d => { const k = skillKey(d); return !have.has(k) && have.add(k); });
-                const items = [...entries.map(e => e.label), ...added].join(", ");
-                const item: Skill = current
-                    ? { ...current, items }
-                    : { id: userCol(uid, "skills").doc().id, category: target as string, items, isSelected: true, hidden: [], tags: [], tagsHash: null };
+                // Appended, and the category switched on with those skills shown (lib/match/answered-skills.ts).
+                const item = withAnsweredSkills(
+                    current ?? { id: userCol(uid, "skills").doc().id, category: target as string, items: "", isSelected: true, hidden: [], tags: [], tagsHash: null },
+                    group.map(a => a.display),
+                );
                 const prev = touched.get(item.id);
                 touched.set(item.id, { key: "skills", item, forced: unionTags(prev?.forced ?? [], group.map(reqTag)), isNew: prev?.isNew ?? !current });
             };
@@ -232,11 +232,12 @@ export async function POST(req: Request) {
                 const hash = contentHashOf(t.key, t.item);
                 const tags = unionTags(tagsById[t.item.id] ?? t.item.tags, t.forced);
                 const ref = userCol(uid, SECTION_COLLECTION[t.key]).doc(t.item.id);
-                const content = t.key === "skills"
-                    ? { category: (t.item as ResumeData["skills"][number]).category, items: (t.item as ResumeData["skills"][number]).items }
+                const skill = t.key === "skills" ? (t.item as Skill) : null;
+                const content = skill
+                    ? { category: skill.category, items: skill.items, isSelected: skill.isSelected, hidden: skill.hidden }
                     : { description: toBullets((t.item as ResumeData["workExperience"][number]).description) };
                 const fields = { ...content, tags, contentHash: hash, tagsHash: hash, taggedAt: now, updatedAt: now };
-                if (t.isNew) batch.set(ref, { ...fields, isSelected: true, hidden: [], createdAt: now });
+                if (t.isNew) batch.set(ref, { isSelected: true, hidden: [], ...fields, createdAt: now });
                 else batch.update(ref, fields);
             }
 
