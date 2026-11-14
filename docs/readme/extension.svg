@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="380" viewBox="0 0 720 380" role="img" aria-label="The Chrome extension on a job posting: one click saves it to the Job Tracker and the side panel shows an 84, strong fit, and what would raise it. On the application form, Auto Fill fills the fields, attaches the résumé PDF and drafts an open question with AI in a dashed outline. It never submits.">
+<title>The Chrome extension on a job posting: one click saves it to the Job Tracker and the side panel shows an 84, strong fit, and what would raise it. On the application form, Auto Fill fills the fields, attaches the résumé PDF and drafts an open question with AI in a dashed outline. It never submits.</title>
+<style>svg { --bg:#fafafa; --sf:#ffffff; --mu:#f5f5f5; --bd:#e5e5e5; --bds:#d4d4d4; --fg:#171717; --fgm:#525252; --fgs:#6e6e6e; --ac:#003200; --acf:#ffffff; --act:#1a6e38; --acs:#edf5ef; --acsb:#cfe5d5; --ok:#0e6f80; --okb:#ecfeff; --wa:#b45309; --wab:#fffbeb; --wabd:#fde68a; --tr:#ececec; --paper:#ffffff; --pfg:#171717; --pbar:#d4d4d4; --g1:#4285f4; --g2:#9b72cb; --g3:#d96570; --g4:#f2a60c; --g5:#34a853; }
+@media (prefers-color-scheme: dark) { svg { --bg:#0a0a0a; --sf:#121212; --mu:#1a1a1a; --bd:#2a2a2a; --bds:#3a3a3a; --fg:#ededed; --fgm:#a1a1a1; --fgs:#8a8a8a; --ac:#5fd38a; --acf:#003200; --act:#5fd38a; --acs:#0f2416; --acsb:#1d4a2b; --ok:#67e8f9; --okb:#0a2329; --wa:#fbbf24; --wab:#211a08; --wabd:#5c4512; --tr:#262626; --g1:#6ea2ff; --g2:#b18ce0; --g3:#ec7f8a; --g4:#f6bb3c; --g5:#56c271; } }
+text { font-family: Geist, Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+.mono { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.bg { fill: var(--bg); } .sf { fill: var(--sf); } .mu { fill: var(--mu); } .ac { fill: var(--ac); } .acs { fill: var(--acs); } .paper { fill: var(--paper); }
+.bd { stroke: var(--bd); } .bds { stroke: var(--bds); }
+.fg { fill: var(--fg); } .fgm { fill: var(--fgm); } .fgs { fill: var(--fgs); } .act { fill: var(--act); } .acf { fill: var(--acf); } .pfg { fill: var(--pfg); } .pbar { fill: var(--pbar); }
+* { transform-box: fill-box; animation-timing-function: cubic-bezier(0.77, 0, 0.175, 1); }
+
+.sceneA { animation: sa 12s infinite; } .sceneB { animation: sb 12s infinite; }
+@keyframes sa { 0%, 46% { opacity: 1; } 49%, 97% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes sb { 0%, 47% { opacity: 0; } 50%, 96% { opacity: 1; } 99%, 100% { opacity: 0; } }
+.fab { transform-origin: 50% 50%; animation: fab 12s infinite; }
+@keyframes fab { 0%, 6% { transform: none; } 7.5% { transform: scale(.97); } 9%, 100% { transform: none; } }
+.arc { animation: arc 12s infinite; }
+@keyframes arc { 0%, 12% { stroke-dashoffset: 128.8; } 19%, 100% { stroke-dashoffset: 20.6; } }
+.press { transform-origin: 50% 50%; animation: pr 12s infinite; }
+@keyframes pr { 0%, 57% { transform: none; } 58.5% { transform: scale(.97); } 60%, 100% { transform: none; } }
+.cur { animation: cur 12s infinite; }
+@keyframes cur { 0% { transform: translate(300px, 250px); opacity: 0; } 2% { opacity: 1; } 6%, 12% { transform: translate(390px, 322px); opacity: 1; } 20% { opacity: 0; transform: translate(420px, 300px); } 50% { opacity: 0; transform: translate(560px, 260px); } 53% { opacity: 1; } 57%, 62% { transform: translate(590px, 200px); opacity: 1; } 70%, 100% { opacity: 0; transform: translate(600px, 240px); } }
+.cur path { transform-origin: 0 0; animation: cp 12s infinite; }
+@keyframes cp { 0%, 6.5% { transform: none; } 7.5% { transform: scale(.85); } 8.5%, 57.5% { transform: none; } 58.5% { transform: scale(.85); } 59.5%, 100% { transform: none; } }
+@keyframes c1 { 0%, 10% { opacity: 0; transform: translateY(4px); } 12%, 46% { opacity: 1; transform: none; } 48%, 100% { opacity: 0; } }
+@keyframes c2 { 0%, 12% { opacity: 0; transform: translateY(4px); } 14%, 46% { opacity: 1; transform: none; } 48%, 100% { opacity: 0; } }
+@keyframes c3 { 0%, 14% { opacity: 0; transform: translateY(4px); } 16%, 46% { opacity: 1; transform: none; } 48%, 100% { opacity: 0; } }
+@keyframes f1 { 0%, 62% { opacity: 0; transform: translateY(4px); } 64%, 94% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; } }
+@keyframes f2 { 0%, 63.5% { opacity: 0; transform: translateY(4px); } 65.5%, 94% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; } }
+@keyframes f3 { 0%, 65% { opacity: 0; transform: translateY(4px); } 67%, 94% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; } }
+@keyframes f4 { 0%, 66.5% { opacity: 0; transform: translateY(4px); } 68.5%, 94% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; } }
+@keyframes f5 { 0%, 68% { opacity: 0; transform: translateY(4px); } 70%, 94% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; } }
+@keyframes f6 { 0%, 74% { opacity: 0; transform: translateY(4px); } 76%, 94% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; } }
+@keyframes r1 { 0%, 76% { opacity: 0; transform: translateY(4px); } 78%, 94% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; } }
+@keyframes r2 { 0%, 78% { opacity: 0; transform: translateY(4px); } 80%, 94% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; } .sceneB, .cur { display: none; } }
+</style>
+<clipPath id="win"><rect x="0" y="0" width="720" height="380" rx="8"/></clipPath>
+<g clip-path="url(#win)">
+<rect width="720" height="380" class="sf"/>
+<rect width="720" height="36" class="mu"/><line x1="0" x2="720" y1="36" y2="36" class="bd"/>
+<circle cx="16" cy="18" r="4.5" class="bds" fill="var(--bds)"/><circle cx="30" cy="18" r="4.5" fill="var(--bds)"/><circle cx="44" cy="18" r="4.5" fill="var(--bds)"/>
+<rect x="62" y="8" width="380" height="20" rx="10" class="sf"/>
+<g class="sceneA"><text x="78" y="22" font-size="11" class="fgm">globex.com/careers/backend-engineer-platform</text></g>
+<g class="sceneB"><text x="78" y="22" font-size="11" class="fgm">globex.com/careers/backend-engineer-platform/apply</text></g>
+<rect x="690" y="7" width="22" height="22" rx="5" class="bd" fill="var(--bd)"/><g transform="translate(693.5 10.5) scale(.47)"><circle cx="12.5" cy="12.5" r="7.25" fill="none" stroke="var(--ac)" stroke-width="3.5"/><path class="ac" d="M18.5 4.5h3.75V18H26l-7.5 12 1.4-8h-3.3l1.9-4z"/></g>
+
+<g class="sceneA">
+<rect x="20" y="52" width="22" height="22" rx="5" fill="#2f5d8a"/><text x="31" y="67.5" font-size="12" font-weight="600" text-anchor="middle" fill="#fff">G</text>
+<text x="50" y="67.5" font-size="13" font-weight="600" class="fg">Globex Systems</text>
+<text x="436" y="67.5" font-size="11.5" text-anchor="end" class="fgm">About · Teams · Careers</text>
+<line x1="0" x2="452" y1="86" y2="86" class="bd"/>
+<text x="20" y="120" font-size="19" font-weight="700" class="fg">Backend Engineer, Platform</text>
+<text x="20" y="140" font-size="12" class="fgs">Seattle, WA · Hybrid · Full-time · Engineering</text>
+<rect x="20" y="152" width="122" height="28" rx="5" fill="#1f2937"/><text x="81" y="170" font-size="12" font-weight="500" text-anchor="middle" fill="#fff">Apply for this job</text>
+<text x="20" y="208" font-size="13" font-weight="600" class="fg">What you'll need</text>
+<g class="fgm" font-size="12"><text x="20" y="228">•  Go and gRPC services in production</text><text x="20" y="246">•  Kubernetes and Terraform</text><text x="20" y="264">•  PostgreSQL schema design</text><text x="20" y="282">•  Some C++ for the pricing engine</text></g>
+<text x="20" y="310" font-size="13" font-weight="600" class="fg">Nice to have</text>
+<text x="20" y="330" font-size="12" class="fgm">•  Observability tooling</text>
+<g class="fab"><rect x="356" y="306" width="78" height="34" rx="17" class="ac" style="filter:drop-shadow(0 1px 2px rgb(0 0 0 / .2))"/>
+<g transform="translate(366 312) scale(.68)"><circle cx="12.5" cy="12.5" r="7.25" fill="none" stroke="var(--acf)" stroke-width="3.5"/><path d="M18.5 4.5h3.75V18H26l-7.5 12 1.4-8h-3.3l1.9-4z" fill="var(--acf)"/></g>
+<rect x="393" y="314" width="32" height="18" rx="5" fill="var(--acf)" opacity=".18"/><text x="409" y="327" font-size="11.5" font-weight="600" text-anchor="middle" class="acf mono">84</text></g>
+</g>
+
+<g class="sceneB">
+<text x="20" y="66" font-size="17" font-weight="700" class="fg">Apply: Backend Engineer, Platform</text>
+<text x="20" y="84" font-size="12" class="fgs">Globex Systems · Seattle, WA · Hybrid</text>
+<text x="20" y="106" font-size="11" class="fgm">First name</text><rect x="20.5" y="112.5" width="199" height="27" rx="4" class="sf bds"/><g style="animation: f1 12s infinite"><rect x="19" y="111" width="202" height="30" rx="5" fill="none" stroke="var(--act)" stroke-width="2"/><text x="28" y="130" font-size="11.5" class="fg">Alex</text></g>
+<text x="232" y="106" font-size="11" class="fgm">Last name</text><rect x="232.5" y="112.5" width="199" height="27" rx="4" class="sf bds"/><g style="animation: f2 12s infinite"><rect x="231" y="111" width="202" height="30" rx="5" fill="none" stroke="var(--act)" stroke-width="2"/><text x="240" y="130" font-size="11.5" class="fg">Morgan</text></g>
+<text x="20" y="156" font-size="11" class="fgm">Email</text><rect x="20.5" y="162.5" width="199" height="27" rx="4" class="sf bds"/><g style="animation: f3 12s infinite"><rect x="19" y="161" width="202" height="30" rx="5" fill="none" stroke="var(--act)" stroke-width="2"/><text x="28" y="180" font-size="11.5" class="fg">alex.morgan@example.com</text></g>
+<text x="232" y="156" font-size="11" class="fgm">Phone</text><rect x="232.5" y="162.5" width="199" height="27" rx="4" class="sf bds"/><g style="animation: f4 12s infinite"><rect x="231" y="161" width="202" height="30" rx="5" fill="none" stroke="var(--act)" stroke-width="2"/><text x="240" y="180" font-size="11.5" class="fg">(206) 555-0142</text></g>
+<text x="20" y="206" font-size="11" class="fgm">Résumé</text><rect x="20.5" y="212.5" width="411" height="27" rx="4" class="sf bds"/><g style="animation: f5 12s infinite"><rect x="19" y="211" width="414" height="30" rx="5" fill="none" stroke="var(--act)" stroke-width="2"/><rect x="26" y="217" width="150" height="18" rx="3" class="mu"/><text x="32" y="230" font-size="11.5" class="fg">Alex_Morgan_Backend.pdf</text><text x="184" y="230" font-size="11" class="fgs">96 KB</text></g>
+<text x="20" y="256" font-size="11" class="fgm">Why do you want to work at Globex?</text><rect x="20.5" y="262.5" width="411" height="43" rx="4" class="sf bds"/><g style="animation: f6 12s infinite"><rect x="19" y="261" width="414" height="46" rx="5" fill="none" stroke="var(--act)" stroke-width="2" stroke-dasharray="5 3"/><text x="28" y="280" font-size="11.5" class="fg">I have run Go services on Kubernetes and want to</text><text x="28" y="296" font-size="11.5" class="fg">work on a platform team that ships them.</text></g>
+<text x="20" y="330" font-size="11" class="fgm">Portfolio password</text>
+<rect x="20.5" y="336.5" width="199" height="27" rx="4" class="sf bds"/>
+</g>
+<rect x="452" y="36" width="268" height="344" class="bg"/><line x1="452" x2="452" y1="36" y2="380" class="bd"/>
+<g transform="translate(464 50) scale(.56)"><circle cx="12.5" cy="12.5" r="7.25" fill="none" stroke="var(--ac)" stroke-width="3.5"/><path class="ac" d="M18.5 4.5h3.75V18H26l-7.5 12 1.4-8h-3.3l1.9-4z"/></g>
+<text x="484" y="65" font-size="12.5" font-weight="600" class="fg">quik<tspan class="act">R</tspan>esume</text>
+<text x="706" y="65" font-size="11.5" text-anchor="end" class="fgm">Disconnect</text>
+<line x1="452" x2="720" y1="76" y2="76" class="bd"/>
+
+<g class="sceneA">
+<g style="animation: c1 12s infinite"><rect x="464.5" y="86.5" width="243" height="61" rx="8" class="sf bd"/>
+<text x="476" y="106" font-size="12.5" font-weight="600" class="fg">Backend Engineer, Platform</text>
+<text x="476" y="122" font-size="11.5" class="fgm">Globex Systems · Seattle, WA · Hybrid</text>
+<text x="476" y="139" font-size="11" class="fgs">Saved to your Job Tracker.</text></g>
+<g style="animation: c2 12s infinite"><rect x="464.5" y="156.5" width="243" height="71" rx="8" class="sf bd"/>
+<g transform="translate(476 168)"><circle cx="24" cy="24" r="20.5" fill="none" stroke="var(--tr)" stroke-width="5"/><circle class="arc" cx="24" cy="24" r="20.5" fill="none" stroke="var(--act)" stroke-width="5" stroke-dasharray="128.8" stroke-dashoffset="20.6" transform="rotate(-90 24 24)"/><text x="24" y="29.5" font-size="15" font-weight="600" text-anchor="middle" class="fg">84</text></g>
+<text x="536" y="182" font-size="12" font-weight="600" class="fg">Strong fit <tspan font-weight="400" class="fgs">±6</tspan></text>
+<text x="536" y="199" font-size="11.5" class="fg">Must-haves 6/7 <tspan class="fgs">· nice 1/2</tspan></text>
+<text x="536" y="215" font-size="11" class="fgs">On: Backend · 2026</text></g>
+<g style="animation: c3 12s infinite"><rect x="464.5" y="236.5" width="243" height="87" rx="8" class="sf bd"/>
+<text x="476" y="256" font-size="12" font-weight="600" class="fg">What would raise it</text>
+<text x="476" y="276" font-size="11.5" class="fg">Show <tspan font-weight="600">C++</tspan> <tspan class="fgs">· must</tspan></text><text x="696" y="276" font-size="11.5" text-anchor="end" class="act mono">+4.6</text>
+<text x="476" y="294" font-size="11.5" class="fg">Show <tspan font-weight="600">Observability</tspan> <tspan class="fgs">· nice</tspan></text><text x="696" y="294" font-size="11.5" text-anchor="end" class="act mono">+1.2</text>
+<text x="476" y="313" font-size="11.5" class="act" text-decoration="underline">Open the full review →</text></g>
+</g>
+
+<g class="sceneB">
+<rect x="464.5" y="86.5" width="243" height="43" rx="8" class="sf bd"/>
+<text x="476" y="112" font-size="11.5" class="fgm">Résumé for this job</text>
+<rect x="590.5" y="96.5" width="106" height="23" rx="4" class="sf bds"/><text x="600" y="112" font-size="11.5" class="fg">Backend · 2026</text><path d="M684 106l3 3 3-3" fill="none" stroke="var(--fgm)" stroke-width="1.3"/>
+<rect x="464.5" y="138.5" width="243" height="181" rx="8" class="sf bd"/>
+<text x="476" y="158" font-size="12.5" font-weight="600" class="fg">Auto Fill</text>
+<text x="476" y="174" font-size="11" class="fgs">For Backend Engineer, Platform</text>
+<g class="press"><rect x="476" y="184" width="220" height="28" rx="6" class="ac"/><text x="586" y="202.5" font-size="12" font-weight="500" text-anchor="middle" class="acf">Auto Fill</text></g>
+<g style="animation: r1 12s infinite"><text x="476" y="232" font-size="11.5" class="fg"><tspan font-weight="600">Filled 5 · AI drafts 1</tspan> <tspan class="fgs">(dashed outline)</tspan></text>
+<text x="476" y="249" font-size="11" class="fgs">Attached Alex_Morgan_Backend.pdf</text>
+<text x="476" y="266" font-size="11" class="fgs">Left for you: Portfolio password</text></g>
+<g style="animation: r2 12s infinite"><rect x="476" y="274" width="220" height="36" rx="5" style="fill:var(--wab)"/>
+<text x="484" y="289" font-size="10.5" style="fill:var(--wa)">Review every field before you submit.</text>
+<text x="484" y="303" font-size="10.5" style="fill:var(--wa)">quikResume never submits for you.</text></g>
+</g>
+<text x="586" y="366" font-size="8.8" text-anchor="middle" class="fgs">AI can make mistakes. Please review the work before applying.</text>
+<g class="cur"><path d="M0 0 L0 15 L4 11.5 L6.8 17.5 L9.2 16.4 L6.5 10.6 L11.5 10.6 Z" fill="#171717" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></g>
+</g>
+<rect x=".5" y=".5" width="719" height="379" rx="8" fill="none" class="bd"/>
+</svg>

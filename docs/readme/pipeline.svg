@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="190" viewBox="0 0 720 190" role="img" aria-label="The library feeds toTypstDoc, the one place data is shaped, which feeds Typst compiled to WebAssembly in the browser; that produces the live SVG preview and a text PDF. A job posting goes through Job Match and Tailor, which pick the selection in the library.">
+<title>The library feeds toTypstDoc, the one place data is shaped, which feeds Typst compiled to WebAssembly in the browser; that produces the live SVG preview and a text PDF. A job posting goes through Job Match and Tailor, which pick the selection in the library.</title>
+<style>svg { --bg:#fafafa; --sf:#ffffff; --mu:#f5f5f5; --bd:#e5e5e5; --bds:#d4d4d4; --fg:#171717; --fgm:#525252; --fgs:#6e6e6e; --ac:#003200; --acf:#ffffff; --act:#1a6e38; --acs:#edf5ef; --acsb:#cfe5d5; --ok:#0e6f80; --okb:#ecfeff; --wa:#b45309; --wab:#fffbeb; --wabd:#fde68a; --tr:#ececec; --paper:#ffffff; --pfg:#171717; --pbar:#d4d4d4; --g1:#4285f4; --g2:#9b72cb; --g3:#d96570; --g4:#f2a60c; --g5:#34a853; }
+@media (prefers-color-scheme: dark) { svg { --bg:#0a0a0a; --sf:#121212; --mu:#1a1a1a; --bd:#2a2a2a; --bds:#3a3a3a; --fg:#ededed; --fgm:#a1a1a1; --fgs:#8a8a8a; --ac:#5fd38a; --acf:#003200; --act:#5fd38a; --acs:#0f2416; --acsb:#1d4a2b; --ok:#67e8f9; --okb:#0a2329; --wa:#fbbf24; --wab:#211a08; --wabd:#5c4512; --tr:#262626; --g1:#6ea2ff; --g2:#b18ce0; --g3:#ec7f8a; --g4:#f6bb3c; --g5:#56c271; } }
+text { font-family: Geist, Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+.mono { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.bg { fill: var(--bg); } .sf { fill: var(--sf); } .mu { fill: var(--mu); } .ac { fill: var(--ac); } .acs { fill: var(--acs); } .paper { fill: var(--paper); }
+.bd { stroke: var(--bd); } .bds { stroke: var(--bds); }
+.fg { fill: var(--fg); } .fgm { fill: var(--fgm); } .fgs { fill: var(--fgs); } .act { fill: var(--act); } .acf { fill: var(--acf); } .pfg { fill: var(--pfg); } .pbar { fill: var(--pbar); }
+* { transform-box: fill-box; animation-timing-function: cubic-bezier(0.77, 0, 0.175, 1); }
+
+.dot { offset-path: path("M156 68 H196 M336 68 H376 M524 68 H556"); }
+.pulse { animation: travel 4s infinite; }
+@keyframes travel { 0% { offset-distance: 0%; opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } 100% { offset-distance: 100%; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; } .pulse { display: none; } }
+</style>
+<rect x=".5" y=".5" width="719" height="189" rx="8" class="bg bd"/>
+<rect x="16.5" y="40.5" width="139" height="55" rx="8" class="sf bd"/><text x="28" y="62" font-size="12.5" font-weight="600" class="fg">Library</text><text x="28" y="80" font-size="11" class="fgs">Firestore · on / off</text>
+<rect x="196.5" y="40.5" width="139" height="55" rx="8" class="sf bd"/><text x="208" y="62" font-size="12.5" font-weight="600" class="fg mono">toTypstDoc()</text><text x="208" y="80" font-size="11" class="fgs">the one JSON contract</text>
+<rect x="376.5" y="40.5" width="147" height="55" rx="8" class="acs bd" style="stroke:var(--acsb)"/><text x="388" y="62" font-size="12.5" font-weight="600" class="fg">Typst 0.13</text><text x="388" y="80" font-size="11" class="fgs">wasm, in your browser</text>
+<rect x="556.5" y="40.5" width="147" height="25" rx="6" class="sf bd"/><text x="568" y="57" font-size="12" font-weight="500" class="fg">Live SVG preview</text>
+<rect x="556.5" y="70.5" width="147" height="25" rx="6" class="sf bd"/><text x="568" y="87" font-size="12" font-weight="500" class="fg">Text PDF</text>
+<path d="M158 68 H192 M187 63 l5 5 -5 5" fill="none" stroke="var(--bds)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M338 68 H372 M367 63 l5 5 -5 5" fill="none" stroke="var(--bds)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M526 68 H540 V53 H552 M547 48 l5 5 -5 5 M540 68 V83 H552 M547 78 l5 5 -5 5" fill="none" stroke="var(--bds)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="556.5" y="124.5" width="147" height="47" rx="8" class="sf bd"/><text x="568" y="146" font-size="12.5" font-weight="600" class="fg">Job posting</text><text x="568" y="164" font-size="11" class="fgs">paste, file or extension</text>
+<rect x="376.5" y="124.5" width="147" height="47" rx="8" class="sf bd"/><text x="388" y="146" font-size="12.5" font-weight="600" class="fg">Job Match · Tailor</text><text x="388" y="164" font-size="11" class="fgs">score, gaps, one page</text>
+<path d="M554 148 H528 M533 143 l-5 5 5 5" fill="none" stroke="var(--bds)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M374 148 H86 V100 M81 105 l5 -5 5 5" fill="none" stroke="var(--bds)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="230" y="142" font-size="11" text-anchor="middle" class="fgs">picks the selection</text>
+<text x="16" y="26" font-size="11" class="fgs">Every preview and every download is rendered from the library on demand.</text>
+<circle class="dot pulse" r="3.5" style="fill:var(--act)"/>
+</svg>
