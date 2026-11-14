@@ -2,12 +2,13 @@
 <title>A résumé PDF drops into the import card and Analyse résumé runs. The review lists what was found, each item labelled New, Adds detail or Already in library, ready to add to the editor.</title>
 <style>svg { --bg:#fafafa; --sf:#ffffff; --mu:#f5f5f5; --bd:#e5e5e5; --bds:#d4d4d4; --fg:#171717; --fgm:#525252; --fgs:#6e6e6e; --ac:#003200; --acf:#ffffff; --act:#1a6e38; --acs:#edf5ef; --acsb:#cfe5d5; --ok:#0e6f80; --okb:#ecfeff; --wa:#b45309; --wab:#fffbeb; --wabd:#fde68a; --tr:#ececec; --paper:#ffffff; --pfg:#171717; --pbar:#d4d4d4; --g1:#4285f4; --g2:#9b72cb; --g3:#d96570; --g4:#f2a60c; --g5:#34a853; }
 @media (prefers-color-scheme: dark) { svg { --bg:#0a0a0a; --sf:#121212; --mu:#1a1a1a; --bd:#2a2a2a; --bds:#3a3a3a; --fg:#ededed; --fgm:#a1a1a1; --fgs:#8a8a8a; --ac:#5fd38a; --acf:#003200; --act:#5fd38a; --acs:#0f2416; --acsb:#1d4a2b; --ok:#67e8f9; --okb:#0a2329; --wa:#fbbf24; --wab:#211a08; --wabd:#5c4512; --tr:#262626; --g1:#6ea2ff; --g2:#b18ce0; --g3:#ec7f8a; --g4:#f6bb3c; --g5:#56c271; } }
-text { font-family: Geist, Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+text { font-family: Geist, -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Inter, Roboto, 'Helvetica Neue', Arial, sans-serif; }
 .mono { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .bg { fill: var(--bg); } .sf { fill: var(--sf); } .mu { fill: var(--mu); } .ac { fill: var(--ac); } .acs { fill: var(--acs); } .paper { fill: var(--paper); }
 .bd { stroke: var(--bd); } .bds { stroke: var(--bds); }
 .fg { fill: var(--fg); } .fgm { fill: var(--fgm); } .fgs { fill: var(--fgs); } .act { fill: var(--act); } .acf { fill: var(--acf); } .pfg { fill: var(--pfg); } .pbar { fill: var(--pbar); }
-* { transform-box: fill-box; animation-timing-function: cubic-bezier(0.77, 0, 0.175, 1); }
+* { animation-timing-function: cubic-bezier(0.77, 0, 0.175, 1); }
+.fill, .swfill, .btn, .press, .fab, .dlg, .spin, .review, .cursor path, .cur path { transform-box: fill-box; }
 
 .file { animation: file 9s infinite; }
 .hint { animation: hint 9s infinite; }
@@ -29,7 +30,7 @@ text { font-family: Geist, Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica 
 <rect x=".5" y=".5" width="719" height="359" rx="8" class="bg bd"/>
 <rect x="16.5" y="16.5" width="283" height="327" rx="8" class="sf bd"/>
 <text x="32" y="42" font-size="13.5" font-weight="600" class="fg">Import existing résumés</text>
-<text x="32" y="60" font-size="11.5" class="fgs">PDF, Word, text or a photo. Nothing is saved yet.</text>
+<text x="32" y="60" font-size="11.5" class="fgs">PDF, Word, text or a photo.</text>
 <rect x="32.5" y="74.5" width="251" height="139" rx="8" fill="none" class="bds" stroke-dasharray="4 3"/>
 <g class="hint">
 <rect x="142.5" y="98.5" width="31" height="31" rx="6" class="sf bd"/>
@@ -62,7 +63,7 @@ text { font-family: Geist, Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica 
 <text x="334" y="236" font-size="12" font-weight="600" class="fgm">Projects</text>
 <g class="row" style="animation-delay:420ms"><g><rect x="334" y="247" width="14" height="14" rx="3" class="ac"/><path d="M337.5 254 l2.6 2.6 l4.8 -5.2" fill="none" stroke="var(--acf)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><text x="360" y="258" font-size="13.5" font-weight="500" class="fg">Support Ticket Classifier</text><rect x="550.5" y="246" width="34" height="18" rx="4" style="fill:var(--okb)"/><text x="567.5" y="258.5" font-size="11" font-weight="500" text-anchor="middle" style="fill:var(--ok)">New</text><text x="360" y="275" font-size="12.5" class="fgm">PyTorch, FastAPI, AWS Lambda</text></g></g>
 <line x1="316" x2="704" y1="294" y2="294" class="bd"/>
-<text x="498" y="322.5" font-size="12.5" font-weight="500" text-anchor="middle" class="fgm">Start over</text>
-<rect x="534" y="304" width="154" height="28" rx="6" class="ac"/><text x="611" y="322.5" font-size="12.5" font-weight="500" text-anchor="middle" class="acf">Add 3 items to the editor</text>
+<text x="476" y="322.5" font-size="12.5" font-weight="500" text-anchor="middle" class="fgm">Start over</text>
+<rect x="520" y="304" width="168" height="28" rx="6" class="ac"/><text x="604" y="322.5" font-size="12.5" font-weight="500" text-anchor="middle" class="acf">Add 3 items to the editor</text>
 </g>
 </svg>

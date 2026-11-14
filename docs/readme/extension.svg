@@ -2,12 +2,13 @@
 <title>The Chrome extension on a job posting: one click saves it to the Job Tracker and the side panel shows an 84, strong fit, and what would raise it. On the application form, Auto Fill fills the fields, attaches the résumé PDF and drafts an open question with AI in a dashed outline. It never submits.</title>
 <style>svg { --bg:#fafafa; --sf:#ffffff; --mu:#f5f5f5; --bd:#e5e5e5; --bds:#d4d4d4; --fg:#171717; --fgm:#525252; --fgs:#6e6e6e; --ac:#003200; --acf:#ffffff; --act:#1a6e38; --acs:#edf5ef; --acsb:#cfe5d5; --ok:#0e6f80; --okb:#ecfeff; --wa:#b45309; --wab:#fffbeb; --wabd:#fde68a; --tr:#ececec; --paper:#ffffff; --pfg:#171717; --pbar:#d4d4d4; --g1:#4285f4; --g2:#9b72cb; --g3:#d96570; --g4:#f2a60c; --g5:#34a853; }
 @media (prefers-color-scheme: dark) { svg { --bg:#0a0a0a; --sf:#121212; --mu:#1a1a1a; --bd:#2a2a2a; --bds:#3a3a3a; --fg:#ededed; --fgm:#a1a1a1; --fgs:#8a8a8a; --ac:#5fd38a; --acf:#003200; --act:#5fd38a; --acs:#0f2416; --acsb:#1d4a2b; --ok:#67e8f9; --okb:#0a2329; --wa:#fbbf24; --wab:#211a08; --wabd:#5c4512; --tr:#262626; --g1:#6ea2ff; --g2:#b18ce0; --g3:#ec7f8a; --g4:#f6bb3c; --g5:#56c271; } }
-text { font-family: Geist, Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+text { font-family: Geist, -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Inter, Roboto, 'Helvetica Neue', Arial, sans-serif; }
 .mono { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .bg { fill: var(--bg); } .sf { fill: var(--sf); } .mu { fill: var(--mu); } .ac { fill: var(--ac); } .acs { fill: var(--acs); } .paper { fill: var(--paper); }
 .bd { stroke: var(--bd); } .bds { stroke: var(--bds); }
 .fg { fill: var(--fg); } .fgm { fill: var(--fgm); } .fgs { fill: var(--fgs); } .act { fill: var(--act); } .acf { fill: var(--acf); } .pfg { fill: var(--pfg); } .pbar { fill: var(--pbar); }
-* { transform-box: fill-box; animation-timing-function: cubic-bezier(0.77, 0, 0.175, 1); }
+* { animation-timing-function: cubic-bezier(0.77, 0, 0.175, 1); }
+.fill, .swfill, .btn, .press, .fab, .dlg, .spin, .review, .cursor path, .cur path { transform-box: fill-box; }
 
 .sceneA { animation: sa 12s infinite; } .sceneB { animation: sb 12s infinite; }
 @keyframes sa { 0%, 46% { opacity: 1; } 49%, 97% { opacity: 0; } 100% { opacity: 1; } }
@@ -99,8 +100,8 @@ text { font-family: Geist, Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica 
 
 <g class="sceneB">
 <rect x="464.5" y="86.5" width="243" height="43" rx="8" class="sf bd"/>
-<text x="476" y="112" font-size="11.5" class="fgm">Résumé for this job</text>
-<rect x="590.5" y="96.5" width="106" height="23" rx="4" class="sf bds"/><text x="600" y="112" font-size="11.5" class="fg">Backend · 2026</text><path d="M684 106l3 3 3-3" fill="none" stroke="var(--fgm)" stroke-width="1.3"/>
+<text x="476" y="112" font-size="11" class="fgm">Résumé for this job</text>
+<rect x="588.5" y="96.5" width="108" height="23" rx="4" class="sf bds"/><text x="596" y="112" font-size="11" class="fg">Backend · 2026</text><path d="M684.5 106l3 3 3-3" fill="none" stroke="var(--fgm)" stroke-width="1.3"/>
 <rect x="464.5" y="138.5" width="243" height="181" rx="8" class="sf bd"/>
 <text x="476" y="158" font-size="12.5" font-weight="600" class="fg">Auto Fill</text>
 <text x="476" y="174" font-size="11" class="fgs">For Backend Engineer, Platform</text>
@@ -112,7 +113,7 @@ text { font-family: Geist, Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica 
 <text x="484" y="289" font-size="10.5" style="fill:var(--wa)">Review every field before you submit.</text>
 <text x="484" y="303" font-size="10.5" style="fill:var(--wa)">quikResume never submits for you.</text></g>
 </g>
-<text x="586" y="366" font-size="8.8" text-anchor="middle" class="fgs">AI can make mistakes. Please review the work before applying.</text>
+<text x="586" y="366" font-size="8.2" text-anchor="middle" class="fgs">AI can make mistakes. Please review the work before applying.</text>
 <g class="cur"><path d="M0 0 L0 15 L4 11.5 L6.8 17.5 L9.2 16.4 L6.5 10.6 L11.5 10.6 Z" fill="#171717" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></g>
 </g>
 <rect x=".5" y=".5" width="719" height="379" rx="8" fill="none" class="bd"/>
