@@ -48,7 +48,7 @@ text { font-family: Geist, Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica 
 <line x1="16" x2="360" y1="162" y2="162" class="bd"/>
 <g transform="translate(32 176)">
   <circle cx="32" cy="32" r="29" fill="none" stroke="var(--tr)" stroke-width="6"/>
-  <circle class="arc" cx="32" cy="32" r="29" fill="none" stroke="var(--act)" stroke-width="6" stroke-linecap="round" stroke-dasharray="182.2" stroke-dashoffset="29.2" transform="rotate(-90 32 32)"/>
+  <path class="arc" d="M32 3a29 29 0 1 1 0 58a29 29 0 1 1 0 -58" fill="none" stroke="var(--act)" stroke-width="6" stroke-linecap="round" stroke-dasharray="182.2" stroke-dashoffset="29.2"/>
   <text class="num fg" x="32" y="39" font-size="20" font-weight="600" text-anchor="middle">84</text>
 </g>
 <text x="112" y="194" font-size="13" font-weight="600" class="fg">Strong fit <tspan font-weight="400" class="fgs">±6</tspan></text>

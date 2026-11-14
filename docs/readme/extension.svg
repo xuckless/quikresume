@@ -86,7 +86,7 @@ text { font-family: Geist, Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica 
 <text x="476" y="122" font-size="11.5" class="fgm">Globex Systems · Seattle, WA · Hybrid</text>
 <text x="476" y="139" font-size="11" class="fgs">Saved to your Job Tracker.</text></g>
 <g style="animation: c2 12s infinite"><rect x="464.5" y="156.5" width="243" height="71" rx="8" class="sf bd"/>
-<g transform="translate(476 168)"><circle cx="24" cy="24" r="20.5" fill="none" stroke="var(--tr)" stroke-width="5"/><circle class="arc" cx="24" cy="24" r="20.5" fill="none" stroke="var(--act)" stroke-width="5" stroke-dasharray="128.8" stroke-dashoffset="20.6" transform="rotate(-90 24 24)"/><text x="24" y="29.5" font-size="15" font-weight="600" text-anchor="middle" class="fg">84</text></g>
+<g transform="translate(476 168)"><circle cx="24" cy="24" r="20.5" fill="none" stroke="var(--tr)" stroke-width="5"/><path class="arc" d="M24 3.5a20.5 20.5 0 1 1 0 41.0a20.5 20.5 0 1 1 0 -41.0" fill="none" stroke="var(--act)" stroke-width="5" stroke-dasharray="128.8" stroke-dashoffset="20.6"/><text x="24" y="29.5" font-size="15" font-weight="600" text-anchor="middle" class="fg">84</text></g>
 <text x="536" y="182" font-size="12" font-weight="600" class="fg">Strong fit <tspan font-weight="400" class="fgs">±6</tspan></text>
 <text x="536" y="199" font-size="11.5" class="fg">Must-haves 6/7 <tspan class="fgs">· nice 1/2</tspan></text>
 <text x="536" y="215" font-size="11" class="fgs">On: Backend · 2026</text></g>
